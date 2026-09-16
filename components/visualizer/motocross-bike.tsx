@@ -3,7 +3,6 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import { Text } from "@react-three/drei";
 import type { Telemetry } from "@/lib/mxb/types";
 import { FRONT_R, REAR_R, REAR_Z } from "@/lib/mxb/defaults";
 
@@ -62,6 +61,27 @@ export function MotocrossBike({ telemetry }: { telemetry: Telemetry }) {
   const frontSpin = useRef<THREE.Group>(null);
   const rearSpin = useRef<THREE.Group>(null);
   const angle = useRef({ f: 0, r: 0 });
+
+  // Number plate "250" painted onto a CanvasTexture. This avoids drei <Text>
+  // (troika), which spins up a second WebGL context for SDF glyph generation
+  // and causes the primary R3F canvas to lose its context (blank viewport).
+  const plateTexture = useMemo(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 280;
+    canvas.height = 200;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#f8fafc";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#1e3a8a";
+    ctx.font = "bold 150px 'Arial', system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("250", canvas.width / 2, canvas.height / 2 + 8);
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = 4;
+    return texture;
+  }, []);
 
   const forkTravel = Math.max(0, 0.31 - telemetry.suspLength[0]);
   const shockTravel = Math.max(0, 0.315 - telemetry.suspLength[1]);
@@ -171,19 +191,8 @@ export function MotocrossBike({ telemetry }: { telemetry: Telemetry }) {
         </mesh>
         <mesh position={[0, 0.7, 0.365]}>
           <boxGeometry args={[0.14, 0.1, 0.01]} />
-          {metal("#f8fafc", { metalness: 0.08, roughness: 0.55 })}
+          <meshStandardMaterial map={plateTexture} metalness={0.08} roughness={0.55} />
         </mesh>
-        <Text
-          position={[0, 0.7, 0.375]}
-          fontSize={0.07}
-          color="#1e3a8a"
-          anchorX="center"
-          anchorY="middle"
-          outlineWidth={0.004}
-          outlineColor="#ffffff"
-        >
-          250
-        </Text>
 
         {/* tank / seat */}
         <mesh position={[0, 0.78, 0.08]}>
