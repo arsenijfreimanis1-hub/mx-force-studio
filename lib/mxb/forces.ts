@@ -2,12 +2,12 @@ import {
   DEFAULT_CG_HEIGHT_M,
   DEFAULT_MASS_KG,
   DEFAULT_WHEELBASE_M,
+  FRONT_Z,
   GRAVITY,
+  REAR_Z,
 } from "./defaults";
 import type { BikeEvent, ForceId, ForceModel, ForceVector, Telemetry, Vec3 } from "./types";
 
-const FRONT_Z = 0.76;
-const REAR_Z = -0.73;
 const WHEEL_Y = 0.35;
 
 function vec(x: number, y: number, z: number): Vec3 {

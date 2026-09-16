@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start --hostname 0.0.0.0 --port 43187",
     "lint": "eslint",
-    "bridge": "python3 bridge/mxb_proxy_bridge.py"
+    "bridge": "node bridge/udp-bridge.mjs",
+    "bridge:proxy": "python3 bridge/mxb_proxy_bridge.py",
+    "plugin:build": "bash plugin/build.sh"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

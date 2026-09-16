@@ -1,26 +1,16 @@
-import type { BikeEvent, SandboxInputs, SessionInfo, Telemetry } from "./types";
+import type { SandboxInputs, SessionInfo, Telemetry } from "./types";
 
-export const DEFAULT_MASS_KG = 186;
-export const DEFAULT_WHEELBASE_M = 1.49;
-export const DEFAULT_CG_HEIGHT_M = 0.58;
-export const GRAVITY = 9.80665;
-
-export const DEFAULT_EVENT: BikeEvent = {
-  riderName: "You",
-  bikeId: "450f",
-  bikeName: "450 4-stroke",
-  gears: 5,
-  maxRpm: 13400,
-  limiter: 13800,
-  shiftRpm: 11800,
-  maxFuel: 7.2,
-  suspMaxTravel: [0.31, 0.315],
-  steerLock: 48,
-  category: "MX",
-  trackId: "studio",
-  trackName: "Force studio",
-  trackLength: 0,
-};
+export {
+  DEFAULT_CG_HEIGHT_M,
+  DEFAULT_EVENT,
+  DEFAULT_MASS_KG,
+  DEFAULT_WHEELBASE_M,
+  FRONT_R,
+  FRONT_Z,
+  GRAVITY,
+  REAR_R,
+  REAR_Z,
+} from "./bike";
 
 export const DEFAULT_SESSION: SessionInfo = {
   session: 1,
@@ -29,15 +19,15 @@ export const DEFAULT_SESSION: SessionInfo = {
   setupFileName: "stock.ssx",
 };
 
-export const REST_SUSP: [number, number] = [0.205, 0.21];
+export const REST_SUSP: [number, number] = [0.205, 0.208];
 
 export function restTelemetry(partial: Partial<Telemetry> = {}): Telemetry {
   return {
-    rpm: 1850,
+    rpm: 1950,
     engineTemp: 78,
     waterTemp: 72,
     gear: 0,
-    fuel: 4.8,
+    fuel: 3.8,
     speedMs: 0,
     position: { x: 0, y: 0, z: 0 },
     velocity: { x: 0, y: 0, z: 0 },
@@ -76,6 +66,6 @@ export const DEFAULT_SANDBOX: SandboxInputs = {
   speedKph: 0,
   frontTravel: 0.34,
   rearTravel: 0.33,
-  rpm: 1850,
+  rpm: 1950,
   gear: 0,
 };

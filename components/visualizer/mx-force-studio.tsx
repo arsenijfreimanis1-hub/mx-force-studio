@@ -186,11 +186,11 @@ export function MxForceStudio() {
     <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-6">
         <div>
-          <p className="text-[11px] font-medium tracking-[0.22em] text-amber-500 uppercase">
-            MX Bikes · Force Studio
+          <p className="text-[11px] font-medium tracking-[0.22em] text-sky-400 uppercase">
+            MX Bikes · 250F Force Studio
           </p>
           <h1 className="text-lg font-semibold tracking-tight md:text-xl">
-            Static bike, live forces
+            Static 250, live forces
           </h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -279,7 +279,7 @@ export function MxForceStudio() {
                   <p className="text-xs leading-5 text-muted-foreground">
                     {liveOk
                       ? "Receiving MX Bikes telemetry. The bike stays in the garage while the forces update from your session."
-                      : "Waiting for the Windows bridge. Leave this tab open, start MX Bikes, then run bridge/mxb_proxy_bridge.py."}
+                      : "Waiting for mxb_force_studio.dlo. Copy it into the MX Bikes plugins folder, run npm run bridge, then go on track."}
                   </p>
                 ) : null}
               </div>
@@ -397,7 +397,7 @@ export function MxForceStudio() {
                     label="RPM"
                     value={sandbox.rpm}
                     min={1500}
-                    max={13000}
+                    max={14000}
                     step={50}
                     display={`${Math.round(sandbox.rpm)}`}
                     onChange={(rpm) => patchSandbox({ rpm })}

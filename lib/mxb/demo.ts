@@ -96,7 +96,7 @@ export function telemetryForScenario(id: ScenarioId, time: number, sandbox: Sand
       const speed = lerp(4, 18, pulse);
       return restTelemetry({
         time: t,
-        rpm: lerp(4200, 11200, pulse),
+        rpm: lerp(4800, 12800, pulse),
         gear: pulse > 0.65 ? 2 : 1,
         speedMs: speed,
         accelG: { x: 0, y: 0.82, z: lerp(0.55, 0.95, pulse) },
@@ -134,7 +134,7 @@ export function telemetryForScenario(id: ScenarioId, time: number, sandbox: Sand
       const lean = 32 + wave * 6;
       return restTelemetry({
         time: t,
-        rpm: 8600,
+        rpm: 9800,
         gear: 3,
         speedMs: speed,
         accelG: { x: -(0.85 + wave * 0.12), y: 1.08, z: 0.18 },
@@ -151,7 +151,7 @@ export function telemetryForScenario(id: ScenarioId, time: number, sandbox: Sand
       const lean = -28 - wave * 5;
       return restTelemetry({
         time: t,
-        rpm: 9100,
+        rpm: 10400,
         gear: 3,
         speedMs: speed,
         accelG: { x: -0.78 + wave * 0.1, y: 1.2, z: 0.22 },
@@ -183,7 +183,7 @@ export function telemetryForScenario(id: ScenarioId, time: number, sandbox: Sand
     case "jump":
       return restTelemetry({
         time: t,
-        rpm: 10200,
+        rpm: 11800,
         gear: 4,
         speedMs: 21,
         accelG: { x: 0.04 * wave, y: 0.06, z: 0.04 },
@@ -217,7 +217,7 @@ export function telemetryForScenario(id: ScenarioId, time: number, sandbox: Sand
       const speed = 11 + pulse * 4;
       return restTelemetry({
         time: t,
-        rpm: lerp(7000, 10500, pulse),
+        rpm: lerp(8200, 13200, pulse),
         gear: 2,
         speedMs: speed,
         accelG: { x: 0.05 * wave, y: 0.55, z: 0.48 },

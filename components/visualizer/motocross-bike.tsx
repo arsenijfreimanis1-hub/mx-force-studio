@@ -3,11 +3,9 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import { Text } from "@react-three/drei";
 import type { Telemetry } from "@/lib/mxb/types";
-
-const REAR_Z = -0.73;
-const FRONT_R = 0.35;
-const REAR_R = 0.32;
+import { FRONT_R, REAR_R, REAR_Z } from "@/lib/mxb/defaults";
 
 function metal(color: string, extras: THREE.MeshStandardMaterialParameters = {}) {
   return <meshStandardMaterial color={color} metalness={0.72} roughness={0.32} {...extras} />;
@@ -137,8 +135,8 @@ export function MotocrossBike({ telemetry }: { telemetry: Telemetry }) {
         </mesh>
 
         {/* engine */}
-        <mesh position={[0, 0.32, 0.02]} castShadow>
-          <boxGeometry args={[0.22, 0.28, 0.32]} />
+        <mesh position={[0, 0.31, 0.02]} castShadow>
+          <boxGeometry args={[0.2, 0.26, 0.28]} />
           {metal("#3f3f46")}
         </mesh>
         <mesh position={[0.12, 0.34, 0.02]}>
@@ -161,20 +159,31 @@ export function MotocrossBike({ telemetry }: { telemetry: Telemetry }) {
         {/* radiator / shrouds */}
         <mesh position={[0.13, 0.58, 0.28]} rotation={[0.1, 0.15, 0]}>
           <boxGeometry args={[0.04, 0.28, 0.22]} />
-          {metal("#fb923c", { metalness: 0.35, roughness: 0.45 })}
+          {metal("#2563eb", { metalness: 0.35, roughness: 0.45 })}
         </mesh>
         <mesh position={[-0.13, 0.58, 0.28]} rotation={[0.1, -0.15, 0]}>
           <boxGeometry args={[0.04, 0.28, 0.22]} />
-          {metal("#fb923c", { metalness: 0.35, roughness: 0.45 })}
+          {metal("#2563eb", { metalness: 0.35, roughness: 0.45 })}
         </mesh>
         <mesh position={[0, 0.7, 0.32]}>
           <boxGeometry args={[0.18, 0.12, 0.08]} />
           {metal("#f8fafc")}
         </mesh>
         <mesh position={[0, 0.7, 0.365]}>
-          <boxGeometry args={[0.12, 0.08, 0.01]} />
-          {metal("#111827")}
+          <boxGeometry args={[0.14, 0.1, 0.01]} />
+          {metal("#f8fafc", { metalness: 0.08, roughness: 0.55 })}
         </mesh>
+        <Text
+          position={[0, 0.7, 0.375]}
+          fontSize={0.07}
+          color="#1e3a8a"
+          anchorX="center"
+          anchorY="middle"
+          outlineWidth={0.004}
+          outlineColor="#ffffff"
+        >
+          250
+        </Text>
 
         {/* tank / seat */}
         <mesh position={[0, 0.78, 0.08]}>
@@ -193,7 +202,7 @@ export function MotocrossBike({ telemetry }: { telemetry: Telemetry }) {
         {/* rear fender */}
         <mesh position={[0, 0.62, -0.7]} rotation={[-0.35, 0, 0]}>
           <boxGeometry args={[0.18, 0.03, 0.28]} />
-          {metal("#fb923c", { metalness: 0.3 })}
+          {metal("#1d4ed8", { metalness: 0.3 })}
         </mesh>
 
         {/* pegs */}
@@ -243,7 +252,7 @@ export function MotocrossBike({ telemetry }: { telemetry: Telemetry }) {
             </mesh>
             <mesh position={[0, 0.22, 0.04]}>
               <boxGeometry args={[0.16, 0.08, 0.08]} />
-              {metal("#fb923c")}
+              {metal("#1d4ed8")}
             </mesh>
             <group position={[0, -0.62 - forkTravel, 0.12]}>
               <KnobbyTire radius={FRONT_R} width={0.1} spinRef={frontSpin} />
@@ -263,7 +272,7 @@ export function MotocrossBike({ telemetry }: { telemetry: Telemetry }) {
           </mesh>
           <mesh position={[0, 0.42, 0.04]}>
             <sphereGeometry args={[0.11, 16, 16]} />
-            {metal("#f97316", { metalness: 0.4, roughness: 0.35 })}
+            {metal("#e2e8f0", { metalness: 0.4, roughness: 0.35 })}
           </mesh>
           <mesh position={[0, 0.44, 0.12]}>
             <boxGeometry args={[0.14, 0.06, 0.04]} />
@@ -271,11 +280,11 @@ export function MotocrossBike({ telemetry }: { telemetry: Telemetry }) {
           </mesh>
           <mesh position={[0.16, 0.08, 0.22]} rotation={[-0.9, 0.2, 0.4]}>
             <boxGeometry args={[0.07, 0.07, 0.38]} />
-            {metal("#fb923c", { metalness: 0.2 })}
+            {metal("#1d4ed8", { metalness: 0.2 })}
           </mesh>
           <mesh position={[-0.16, 0.08, 0.22]} rotation={[-0.9, -0.2, -0.4]}>
             <boxGeometry args={[0.07, 0.07, 0.38]} />
-            {metal("#fb923c", { metalness: 0.2 })}
+            {metal("#1d4ed8", { metalness: 0.2 })}
           </mesh>
           <mesh position={[0.1, -0.22, 0.02]} rotation={[0.6, 0, 0.15]}>
             <boxGeometry args={[0.08, 0.32, 0.1]} />
