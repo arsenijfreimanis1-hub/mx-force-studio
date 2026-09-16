@@ -15,9 +15,23 @@ if not exist "node_modules\" (
   if errorlevel 1 goto :fail
 )
 
-echo Starting Force Studio at http://127.0.0.1:43187
+echo Building Force Studio...
+call npm run build
+if errorlevel 1 goto :fail
+
 echo.
-call npm run dev
+echo Creating the "MX Force Studio" icon on your Desktop and Start Menu...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0windows\create-shortcut.ps1"
+
+echo.
+echo ================================================================
+echo   Done. A "MX Force Studio" icon is now on your Desktop.
+echo   Double-click it before starting MX Bikes.
+echo ================================================================
+echo.
+echo Starting Force Studio now...
+echo.
+call "%~dp0Force Studio.cmd"
 goto :eof
 
 :need_node
