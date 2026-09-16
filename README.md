@@ -4,7 +4,40 @@ A garage visualizer for [MX Bikes](https://www.mx-bikes.com/). The bike stays pu
 
 Tuned for a **250 4-stroke** (YZ250F-class): 180 kg with rider (105 kg wet bike + 75 kg rider), 1.476 m wheelbase, 310 / 312 mm travel, 14,000 rpm. Livery can be swapped later.
 
-## Run it
+## Run it on Windows
+
+`npm` comes from **Node.js**. Windows does not include it. Install it once, then always run commands from the `mx-hub` folder (not `C:\Users\user`).
+
+1. In Command Prompt:
+
+```bat
+winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
+```
+
+If `winget` is missing, download the LTS installer from [nodejs.org](https://nodejs.org/en/download), keep **Add to PATH** checked, and finish the wizard.
+
+2. **Close Command Prompt and open a new one.** PATH only updates in a new window. Check:
+
+```bat
+node -v
+npm -v
+```
+
+3. Get into the repo, install packages, start the garage:
+
+```bat
+cd C:\Users\user\mx-hub
+npm install
+npm run dev
+```
+
+Or double-click `setup-windows.cmd` inside the repo. It will say if Node is missing.
+
+Open [http://127.0.0.1:43187](http://127.0.0.1:43187).
+
+If you cloned with Origin in WSL, the Windows path is usually `\\wsl$\Ubuntu\home\<you>\mx-hub` or `/mnt/c/Users/user/mx-hub` if you cloned onto C:.
+
+## Run it (macOS / Linux / WSL)
 
 ```bash
 npm install
