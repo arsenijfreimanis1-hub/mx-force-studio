@@ -2,7 +2,7 @@
 
 import type { MutableRefObject } from "react";
 import { Canvas } from "@react-three/fiber";
-import { ContactShadows, OrbitControls, PerspectiveCamera, Sky } from "@react-three/drei";
+import { ContactShadows, OrbitControls, PerspectiveCamera } from "@react-three/drei";
 import { MotocrossBike } from "@/components/visualizer/motocross-bike";
 import { ForceArrows } from "@/components/visualizer/force-arrows";
 import { ChassisRig } from "@/components/visualizer/chassis-rig";
@@ -57,12 +57,15 @@ export function BikeCanvas({
       gl={{ antialias: true, powerPreference: "high-performance" }}
       onCreated={({ invalidate }) => invalidate()}
     >
-      <color attach="background" args={["#87a0b8"]} />
-      <fog attach="fog" args={["#c4b49a", 14, 42]} />
-      <Sky inclination={0.47} azimuth={0.22} mieCoefficient={0.006} rayleigh={1.2} turbidity={6} />
-      <PerspectiveCamera makeDefault position={[1.35, 1.05, -2.15]} fov={40} />
-      <hemisphereLight color="#fff4e0" groundColor="#6b5340" intensity={0.7} />
-      <directionalLight position={[6, 8, 3]} intensity={1.55} color="#ffe6b8" />
+      <color attach="background" args={["#8fb4d4"]} />
+      <fog attach="fog" args={["#c8b89c", 22, 55]} />
+      <mesh>
+        <sphereGeometry args={[40, 24, 16]} />
+        <meshBasicMaterial color="#8eb7d9" side={1} />
+      </mesh>
+      <PerspectiveCamera makeDefault position={[1.55, 1.28, -2.45]} fov={40} />
+      <hemisphereLight color="#fff1d6" groundColor="#7a5a3c" intensity={0.85} />
+      <directionalLight position={[8, 10, 4]} intensity={1.7} color="#ffe7c2" />
 
       <group>
         <Paddock />

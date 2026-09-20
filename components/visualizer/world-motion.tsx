@@ -7,8 +7,8 @@ export function Paddock() {
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow={false}>
-        <circleGeometry args={[28, 48]} />
-        <meshStandardMaterial color="#8d6b46" roughness={0.96} metalness={0} />
+        <circleGeometry args={[22, 48]} />
+        <meshStandardMaterial color="#9a754d" roughness={0.96} metalness={0} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]}>
         <circleGeometry args={[7.5, 40]} />

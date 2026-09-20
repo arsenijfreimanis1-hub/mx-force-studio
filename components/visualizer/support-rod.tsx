@@ -59,12 +59,24 @@ export function MotionPedestal({ poseRef }: { poseRef: MutableRefObject<Pose6> }
 
   return (
     <group>
-      <mesh position={[0, 0.03, 0]} receiveShadow={false}>
-        <boxGeometry args={[1.55, 0.06, 1.85]} />
-        <meshStandardMaterial color="#292524" metalness={0.4} roughness={0.55} />
+      <mesh position={[0, 0.04, 0.82]} rotation={[0, 0, 0]}>
+        <boxGeometry args={[1.42, 0.045, 0.07]} />
+        <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
       </mesh>
-      <mesh position={[0, 0.062, 0]}>
-        <boxGeometry args={[0.34, 0.024, 0.28]} />
+      <mesh position={[0, 0.04, -0.82]}>
+        <boxGeometry args={[1.42, 0.045, 0.07]} />
+        <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
+      </mesh>
+      <mesh position={[0.67, 0.04, 0]}>
+        <boxGeometry args={[0.07, 0.045, 1.72]} />
+        <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
+      </mesh>
+      <mesh position={[-0.67, 0.04, 0]}>
+        <boxGeometry args={[0.07, 0.045, 1.72]} />
+        <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
+      </mesh>
+      <mesh position={[0, 0.05, 0]}>
+        <boxGeometry args={[0.28, 0.03, 0.22]} />
         <meshStandardMaterial color="#44403c" metalness={0.45} roughness={0.4} />
       </mesh>
 
