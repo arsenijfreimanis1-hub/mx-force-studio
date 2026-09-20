@@ -1,31 +1,60 @@
-# Creates a clickable "MX Force Studio" icon on the Desktop and in the Start Menu.
-# The shortcut launches "Force Studio.cmd", which starts the visualizer, the UDP
-# bridge, and opens the browser. Safe to run repeatedly; it just refreshes the icons.
+# Creates a clickable "MX Force Studio" icon on the Desktop, Start Menu,
+# and in this repo folder. Safe to run repeatedly.
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 
 $root = Split-Path -Parent $PSScriptRoot
-$launcher = Join-Path $root "Force Studio.cmd"
+$launcher = Join-Path $root "MX Force Studio.bat"
+if (-not (Test-Path -LiteralPath $launcher)) {
+  $launcher = Join-Path $root "Force Studio.cmd"
+}
 $icon = Join-Path $root "force-studio.ico"
+$cmd = Join-Path $env:SystemRoot "System32\cmd.exe"
 
 $shell = New-Object -ComObject WScript.Shell
 
-$locations = @(
-  [Environment]::GetFolderPath("Desktop"),
-  [Environment]::GetFolderPath("Programs")
-)
+$desktops = New-Object System.Collections.Generic.List[string]
+foreach ($name in @("Desktop", "CommonDesktopDirectory", "Programs")) {
+  $p = [Environment]::GetFolderPath($name)
+  if ($p) { $desktops.Add($p) | Out-Null }
+}
+foreach ($p in @(
+  (Join-Path $env:USERPROFILE "Desktop"),
+  (Join-Path $env:USERPROFILE "OneDrive\Desktop"),
+  (Join-Path $env:USERPROFILE "OneDrive - Personal\Desktop"),
+  $root
+)) {
+  if ($p) { $desktops.Add($p) | Out-Null }
+}
 
-foreach ($dir in $locations) {
+$written = 0
+$seen = @{}
+foreach ($dir in $desktops) {
   if ([string]::IsNullOrWhiteSpace($dir)) { continue }
-  if (-not (Test-Path $dir)) { continue }
+  if (-not (Test-Path -LiteralPath $dir)) { continue }
+  $key = $dir.ToLowerInvariant()
+  if ($seen.ContainsKey($key)) { continue }
+  $seen[$key] = $true
 
   $linkPath = Join-Path $dir "MX Force Studio.lnk"
-  $shortcut = $shell.CreateShortcut($linkPath)
-  $shortcut.TargetPath = $launcher
-  $shortcut.WorkingDirectory = $root
-  $shortcut.WindowStyle = 7  # start minimized
-  $shortcut.Description = "MX Bikes Force Studio"
-  if (Test-Path $icon) { $shortcut.IconLocation = "$icon,0" }
-  $shortcut.Save()
-  Write-Host "Created shortcut: $linkPath"
+  try {
+    $shortcut = $shell.CreateShortcut($linkPath)
+    $shortcut.TargetPath = $cmd
+    $shortcut.Arguments = "/c `"$launcher`""
+    $shortcut.WorkingDirectory = $root
+    $shortcut.WindowStyle = 1
+    $shortcut.Description = "MX Bikes Force Studio"
+    if (Test-Path -LiteralPath $icon) { $shortcut.IconLocation = "$icon,0" }
+    $shortcut.Save()
+    Write-Host "Created shortcut: $linkPath"
+    $written++
+  } catch {
+    Write-Host "Could not create shortcut in $dir : $($_.Exception.Message)"
+  }
+}
+
+if ($written -eq 0) {
+  Write-Host "No Desktop shortcut was created. Double-click 'MX Force Studio.bat' in this folder instead:"
+  Write-Host "  $launcher"
+  exit 1
 }

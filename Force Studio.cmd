@@ -19,7 +19,7 @@ if not exist ".next\BUILD_ID" (
 )
 
 REM Make sure the clickable Desktop / Start Menu icon exists.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0windows\create-shortcut.ps1" >nul 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0windows\create-shortcut.ps1"
 
 echo Installing the MX Bikes telemetry plugin...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0windows\install-plugin.ps1"

@@ -36,7 +36,7 @@ echo ================================================================
 echo.
 echo Starting Force Studio now...
 echo.
-call "%~dp0Force Studio.cmd"
+call "%~dp0MX Force Studio.bat"
 goto :eof
 
 :need_node

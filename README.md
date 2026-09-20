@@ -4,6 +4,18 @@ A garage visualizer for [MX Bikes](https://www.mx-bikes.com/). The bike stays pu
 
 Tuned for a **250 4-stroke** (YZ250F-class): 180 kg with rider (105 kg wet bike + 75 kg rider), 1.476 m wheelbase, 310 / 312 mm travel, 14,000 rpm. Livery can be swapped later.
 
+## Start here (Windows)
+
+In **this folder** (`mx-hub`), double-click:
+
+**`MX Force Studio.bat`**
+
+That is the app. It puts **MX Force Studio** on your Desktop and in the Start Menu (with the orange arrow icon), then starts the garage. A window titled **MX Bikes Force Studio** stays open — keep it open while you ride.
+
+There is no `.exe`. Windows will run the `.bat` if you double-click it. If Explorer hides extensions, look for **MX Force Studio**.
+
+If you cloned with Origin/WSL, open the folder from Windows first, for example `\\wsl$\Ubuntu\home\<you>\mx-hub`, then double-click the file there. A shortcut created from WSL may not show on a Windows Desktop until you run the `.bat` from Explorer.
+
 ## Run it on Windows (one icon, no terminal)
 
 Force Studio runs as a clickable app. Set it up once, then it lives on your Desktop.
@@ -16,13 +28,13 @@ winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agr
 
 If `winget` is missing, download the LTS installer from [nodejs.org](https://nodejs.org/en/download), keep **Add to PATH** checked, and finish the wizard.
 
-2. **Double-click `setup-windows.cmd`** inside the `mx-hub` folder. It installs packages, builds the app, and drops a **MX Force Studio** icon on your Desktop and in the Start Menu. (It will tell you if Node is missing.)
+2. **Double-click `MX Force Studio.bat`** inside the `mx-hub` folder. First run installs packages, builds the app, copies the telemetry plugin into MX Bikes, and drops the Desktop icon. (It will tell you if Node is missing.)
 
-3. From now on, **double-click the MX Force Studio icon** before you start MX Bikes. It installs the telemetry plugin into the game folder, launches the garage, starts the live telemetry bridge, and opens your browser at [http://127.0.0.1:43187](http://127.0.0.1:43187). When the launcher prints **APP READY**, launch MX Bikes, go on track, switch Force Studio to **Live**, and click **Connect to MX Bikes**.
+3. From now on you can use the **Desktop icon**, or double-click `MX Force Studio.bat` again. When the launcher prints **APP READY**, launch MX Bikes, go on track, switch Force Studio to **Live**, and click **Connect to MX Bikes**.
 
-To stop it, close the small **MX Bikes Force Studio** window it opens.
+To stop it, close the **MX Bikes Force Studio** window.
 
-> The icon is a shortcut to `Force Studio.cmd` in the repo. You can also double-click that file directly, or drag it to your taskbar. The first launch builds the app (about a minute); later launches are instant.
+> First launch takes about a minute (install + build). Later launches are instant.
 
 If you cloned with Origin in WSL, the Windows path is usually `\\wsl$\Ubuntu\home\<you>\mx-hub` or `/mnt/c/Users/user/mx-hub` if you cloned onto C:.
 
