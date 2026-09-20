@@ -4,21 +4,15 @@
 
 ## Install on the Windows gaming PC
 
-1. Copy `mxb_force_studio.dlo` and `force_studio.ini` into:
+Double-click the **MX Force Studio** desktop icon (or `setup-windows.cmd`). It copies `mxb_force_studio.dlo` and `force_studio.ini` into:
 
-   `C:\Program Files (x86)\Steam\steamapps\common\MX Bikes\plugins\`
+`D:\New folder\steamapps\common\MX Bikes\plugins\`
 
-   (or the `plugins` folder next to `mxbikes.exe` if you use the standalone build)
+(or the `plugins` folder next to `mxbikes.exe` if Steam reports a different library). MX Bikes loads plugins at startup, so restart the game if it was already open.
 
-2. Edit `force_studio.ini` only if the visualizer is on another machine.
+`force_studio.ini` stays at `127.0.0.1:47387` when the visualizer runs on the same PC.
 
-3. In the repo, with the Next app running:
-
-   ```bash
-   npm run bridge
-   ```
-
-4. Launch MX Bikes, go on track, switch Force Studio to **Live**.
+Then wait for **APP READY**, launch MX Bikes, go on track, switch Force Studio to **Live**, and click **Connect to MX Bikes**.
 
 A license is not required for output plugins. The plugin is fire-and-forget UDP; it will not stall the sim if the bridge is down.
 

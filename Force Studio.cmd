@@ -21,11 +21,16 @@ if not exist ".next\BUILD_ID" (
 REM Make sure the clickable Desktop / Start Menu icon exists.
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0windows\create-shortcut.ps1" >nul 2>nul
 
+echo Installing the MX Bikes telemetry plugin...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0windows\install-plugin.ps1"
+echo.
+
 echo.
 echo ================================================================
 echo   MX Bikes Force Studio
 echo   Your browser will open at http://127.0.0.1:43187
 echo   Keep this window open while you ride. Close it to stop.
+echo   If MX Bikes is already open, restart it so the plugin loads.
 echo ================================================================
 echo.
 

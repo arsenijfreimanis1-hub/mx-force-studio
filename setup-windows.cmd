@@ -24,9 +24,14 @@ echo Creating the "MX Force Studio" icon on your Desktop and Start Menu...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0windows\create-shortcut.ps1"
 
 echo.
+echo Installing the MX Bikes telemetry plugin...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0windows\install-plugin.ps1"
+
+echo.
 echo ================================================================
 echo   Done. A "MX Force Studio" icon is now on your Desktop.
 echo   Double-click it before starting MX Bikes.
+echo   If MX Bikes is already open, restart it so the plugin loads.
 echo ================================================================
 echo.
 echo Starting Force Studio now...
