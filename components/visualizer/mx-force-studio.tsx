@@ -19,6 +19,7 @@ import {
 import { DEFAULT_EVENT, DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
 import { formatG, speedKph } from "@/lib/mxb/forces";
 import { gamepadActive, readFirstGamepad } from "@/lib/mxb/gamepad";
+import { detectCrash } from "@/lib/mxb/crash";
 import { setupLabel } from "@/lib/mxb/inputs";
 import { displayBikeName, isPlaceholderBikeName } from "@/lib/mxb/live-store";
 import { fmtLapMs, fmtOnTrackS, sessionKind, suspUsedPct, trackPct } from "@/lib/mxb/session";
@@ -307,6 +308,7 @@ export function MxForceStudio() {
       ? "connected"
       : "waiting";
   const telemetry = hudTel;
+  const crashed = detectCrash(telemetry);
   const liveName = displayBikeName(hudEvent);
   const setupName = setupLabel(livePacket?.session.setupFileName);
   const bikeLabel = usingLive
@@ -355,6 +357,11 @@ export function MxForceStudio() {
           <Badge variant="outline" className="gap-1">
             <Gamepad2 className="size-3" />
             Pad
+          </Badge>
+        ) : null}
+        {crashed ? (
+          <Badge variant="destructive" className="gap-1">
+            Crash
           </Badge>
         ) : null}
         <Badge variant={usingLive ? "default" : "outline"} className="gap-1 max-w-[14rem]">
@@ -448,7 +455,8 @@ export function MxForceStudio() {
                 <>
                   <p className="text-xs leading-4 text-muted-foreground">
                     Garage is parked upright. Start MX Bikes on this PC, go on track, then Connect.
-                    Stock Xbox: RT throttle, LT front brake, LB rear, A clutch, left stick steer/lean.
+                    Stock Xbox: RT throttle, LT front brake, LB rear, A clutch, left stick steer,
+                    right stick body weight (dummy lean / sit).
                   </p>
                   <Button
                     size="sm"

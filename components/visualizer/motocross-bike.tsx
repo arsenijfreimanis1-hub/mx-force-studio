@@ -4,6 +4,7 @@ import { memo, useLayoutEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { MutableRefObject } from "react";
+import { readBodyStick, readFirstGamepad } from "@/lib/mxb/gamepad";
 import { idleRider, riderFromTelemetry } from "@/lib/mxb/rider";
 import type { Telemetry } from "@/lib/mxb/types";
 
@@ -84,7 +85,8 @@ function SeatBean({
     const node = mesh.current;
     if (!node) return;
     const active = liveRef.current || padActiveRef.current;
-    const want = active ? riderFromTelemetry(telemetryRef.current) : idleRider();
+    const stick = liveRef.current ? readBodyStick(readFirstGamepad()) : undefined;
+    const want = active ? riderFromTelemetry(telemetryRef.current, stick) : idleRider();
     const a = active ? 1 - Math.exp(-Math.min(0.05, dt) / 0.07) : 1;
     const pose = last.current;
     pose.stand += (want.stand - pose.stand) * a;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { gamepadActive } from "./gamepad.ts";
+import { gamepadActive, readBodyStick } from "./gamepad.ts";
 
 function fakePad(partial: { buttons?: { pressed?: boolean; value?: number }[]; axes?: number[] }): Gamepad {
   const buttons = (partial.buttons ?? []).map((b) => ({
@@ -35,6 +35,13 @@ test("a pulled trigger counts as rider input", () => {
     buttons: [{}, {}, {}, {}, {}, {}, {}, { value: 0.4 }],
   });
   assert.equal(gamepadActive(pad), true);
+});
+
+test("right stick is body weight for the dummy", () => {
+  const pose = readBodyStick(fakePad({ axes: [0, 0, 0.8, -0.7] }));
+  assert.ok(pose.lean < -0.2, `lean ${pose.lean}`);
+  assert.ok(pose.foreAft > 0.04, `foreAft ${pose.foreAft}`);
+  assert.ok(pose.stand > 0.3, `stand ${pose.stand}`);
 });
 
 test("face buttons other than A do not count as rider input", () => {

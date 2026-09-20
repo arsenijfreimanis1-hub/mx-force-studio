@@ -11,8 +11,10 @@ Every public chassis channel from the PiBoSo plugin is mapped onto the deck and 
 | `m_fYawVelocity`, `m_fSteer` | Yaw washout |
 | `m_fAcceleration` X/Y/Z | Sway / heave / surge |
 | `m_afSuspLength` + `m_afSuspVelocity` | Whoops / bumps vs rolling sag |
-| `m_aiWheelMaterial` + `velocity.y` | Jumps and landings |
+| `m_aiWheelMaterial` + `position.y` / `velocity.y` | Jumps vs the live track surface |
+| `m_iCrashed` or a high-side Euler | Crash (bike stays down, Crash badge) |
 | throttle / brakes | Rider sit-back / sit-forward |
+| Xbox right stick (body weight) | Dummy lean / sit while live |
 | airborne / whoops | Rider stand |
 
 A box under the frame holds a rod to the cradle. The dummy sits, stands, leans, and slides fore/aft with the same packet.
@@ -25,7 +27,7 @@ A box under the frame holds a rod to the cradle. The dummy sits, stands, leans, 
 4. Launch MX Bikes **on the same PC**, go on track (plugin loads at game start — restart MX Bikes if it was already open).
 5. Click **Connect**. The frame follows the live bike.
 
-Stock Xbox / XInput map (MX Bikes Controls + `Documents\PiBoSo\MX Bikes`): **RT** throttle, **LT** front brake, **LB** rear brake, **A** clutch, **left stick** steer + lean. The live HUD also shows the session setup file (`.ssx`).
+Stock Xbox / XInput map (MX Bikes Controls + `Documents\PiBoSo\MX Bikes`): **RT** throttle, **LT** front brake, **LB** rear brake, **A** clutch, **left stick** steer, **right stick** body weight (the dummy — the plugin has no rider-skeleton channel). The live HUD also shows the session setup file (`.ssx`). MX Bikes track meshes are not in the plugin; heave follows live world `position.y` against a slow on-track surface so the garage uses the same jump the game just ran.
 
 If Windows SmartScreen says “Windows protected your PC”, click **More info** → **Run anyway**. If the file opens as text, rename it so it ends in `.bat`.
 

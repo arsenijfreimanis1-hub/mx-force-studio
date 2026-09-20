@@ -1,5 +1,6 @@
 import { resolveAttitude } from "./attitude.ts";
 import { chassisCues, heaveFromCues } from "./channels.ts";
+import { detectCrash, isStopped } from "./crash.ts";
 import type { Telemetry, Vec3 } from "./types";
 
 /** Bottom-middle of the main cradle, bike-local meters. */
@@ -69,8 +70,9 @@ const INTEGRATOR_HZ = 120;
  */
 const TILT_RATE_LIMIT = (55 * Math.PI) / 180;
 const TILT_TAU = 0.22;
-/** Follow plugin Euler directly — do not wait on the IMU smoother. */
-const ATTITUDE_TAU = 0.03;
+/** Follow plugin Euler. Rest uses a longer tau so parked IMU noise dies. */
+const ATTITUDE_TAU = 0.07;
+const ATTITUDE_TAU_REST = 0.22;
 /** Grounded whoops stay on the shocks. Air tracks the ballistic arc. */
 const HEAVE_TAU_GROUND = 0.1;
 const HEAVE_TAU_AIR = 0.035;
@@ -140,6 +142,10 @@ export type MotionFilter = {
   airVy: number;
   landSink: number;
   landSinkV: number;
+  /** Slow EMA of on-track world Y — the surface the game is actually on. */
+  groundY: number;
+  groundPrimed: boolean;
+  prevWorldY: number;
   /** null until parked / high-mag sample locks G vs m/s² for the session. */
   unitsMs2: boolean | null;
   primed: boolean;
@@ -181,6 +187,9 @@ export function createMotionFilter(): MotionFilter {
     airVy: 0,
     landSink: 0,
     landSinkV: 0,
+    groundY: 0,
+    groundPrimed: false,
+    prevWorldY: 0,
     unitsMs2: null,
     primed: false,
     shown: identityPose(),
@@ -372,45 +381,9 @@ export function stepMotion(
     filter.wz = deg(telemetry.rollRate);
   }
 
-  if (telemetry.crashed) {
-    filter.x = 0;
-    filter.vx = 0;
-    filter.y = 0;
-    filter.z = 0;
-    filter.vz = 0;
-    filter.yaw = 0;
-    filter.vyaw = 0;
-    filter.pitchHp = 0;
-    filter.vpitch = 0;
-    filter.rollHp = 0;
-    filter.vroll = 0;
-    filter.tiltPitch = 0;
-    filter.tiltRoll = 0;
-    filter.followPitch = 0;
-    filter.followRoll = 0;
-    filter.wx = 0;
-    filter.wy = 0;
-    filter.wz = 0;
-    filter.sAx = 0;
-    filter.sAy = 1;
-    filter.sAz = 0;
-    filter.sRoll = 0;
-    filter.sPitch = 0;
-    filter.sYawRate = 0;
-    filter.sPitchRate = 0;
-    filter.sRollRate = 0;
-    filter.sagF = REST_SUSP_F;
-    filter.sagR = REST_SUSP_R;
-    filter.wasAir = false;
-    filter.airY = 0;
-    filter.airVy = 0;
-    filter.landSink = 0;
-    filter.landSinkV = 0;
-    filter.shown = identityPose();
-    return filter.shown;
-  }
-
+  const crashed = detectCrash(telemetry);
   const airborne = telemetry.wheelMaterial[0] === 0 && telemetry.wheelMaterial[1] === 0;
+  const stopped = !crashed && isStopped(telemetry);
   const gTau = airborne ? 0.07 : smoothTau;
 
   filter.sAx = follow(filter.sAx, rawG.x, step, smoothTau);
@@ -440,16 +413,31 @@ export function stepMotion(
     filter.sagF,
     filter.sagR,
   );
-  const gForce = { x: cues.swayG, y: cues.vertG, z: cues.surgeG };
+  const gForce = stopped
+    ? { x: 0, y: 1, z: 0 }
+    : { x: cues.swayG, y: cues.vertG, z: cues.surgeG };
   const scale = GRAVITY * response;
 
-  const aSway = gForce.x * scale;
-  const aSurge = gForce.z * scale;
+  const aSway = crashed ? 0 : gForce.x * scale;
+  const aSurge = crashed ? 0 : gForce.z * scale;
   let heaveTarget: number;
   let heaveTau = HEAVE_TAU_GROUND;
   const climb = Number.isFinite(telemetry.velocity.y) ? telemetry.velocity.y : filter.airVy;
+  const worldY = telemetry.position.y;
+  const hasWorld = Number.isFinite(worldY);
 
-  if (airborne) {
+  if (hasWorld && !filter.groundPrimed) {
+    filter.groundY = worldY;
+    filter.groundPrimed = true;
+  }
+
+  if (crashed) {
+    filter.airY = 0;
+    filter.airVy = 0;
+    filter.landSink = follow(filter.landSink, -0.28 * response, step, 0.08);
+    heaveTarget = filter.landSink;
+    heaveTau = HEAVE_TAU_AIR;
+  } else if (airborne) {
     if (!filter.wasAir) {
       filter.airY = 0;
       filter.airVy = climb;
@@ -459,8 +447,19 @@ export function stepMotion(
       filter.airVy = follow(filter.airVy, climb, step, 0.04);
       filter.airY += filter.airVy * step;
     }
+    const worldRel = hasWorld && filter.groundPrimed ? worldY - filter.groundY : filter.airY;
+    const worldMoved = hasWorld && Math.abs(worldY - filter.prevWorldY) > 0.003;
+    if (worldMoved) filter.airY = follow(filter.airY, worldRel, step, 0.06);
     heaveTarget = clamp((filter.airY / JUMP_WORLD_M) * limY * response, -limY, limY);
     heaveTau = HEAVE_TAU_AIR;
+  } else if (stopped) {
+    filter.airY = 0;
+    filter.airVy = 0;
+    filter.landSink = follow(filter.landSink, 0, step, 0.12);
+    filter.landSinkV = 0;
+    if (hasWorld) filter.groundY = follow(filter.groundY, worldY, step, 0.35);
+    heaveTarget = 0;
+    heaveTau = ATTITUDE_TAU_REST;
   } else {
     if (filter.wasAir) {
       const impact = Math.max(0, -filter.airVy, -climb);
@@ -470,11 +469,15 @@ export function stepMotion(
       filter.y = Math.min(0, filter.y);
     }
     filter.airVy = follow(filter.airVy, 0, step, 0.06);
+    if (hasWorld) filter.groundY = follow(filter.groundY, worldY, step, 2.2);
     const sink = stepAxis(filter.landSink, filter.landSinkV, 0, step, limY, WASH_OMEGA * 1.35);
     filter.landSink = sink.pos;
     filter.landSinkV = sink.vel;
-    const ground = Math.abs(filter.landSink) > 0.03 ? 0 : heaveFromCues(cues, response) * limY;
-    heaveTarget = ground + filter.landSink;
+    const ride =
+      hasWorld && filter.groundPrimed ? clamp((worldY - filter.groundY) / JUMP_WORLD_M, -1, 1) * limY : 0;
+    const whoop = Math.abs(filter.landSink) > 0.03 ? 0 : heaveFromCues(cues, response) * limY;
+    const surface = Math.abs(ride) > 0.03 ? ride : whoop;
+    heaveTarget = surface + filter.landSink;
     if (Math.abs(filter.landSink) > 0.03) heaveTau = HEAVE_TAU_AIR;
   }
   filter.wasAir = airborne;
@@ -487,9 +490,16 @@ export function stepMotion(
   filter.z = surge.pos;
   filter.vz = surge.vel;
 
+  if (stopped || crashed) {
+    filter.x = follow(filter.x, 0, step, 0.18);
+    filter.vx = follow(filter.vx, 0, step, 0.12);
+    filter.z = follow(filter.z, 0, step, 0.18);
+    filter.vz = follow(filter.vz, 0, step, 0.12);
+  }
+
   filter.y = clamp(follow(filter.y, heaveTarget, step, heaveTau), -limY, limY);
 
-  const yawAccel = (deg(filter.sYawRate) * 1.4 + deg(cues.steerDeg) * 0.12) * response;
+  const yawAccel = stopped || crashed ? 0 : (deg(filter.sYawRate) * 1.4 + deg(cues.steerDeg) * 0.12) * response;
   const yaw = stepAxis(filter.yaw, filter.vyaw, yawAccel, step, limYaw, WASH_OMEGA_ANG);
   filter.yaw = yaw.pos;
   filter.vyaw = yaw.vel;
@@ -499,8 +509,9 @@ export function stepMotion(
   filter.pitchHp = follow(filter.pitchHp, 0, step, 0.12);
   filter.vpitch = 0;
 
-  const inputPitch =
-    (cues.throttle * 0.18 - cues.frontBrake * 0.26 - cues.rearBrake * 0.08) * response;
+  const inputPitch = stopped
+    ? 0
+    : (cues.throttle * 0.18 - cues.frontBrake * 0.26 - cues.rearBrake * 0.08) * response;
   const tiltPitchTarget = Math.atan(gForce.z) * TILT_PITCH_BLEND * response + inputPitch;
   const tiltRollTarget = Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
   filter.tiltPitch = rateLimit(filter.tiltPitch, tiltPitchTarget, step, TILT_RATE_LIMIT);
@@ -508,16 +519,24 @@ export function stepMotion(
   filter.tiltPitch = follow(filter.tiltPitch, tiltPitchTarget, step, TILT_TAU);
   filter.tiltRoll = follow(filter.tiltRoll, tiltRollTarget, step, TILT_TAU);
 
-  filter.followRoll = follow(filter.followRoll, deg(attitude.roll) * LEAN_FOLLOW, step, ATTITUDE_TAU);
-  filter.followPitch = follow(filter.followPitch, deg(attitude.pitch) * PITCH_FOLLOW, step, ATTITUDE_TAU);
+  const rollCmd = stopped && Math.abs(attitude.roll) < 2.8 ? 0 : attitude.roll;
+  const pitchCmd = stopped && Math.abs(attitude.pitch) < 2.8 ? 0 : attitude.pitch;
+  const attitudeTau = stopped ? ATTITUDE_TAU_REST : ATTITUDE_TAU;
+  filter.followRoll = follow(filter.followRoll, deg(rollCmd) * LEAN_FOLLOW, step, attitudeTau);
+  filter.followPitch = follow(filter.followPitch, deg(pitchCmd) * PITCH_FOLLOW, step, attitudeTau);
+
+  const rollLimit = crashed ? Math.max(limRoll, (82 * Math.PI) / 180) : limRoll;
+  const pitchLimit = crashed ? Math.max(limPitch, (70 * Math.PI) / 180) : limPitch;
+
+  if (hasWorld) filter.prevWorldY = worldY;
 
   filter.shown = clearPoseFromFloor({
     x: filter.x,
     y: filter.y,
     z: filter.z,
     yaw: clamp(filter.yaw, -limYaw, limYaw),
-    pitch: clamp(filter.followPitch + filter.tiltPitch, -limPitch, limPitch),
-    roll: clamp(filter.followRoll + filter.tiltRoll, -limRoll, limRoll),
+    pitch: clamp(filter.followPitch + filter.tiltPitch, -pitchLimit, pitchLimit),
+    roll: clamp(filter.followRoll + filter.tiltRoll, -rollLimit, rollLimit),
   });
 
   return filter.shown;

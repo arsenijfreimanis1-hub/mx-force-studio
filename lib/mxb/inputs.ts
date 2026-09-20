@@ -26,8 +26,8 @@ export const MXB_XBOX_BINDINGS = {
   rearBrake: { button: 4, label: "LB" },
   clutch: { button: 0, label: "A" },
   steer: { axis: 0, label: "Left stick X" },
-  riderLean: { axis: 0, extraAxis: 2, label: "Left / right stick X" },
-  riderPitch: { axis: 1, extraAxis: 3, label: "Left / right stick Y" },
+  riderLean: { axis: 2, extraAxis: 0, label: "Right stick X (body weight) / left stick X" },
+  riderPitch: { axis: 3, extraAxis: 1, label: "Right stick Y (body weight) / left stick Y" },
 } as const;
 
 export function setupLabel(setupFileName: string | undefined) {

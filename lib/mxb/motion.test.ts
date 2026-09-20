@@ -325,6 +325,28 @@ test("noisy roll rate does not shake a steady lean", () => {
   assert.ok(max - min < 0.08, `roll wander ${max - min}`);
 });
 
+test("stopped IMU noise does not jitter the deck", () => {
+  const pose = run(
+    sample({
+      accelG: { x: 0.08, y: 1.04, z: -0.06 },
+      roll: 1.4,
+      pitch: -1.1,
+      yawRate: 8,
+    }),
+    1.6,
+  );
+  assert.ok(Math.abs(pose.x) < 0.04, `x ${pose.x}`);
+  assert.ok(Math.abs(pose.z) < 0.04, `z ${pose.z}`);
+  assert.ok(Math.abs(pose.roll) < 0.05, `roll ${pose.roll}`);
+  assert.ok(Math.abs(pose.pitch) < 0.05, `pitch ${pose.pitch}`);
+});
+
+test("a crash lays the bike over instead of snapping upright", () => {
+  const pose = run(sample({ crashed: true, roll: 86, pitch: -20, speedMs: 3 }), 0.45);
+  assert.ok(Math.abs(pose.roll) > 0.5, `crash roll ${pose.roll}`);
+  assert.ok(pose.y < -0.05, `crash y ${pose.y}`);
+});
+
 test("accel unit lock does not flicker across the 4.2 G edge", () => {
   assert.equal(detectForceUnitsMs2(9.8, null), true);
   assert.equal(detectForceUnitsMs2(1, null), false);

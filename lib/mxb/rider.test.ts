@@ -61,6 +61,17 @@ test("front brake sits the dummy back", () => {
   assert.ok(r.stand < 0.2);
 });
 
+test("body-weight stick moves the dummy even when the chassis is still", () => {
+  const r = riderFromTelemetry(sample({ speedMs: 0, roll: 0 }), {
+    lean: 0.4,
+    foreAft: 0.07,
+    stand: 0.6,
+  });
+  assert.ok(r.lean > 0.3, `lean ${r.lean}`);
+  assert.ok(r.foreAft > 0.04, `foreAft ${r.foreAft}`);
+  assert.ok(r.stand > 0.5, `stand ${r.stand}`);
+});
+
 test("idle rider is a sit", () => {
   assert.deepEqual(idleRider(), { stand: 0, lean: 0, foreAft: 0 });
 });

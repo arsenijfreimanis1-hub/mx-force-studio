@@ -8,9 +8,36 @@ function trigger(gp: Gamepad, button: number, axis: number) {
   return 0;
 }
 
-function stick(gp: Gamepad, axis: number) {
+function stick(gp: Gamepad, axis: number, dead = 0.2) {
   const v = gp.axes[axis] ?? 0;
-  return Math.abs(v) < 0.2 ? 0 : v;
+  return Math.abs(v) < dead ? 0 : v;
+}
+
+/** MX Bikes body-weight / rider hang — right stick, plus left-stick Y. */
+export type BodyStick = {
+  lean: number;
+  foreAft: number;
+  stand: number;
+};
+
+export function idleBodyStick(): BodyStick {
+  return { lean: 0, foreAft: 0, stand: 0 };
+}
+
+export function readBodyStick(gp: Gamepad | null): BodyStick {
+  if (!gp) return idleBodyStick();
+  const rx = stick(gp, 2, 0.12);
+  const ry = stick(gp, 3, 0.12);
+  const ly = stick(gp, 1, 0.18);
+  return {
+    lean: -rx * 0.55,
+    foreAft: clamp(-ry * 0.11 - ly * 0.04, -0.12, 0.1),
+    stand: ry < -0.35 ? Math.min(1, (-ry - 0.35) * 1.45) : 0,
+  };
+}
+
+export function bodyStickActive(stickPose: BodyStick) {
+  return Math.abs(stickPose.lean) > 0.04 || Math.abs(stickPose.foreAft) > 0.012 || stickPose.stand > 0.08;
 }
 
 function clamp(n: number, min: number, max: number) {
