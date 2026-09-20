@@ -49,7 +49,7 @@ function Tube({
 
   return (
     <mesh position={position} quaternion={quaternion} material={material}>
-      <cylinderGeometry args={[radius, radius, length, 6]} />
+      <cylinderGeometry args={[radius, radius, length, 8]} />
     </mesh>
   );
 }
@@ -135,45 +135,45 @@ export const MotocrossBike = memo(function MotocrossBike({
   padActiveRef: MutableRefObject<boolean>;
 }) {
   const chrome = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#f8fafc", metalness: 0.7, roughness: 0.34 }),
+    () => new THREE.MeshStandardMaterial({ color: "#cbd5e1", metalness: 0.55, roughness: 0.42 }),
     [],
   );
   const rail = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#e2e8f0", metalness: 0.7, roughness: 0.34 }),
+    () => new THREE.MeshStandardMaterial({ color: "#94a3b8", metalness: 0.5, roughness: 0.46 }),
     [],
   );
   const stub = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#e5e7eb", metalness: 0.7, roughness: 0.34 }),
+    () => new THREE.MeshStandardMaterial({ color: "#e2e8f0", metalness: 0.45, roughness: 0.4 }),
     [],
   );
   const shock = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#f97316", metalness: 0.7, roughness: 0.34 }),
+    () => new THREE.MeshStandardMaterial({ color: "#ea580c", metalness: 0.55, roughness: 0.38 }),
     [],
   );
   const clampMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#a1a1aa", metalness: 0.7, roughness: 0.34 }),
+    () => new THREE.MeshStandardMaterial({ color: "#64748b", metalness: 0.5, roughness: 0.4 }),
     [],
   );
   const bar = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#d4d4d8", metalness: 0.7, roughness: 0.34 }),
+    () => new THREE.MeshStandardMaterial({ color: "#cbd5e1", metalness: 0.45, roughness: 0.4 }),
     [],
   );
 
   return (
     <group position={[0, FRAME_CENTER_Y, 0]}>
-      <Tube from={CROWN} to={SHOCK_TOP} radius={0.024} material={chrome} />
-      <Tube from={CROWN} to={LOWER_FRONT} radius={0.024} material={chrome} />
-      <Tube from={LOWER_FRONT} to={SWING_PIVOT} radius={0.022} material={rail} />
-      <Tube from={SHOCK_TOP} to={SWING_PIVOT} radius={0.02} material={rail} />
-      <Tube from={SHOCK_TOP} to={SHOCK_LOWER} radius={0.026} material={shock} />
-      <Tube from={STUB_L} to={STUB_END_L} radius={0.018} material={stub} />
-      <Tube from={STUB_R} to={STUB_END_R} radius={0.018} material={stub} />
+      <Tube from={CROWN} to={SHOCK_TOP} radius={0.038} material={chrome} />
+      <Tube from={CROWN} to={LOWER_FRONT} radius={0.038} material={chrome} />
+      <Tube from={LOWER_FRONT} to={SWING_PIVOT} radius={0.034} material={rail} />
+      <Tube from={SHOCK_TOP} to={SWING_PIVOT} radius={0.032} material={rail} />
+      <Tube from={SHOCK_TOP} to={SHOCK_LOWER} radius={0.04} material={shock} />
+      <Tube from={STUB_L} to={STUB_END_L} radius={0.026} material={stub} />
+      <Tube from={STUB_R} to={STUB_END_R} radius={0.026} material={stub} />
 
       <mesh position={CROWN} rotation={[-0.33, 0, 0]} material={clampMat}>
-        <cylinderGeometry args={[0.032, 0.032, 0.16, 8]} />
+        <cylinderGeometry args={[0.042, 0.042, 0.18, 8]} />
       </mesh>
       <mesh position={[0, 0.74, 0.52]} rotation={[0, 0, Math.PI / 2]} material={bar}>
-        <cylinderGeometry args={[0.014, 0.014, 0.5, 6]} />
+        <cylinderGeometry args={[0.02, 0.02, 0.52, 8]} />
       </mesh>
 
       <RiderDummy telemetryRef={telemetryRef} liveRef={liveRef} padActiveRef={padActiveRef} />
