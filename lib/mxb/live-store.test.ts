@@ -82,10 +82,21 @@ test("a real name switch is kept for any selected bike", () => {
 
 test("live window is 150 ms", () => {
   assert.equal(STALE_MS, 150);
-  const fresh = { receivedAt: Date.now() - 80 } as LivePacket;
-  const stale = { receivedAt: Date.now() - 400 } as LivePacket;
+  const fresh = { receivedAt: Date.now() - 80, state: 2 } as LivePacket;
+  const stale = { receivedAt: Date.now() - 400, state: 2 } as LivePacket;
   assert.equal(isLive(fresh), true);
   assert.equal(isLive(stale), false);
+});
+
+test("leaving the track is not live even if the packet is fresh", () => {
+  const off = { receivedAt: Date.now() - 20, state: 0 } as LivePacket;
+  assert.equal(isLive(off), false);
+});
+
+test("track id from EventInit is kept", () => {
+  const next = mergeEvent(undefined, { trackId: "jv_latvia", trackName: "JV Latvia" });
+  assert.equal(next.trackId, "jv_latvia");
+  assert.equal(next.trackName, "JV Latvia");
 });
 
 test("normalizeTelemetry fills holes from the previous packet", () => {

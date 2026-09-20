@@ -29,6 +29,7 @@ export function packetAgeMs(packet: LivePacket | null, now = Date.now()): number
 }
 
 export function isLive(packet: LivePacket | null, now = Date.now()): boolean {
+  if (!packet || packet.state < 1) return false;
   const age = packetAgeMs(packet, now);
   return age != null && age < STALE_MS;
 }
@@ -72,6 +73,7 @@ function defaultEvent(partial?: Partial<BikeEvent>): BikeEvent {
     trackId: partial?.trackId ?? "",
     trackName: partial?.trackName ?? "Unknown track",
     trackLength: partial?.trackLength ?? 0,
+    eventType: partial?.eventType ?? 0,
   };
 }
 
@@ -136,6 +138,10 @@ export function mergeEvent(prev: BikeEvent | undefined, incoming?: Partial<BikeE
       typeof incoming.trackLength === "number" && incoming.trackLength > 0
         ? incoming.trackLength
         : base.trackLength,
+    eventType:
+      typeof incoming.eventType === "number" && incoming.eventType > 0
+        ? incoming.eventType
+        : base.eventType,
   };
 }
 
@@ -184,6 +190,16 @@ export function normalizeTelemetry(raw: Telemetry, prev?: Telemetry): Telemetry 
     steerTorqueNm: Number.isFinite(raw.steerTorqueNm) ? raw.steerTorqueNm : (p?.steerTorqueNm ?? 0),
     time: Number.isFinite(raw.time) ? raw.time : (p?.time ?? 0),
     trackPos: Number.isFinite(raw.trackPos) ? raw.trackPos : (p?.trackPos ?? 0),
+    rot: Array.isArray(raw.rot) && raw.rot.length >= 9 ? raw.rot.slice(0, 9) : p?.rot,
+    lapNum: Number.isFinite(raw.lapNum) ? raw.lapNum : (p?.lapNum ?? 0),
+    lapInvalid: typeof raw.lapInvalid === "boolean" ? raw.lapInvalid : Boolean(p?.lapInvalid),
+    lastLapMs: Number.isFinite(raw.lastLapMs) ? raw.lastLapMs : (p?.lastLapMs ?? 0),
+    bestLap: typeof raw.bestLap === "boolean" ? raw.bestLap : Boolean(p?.bestLap),
+    split: Number.isFinite(raw.split) ? raw.split : (p?.split ?? 0),
+    splitTimeMs: Number.isFinite(raw.splitTimeMs) ? raw.splitTimeMs : (p?.splitTimeMs ?? 0),
+    splitBestDiffMs: Number.isFinite(raw.splitBestDiffMs)
+      ? raw.splitBestDiffMs
+      : (p?.splitBestDiffMs ?? 0),
   };
 }
 
@@ -191,14 +207,15 @@ export function ingestLivePacket(body: {
   state?: number;
   event?: Partial<BikeEvent>;
   session?: Partial<SessionInfo>;
-  telemetry: Telemetry;
+  telemetry?: Telemetry;
 }): LivePacket {
   const prev = g.__mxbLivePacket;
+  const state = body.state ?? 2;
   const packet: LivePacket = {
-    state: body.state ?? 2,
+    state,
     event: mergeEvent(prev?.event, body.event),
     session: defaultSession({ ...prev?.session, ...body.session }),
-    telemetry: normalizeTelemetry(body.telemetry, prev?.telemetry),
+    telemetry: normalizeTelemetry((body.telemetry ?? prev?.telemetry ?? ({} as Telemetry)) as Telemetry, prev?.telemetry),
     receivedAt: Date.now(),
   };
   g.__mxbLivePacket = packet;

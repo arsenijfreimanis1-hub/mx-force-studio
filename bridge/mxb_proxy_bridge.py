@@ -148,7 +148,7 @@ def packet_from_proxy(proxy: SProxyData_t) -> dict:
         "event": {
             "riderName": _c_str(event.m_szRiderName),
             "bikeId": _c_str(event.m_szBikeID),
-            "bikeName": _c_str(event.m_szBikeName) or "MX Bikes",
+            "bikeName": _c_str(event.m_szBikeName),
             "gears": int(event.m_iNumberOfGears),
             "maxRpm": int(event.m_iMaxRPM),
             "limiter": int(event.m_iLimiter),
@@ -160,6 +160,7 @@ def packet_from_proxy(proxy: SProxyData_t) -> dict:
             "trackId": _c_str(event.m_szTrackID),
             "trackName": _c_str(event.m_szTrackName),
             "trackLength": float(event.m_fTrackLength),
+            "eventType": int(event.m_iType),
         },
         "session": {
             "session": int(session.m_iSession),
@@ -212,6 +213,14 @@ def packet_from_proxy(proxy: SProxyData_t) -> dict:
             "steerTorqueNm": float(data.m_fSteerTorque),
             "time": float(proxy.m_fTime),
             "trackPos": float(proxy.m_fPos),
+            "rot": [float(data.m_aafRot[i]) for i in range(9)],
+            "lapNum": int(proxy.m_sLap.m_iLapNum),
+            "lapInvalid": bool(proxy.m_sLap.m_iInvalid),
+            "lastLapMs": int(proxy.m_sLap.m_iLapTime),
+            "bestLap": bool(proxy.m_sLap.m_iBest),
+            "split": int(proxy.m_sSplit.m_iSplit),
+            "splitTimeMs": int(proxy.m_sSplit.m_iSplitTime),
+            "splitBestDiffMs": int(proxy.m_sSplit.m_iBestDiff),
         },
     }
 
@@ -277,6 +286,7 @@ def main() -> int:
 
     interval = 1.0 / max(args.hz, 1.0)
     last_send = 0.0
+    was_on_track = False
 
     while True:
         payload = None
@@ -292,6 +302,10 @@ def main() -> int:
             proxy = read_proxy(mapping)
             if proxy is not None and proxy.m_iState >= 1:
                 payload = packet_from_proxy(proxy)
+                was_on_track = True
+            elif was_on_track:
+                payload = {"state": 0}
+                was_on_track = False
 
         now = time.time()
         if payload and now - last_send >= interval:

@@ -14,6 +14,7 @@ import {
   washoutStepResponse,
   worldToChassis,
 } from "./motion.ts";
+import { rzRoll } from "./attitude.ts";
 import { GRAVITY } from "./bike.ts";
 import type { Telemetry } from "./types.ts";
 
@@ -241,6 +242,14 @@ test("jump drop still reaches −0.5 m inside 0.25 s with live EMA", () => {
 test("positive MX Bikes roll is a left lean on the deck", () => {
   const pose = run(sample({ roll: 28, accelG: { x: 0, y: 1, z: 0 } }), 0.8);
   assert.ok(pose.roll > 0.35, `roll ${pose.roll}`);
+});
+
+test("MaxTM chassis matrix lean wins over a stale Euler roll", () => {
+  const pose = run(
+    sample({ roll: -28, rot: rzRoll(28), accelG: { x: 0, y: 1, z: 0 } }),
+    0.8,
+  );
+  assert.ok(pose.roll > 0.35, `matrix lean ${pose.roll}`);
 });
 
 test("noisy roll rate does not shake a steady lean", () => {

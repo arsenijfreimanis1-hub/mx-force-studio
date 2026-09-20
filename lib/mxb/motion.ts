@@ -1,3 +1,4 @@
+import { resolveAttitude } from "./attitude.ts";
 import type { Telemetry, Vec3 } from "./types";
 
 /** Bottom-middle of the main cradle, bike-local meters. */
@@ -330,19 +331,20 @@ export function stepMotion(
   const mag = Math.hypot(telemetry.accelG.x, telemetry.accelG.y, telemetry.accelG.z);
   filter.unitsMs2 = detectForceUnitsMs2(mag, filter.unitsMs2);
   const rawG = specificForceG(telemetry.accelG, filter.unitsMs2);
+  const attitude = resolveAttitude(telemetry);
 
   if (!filter.primed) {
     filter.primed = true;
     filter.sAx = rawG.x;
     filter.sAy = rawG.y;
     filter.sAz = rawG.z;
-    filter.sRoll = telemetry.roll;
-    filter.sPitch = telemetry.pitch;
+    filter.sRoll = attitude.roll;
+    filter.sPitch = attitude.pitch;
     filter.sYawRate = telemetry.yawRate;
     filter.sPitchRate = telemetry.pitchRate;
     filter.sRollRate = telemetry.rollRate;
-    filter.followRoll = deg(telemetry.roll) * LEAN_FOLLOW;
-    filter.followPitch = deg(telemetry.pitch) * PITCH_FOLLOW;
+    filter.followRoll = deg(attitude.roll) * LEAN_FOLLOW;
+    filter.followPitch = deg(attitude.pitch) * PITCH_FOLLOW;
     filter.wx = deg(telemetry.pitchRate);
     filter.wy = deg(telemetry.yawRate);
     filter.wz = deg(telemetry.rollRate);
@@ -382,8 +384,8 @@ export function stepMotion(
   filter.sAx = follow(filter.sAx, rawG.x, step, smoothTau);
   filter.sAy = follow(filter.sAy, rawG.y, step, smoothTau);
   filter.sAz = follow(filter.sAz, rawG.z, step, smoothTau);
-  filter.sRoll = follow(filter.sRoll, telemetry.roll, step, smoothTau);
-  filter.sPitch = follow(filter.sPitch, telemetry.pitch, step, smoothTau);
+  filter.sRoll = follow(filter.sRoll, attitude.roll, step, smoothTau);
+  filter.sPitch = follow(filter.sPitch, attitude.pitch, step, smoothTau);
   filter.sYawRate = follow(filter.sYawRate, telemetry.yawRate, step, smoothTau);
   filter.sPitchRate = follow(filter.sPitchRate, telemetry.pitchRate, step, smoothTau);
   filter.sRollRate = follow(filter.sRollRate, telemetry.rollRate, step, smoothTau);

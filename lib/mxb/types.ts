@@ -38,6 +38,15 @@ export type Telemetry = {
   steerTorqueNm: number;
   time: number;
   trackPos: number;
+  /** Row-major 3×3 chassis matrix from MX Bikes / MaxTM. */
+  rot?: number[];
+  lapNum?: number;
+  lapInvalid?: boolean;
+  lastLapMs?: number;
+  bestLap?: boolean;
+  split?: number;
+  splitTimeMs?: number;
+  splitBestDiffMs?: number;
 };
 
 export type BikeEvent = {
@@ -55,6 +64,8 @@ export type BikeEvent = {
   trackId: string;
   trackName: string;
   trackLength: number;
+  /** 1 = testing, 2 = race, 4 = straight rhythm. */
+  eventType?: number;
 };
 
 export type SessionInfo = {

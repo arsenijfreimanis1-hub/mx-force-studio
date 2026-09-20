@@ -28,7 +28,8 @@ export async function GET() {
 export async function POST(request: Request) {
   const body = (await request.json()) as Partial<LivePacket>;
 
-  if (!isTelemetry(body.telemetry)) {
+  const leavingTrack = typeof body.state === "number" && body.state < 1;
+  if (!leavingTrack && !isTelemetry(body.telemetry)) {
     return NextResponse.json(
       { error: "Body must include a telemetry object with speedMs and throttle." },
       { status: 400 },

@@ -26,4 +26,5 @@ export const DEFAULT_EVENT: BikeEvent = {
   trackId: "",
   trackName: "",
   trackLength: 0,
+  eventType: 0,
 };

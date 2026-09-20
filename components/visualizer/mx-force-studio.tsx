@@ -20,6 +20,7 @@ import { DEFAULT_EVENT, DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/default
 import { formatG, speedKph } from "@/lib/mxb/forces";
 import { gamepadActive, readFirstGamepad } from "@/lib/mxb/gamepad";
 import { displayBikeName, isPlaceholderBikeName } from "@/lib/mxb/live-store";
+import { fmtLapMs, fmtOnTrackS, sessionKind, suspUsedPct, trackPct } from "@/lib/mxb/session";
 import {
   createMotionFilter,
   DEFAULT_FRAME_TRAVEL,
@@ -313,6 +314,9 @@ export function MxForceStudio() {
       : liveState === "waiting"
         ? "Waiting"
         : "Not connected";
+  const frontSuspPct = Math.round(suspUsedPct(telemetry.suspLength[0], hudEvent.suspMaxTravel[0]) * 100);
+  const rearSuspPct = Math.round(suspUsedPct(telemetry.suspLength[1], hudEvent.suspMaxTravel[1]) * 100);
+  const onTrackPct = Math.round(trackPct(telemetry) * 100);
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
@@ -397,6 +401,15 @@ export function MxForceStudio() {
               <span>
                 {telemetry.pitch.toFixed(0)}° / {telemetry.roll.toFixed(0)}°
               </span>
+              {usingLive ? (
+                <>
+                  <span className="text-white/35">·</span>
+                  <span className="max-w-[9rem] truncate">{hudEvent.trackName || "Track"}</span>
+                  <span>{onTrackPct}%</span>
+                  <span>{fmtOnTrackS(telemetry.time)}</span>
+                  <span>F{frontSuspPct} R{rearSuspPct}</span>
+                </>
+              ) : null}
               <span className="text-white/35">·</span>
               <span>
                 <PoseReadout poseRef={poseRef} />
@@ -454,6 +467,23 @@ export function MxForceStudio() {
                   <p className="text-xs leading-4 text-emerald-300">
                     Live · {liveName || "MX Bikes"} · {fmtAge(staleMs ?? 0)}
                   </p>
+                  <div className="grid gap-0.5 font-mono text-[11px] text-muted-foreground">
+                    <p>
+                      {hudEvent.trackName || "Track"} · {onTrackPct}%
+                    </p>
+                    <p>{sessionKind(hudEvent, livePacket?.session.session ?? 0)}</p>
+                    <p>
+                      Lap {telemetry.lapNum ?? 0} · {fmtOnTrackS(telemetry.time)}
+                      {telemetry.lapInvalid ? " · invalid" : ""}
+                    </p>
+                    <p>
+                      Last {fmtLapMs(telemetry.lastLapMs ?? 0)}
+                      {telemetry.bestLap ? " · best" : ""}
+                    </p>
+                    <p>
+                      Susp F {frontSuspPct}% · R {rearSuspPct}%
+                    </p>
+                  </div>
                   <Button
                     size="xs"
                     variant="outline"
