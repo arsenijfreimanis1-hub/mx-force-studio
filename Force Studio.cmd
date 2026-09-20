@@ -32,8 +32,8 @@ echo.
 REM Live telemetry bridge (UDP 47387 -^> app). Stops when this window closes.
 start "" /b node bridge/udp-bridge.mjs
 
-REM Open the browser as soon as the server answers.
-start "" /b powershell -NoProfile -Command "$u='http://127.0.0.1:43187'; for($i=0;$i -lt 120;$i++){ try{ $null = Invoke-WebRequest -UseBasicParsing $u -TimeoutSec 1; Start-Process $u; break } catch { Start-Sleep -Milliseconds 500 } }"
+REM Open the browser as soon as the server answers, then tell the rider what to do.
+start "" /b powershell -NoProfile -Command "$u='http://127.0.0.1:43187'; for($i=0;$i -lt 120;$i++){ try{ $null = Invoke-WebRequest -UseBasicParsing $u -TimeoutSec 1; Start-Process $u; Write-Host ''; Write-Host '================================================================' -ForegroundColor Green; Write-Host '  APP READY -- now launch MX Bikes, then click Connect in the' -ForegroundColor Green; Write-Host '  browser to stream live forces.' -ForegroundColor Green; Write-Host '================================================================' -ForegroundColor Green; break } catch { Start-Sleep -Milliseconds 500 } }"
 
 REM Run the visualizer in the foreground. Closing this window stops everything.
 call npm run start
