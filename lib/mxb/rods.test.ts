@@ -13,5 +13,5 @@ test("each rod has a usable rest stroke", () => {
   const local = rodDeckLocal(-1, 1);
   const deck = { x: local.x, y: PLATFORM_HOME_Y + local.y, z: local.z };
   const len = rodLength(base, deck);
-  assert.ok(len > 0.45 && len < 1.2, `length ${len}`);
+  assert.ok(len > 0.8 && len < 2.0, `length ${len}`);
 });

@@ -63,7 +63,7 @@ export function BikeCanvas({
         <sphereGeometry args={[40, 24, 16]} />
         <meshBasicMaterial color="#8eb7d9" side={1} />
       </mesh>
-      <PerspectiveCamera makeDefault position={[1.55, 1.28, -2.45]} fov={40} />
+      <PerspectiveCamera makeDefault position={[1.85, 1.45, -2.7]} fov={42} />
       <hemisphereLight color="#fff1d6" groundColor="#7a5a3c" intensity={0.85} />
       <directionalLight position={[8, 10, 4]} intensity={1.7} color="#ffe7c2" />
 

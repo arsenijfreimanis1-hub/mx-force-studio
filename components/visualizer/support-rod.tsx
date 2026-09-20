@@ -5,7 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { MutableRefObject } from "react";
 import { PLATFORM_HOME_Y, type Pose6 } from "@/lib/mxb/motion";
-import { DECK_HALF_L, ROD_CORNERS, rodBaseCorner, rodDeckLocal } from "@/lib/mxb/rods";
+import { DECK_ATTACH_Y, DECK_HALF_L, ROD_CORNERS, rodBaseCorner, rodDeckLocal } from "@/lib/mxb/rods";
 
 const up = new THREE.Vector3(0, 1, 0);
 
@@ -33,7 +33,7 @@ export function MotionPedestal({ poseRef }: { poseRef: MutableRefObject<Pose6> }
     const pose = poseRef.current;
     euler.set(pose.pitch, pose.yaw, pose.roll, "YXZ");
     if (hinge.current) {
-      hinge.current.position.set(pose.x, PLATFORM_HOME_Y + pose.y, pose.z);
+      hinge.current.position.set(pose.x, PLATFORM_HOME_Y + pose.y + DECK_ATTACH_Y, pose.z);
       hinge.current.rotation.set(pose.pitch, pose.yaw, pose.roll, "YXZ");
     }
     for (let i = 0; i < ROD_CORNERS.length; i++) {
@@ -59,22 +59,31 @@ export function MotionPedestal({ poseRef }: { poseRef: MutableRefObject<Pose6> }
 
   return (
     <group>
-      <mesh position={[0, 0.04, 0.82]} rotation={[0, 0, 0]}>
-        <boxGeometry args={[1.42, 0.045, 0.07]} />
-        <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
-      </mesh>
-      <mesh position={[0, 0.04, -0.82]}>
-        <boxGeometry args={[1.42, 0.045, 0.07]} />
-        <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
-      </mesh>
-      <mesh position={[0.67, 0.04, 0]}>
-        <boxGeometry args={[0.07, 0.045, 1.72]} />
-        <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
-      </mesh>
-      <mesh position={[-0.67, 0.04, 0]}>
-        <boxGeometry args={[0.07, 0.045, 1.72]} />
-        <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
-      </mesh>
+      {(() => {
+        const fl = rodBaseCorner(-1, 1);
+        const width = Math.abs(fl.x) * 2 + 0.08;
+        const depth = Math.abs(fl.z) * 2 + 0.08;
+        return (
+          <>
+            <mesh position={[0, 0.04, fl.z]}>
+              <boxGeometry args={[width, 0.045, 0.07]} />
+              <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
+            </mesh>
+            <mesh position={[0, 0.04, -fl.z]}>
+              <boxGeometry args={[width, 0.045, 0.07]} />
+              <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
+            </mesh>
+            <mesh position={[fl.x, 0.04, 0]}>
+              <boxGeometry args={[0.07, 0.045, depth]} />
+              <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
+            </mesh>
+            <mesh position={[-fl.x, 0.04, 0]}>
+              <boxGeometry args={[0.07, 0.045, depth]} />
+              <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
+            </mesh>
+          </>
+        );
+      })()}
       <mesh position={[0, 0.05, 0]}>
         <boxGeometry args={[0.28, 0.03, 0.22]} />
         <meshStandardMaterial color="#44403c" metalness={0.45} roughness={0.4} />

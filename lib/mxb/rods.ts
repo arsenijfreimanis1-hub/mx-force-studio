@@ -1,11 +1,17 @@
-import { PLATFORM_HOME_Y } from "./motion.ts";
+import { BIKE_SCALE, PLATFORM_HOME_Y } from "./motion.ts";
 
-/** Deck half-size so four 45° rods meet the plate corners. */
-export const DECK_HALF_W = 0.21;
-export const DECK_HALF_L = 0.36;
-/** Extra run on the dirt so rest rods sit near 45° to the base. */
-export const ROD_BASE_OUT = 0.46;
+/** Matches MotionDeck inside the scaled bike group (FRAME_CENTER_Y = 0.55). */
+export const DECK_ATTACH_Y = (0.55 + 0.02) * BIKE_SCALE;
+export const DECK_HALF_W = 0.21 * BIKE_SCALE;
+export const DECK_HALF_L = 0.36 * BIKE_SCALE;
 export const ROD_BASE_Y = 0.075;
+
+function restRise(homeY = PLATFORM_HOME_Y) {
+  return homeY + DECK_ATTACH_Y - ROD_BASE_Y;
+}
+
+/** Horizontal splay so rest rods sit near 45° to the dirt. */
+export const ROD_BASE_OUT = restRise() / Math.SQRT2;
 
 export const ROD_CORNERS = [
   { id: "fl", x: -1, z: 1 },
@@ -23,7 +29,7 @@ export function rodBaseCorner(signX: number, signZ: number): { x: number; y: num
 }
 
 export function rodDeckLocal(signX: number, signZ: number) {
-  return { x: signX * DECK_HALF_W, y: 0.02, z: signZ * DECK_HALF_L };
+  return { x: signX * DECK_HALF_W, y: DECK_ATTACH_Y, z: signZ * DECK_HALF_L };
 }
 
 export function rodLength(base: { x: number; y: number; z: number }, deck: { x: number; y: number; z: number }) {
