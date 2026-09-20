@@ -6,9 +6,12 @@ import * as THREE from "three";
 import type { Group } from "three";
 import type { MutableRefObject, ReactNode } from "react";
 import { telemetryFromSandbox } from "@/lib/mxb/demo";
+import { DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
 import { gamepadActive, readFirstGamepad, sandboxFromGamepad } from "@/lib/mxb/gamepad";
 import {
   PLATFORM_HOME_Y,
+  identityPose,
+  resetMotionFilter,
   stepMotion,
   type FrameTravel,
   type MotionFilter,
@@ -83,6 +86,12 @@ export function ChassisRig({
         dt,
         travelRef.current,
       );
+    } else {
+      if (wasPrimed) resetMotionFilter(motionRef.current);
+      poseRef.current = identityPose();
+      telemetryRef.current = restTelemetry({ rpm: 0 });
+      sandboxRef.current = { ...DEFAULT_SANDBOX };
+      clockRef.current = 0;
     }
 
     forcesRef.current = buildForceModel(telemetryRef.current, eventRef.current);
@@ -92,7 +101,7 @@ export function ChassisRig({
     euler.set(pose.pitch, pose.yaw, pose.roll, "YXZ");
     targetQuat.setFromEuler(euler);
 
-    if (!visualPrimed.current || !wasPrimed) {
+    if (!driving || !visualPrimed.current || !wasPrimed) {
       node.position.copy(targetPos);
       node.quaternion.copy(targetQuat);
       visualPrimed.current = true;

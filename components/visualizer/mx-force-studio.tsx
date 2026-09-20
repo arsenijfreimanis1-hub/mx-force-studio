@@ -19,10 +19,12 @@ import {
 import { DEFAULT_EVENT, DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
 import { formatG, speedKph } from "@/lib/mxb/forces";
 import { gamepadActive, readFirstGamepad } from "@/lib/mxb/gamepad";
+import { displayBikeName, isPlaceholderBikeName } from "@/lib/mxb/live-store";
 import {
   createMotionFilter,
   DEFAULT_FRAME_TRAVEL,
   identityPose,
+  resetMotionFilter,
   type FrameTravel,
   type Pose6,
 } from "@/lib/mxb/motion";
@@ -98,7 +100,7 @@ export function MxForceStudio() {
   const [liveOk, setLiveOk] = useState(false);
   const [connectRequested, setConnectRequested] = useState(false);
   const [staleMs, setStaleMs] = useState<number | null>(null);
-  const [hudTel, setHudTel] = useState<Telemetry>(() => restTelemetry());
+  const [hudTel, setHudTel] = useState<Telemetry>(() => restTelemetry({ rpm: 0 }));
   const [inspect, setInspect] = useState(true);
   const [travel, setTravel] = useState<FrameTravel>(DEFAULT_FRAME_TRAVEL);
   const [hudEvent, setHudEvent] = useState<BikeEvent>(DEFAULT_EVENT);
@@ -124,6 +126,7 @@ export function MxForceStudio() {
   const userTravelRef = useRef(DEFAULT_FRAME_TRAVEL);
   const drivingRef = useRef(false);
   const padOnRef = useRef(false);
+  const lastPublishedLiveRef = useRef(false);
 
   useEffect(() => {
     connectRef.current = connectRequested;
@@ -156,7 +159,13 @@ export function MxForceStudio() {
       lastHudRef.current = now;
       setHudTel(telemetryRef.current);
       setHudEvent(eventRef.current);
-      setLearnedName(adaptRef.current.learned ? adaptRef.current.bikeName : null);
+      setLearnedName(
+        liveRef.current &&
+          adaptRef.current.learned &&
+          !isPlaceholderBikeName(adaptRef.current.bikeName, adaptRef.current.bikeId)
+          ? adaptRef.current.bikeName
+          : null,
+      );
     }, 50);
     return () => window.clearInterval(id);
   }, []);
@@ -172,32 +181,61 @@ export function MxForceStudio() {
     }) => {
       if (cancelled) return;
       const wantLive = connectRef.current;
-      if (wantLive && body.packet?.telemetry) {
+      if (wantLive && body.live && body.packet?.telemetry) {
         liveRef.current = true;
         if (body.packet.event) {
           eventRef.current = body.packet.event;
         }
-        const bikeId = eventRef.current.bikeId || "live";
-        if (adaptRef.current.bikeId !== bikeId) {
-          adaptRef.current = loadProfile(bikeId, eventRef.current.bikeName);
-        } else if (eventRef.current.bikeName) {
-          adaptRef.current.bikeName = eventRef.current.bikeName;
-        }
+        const bikeId = eventRef.current.bikeId;
+        const realBike = Boolean(bikeId) && !isPlaceholderBikeName(eventRef.current.bikeName, bikeId);
+        if (realBike) {
+          if (adaptRef.current.bikeId !== bikeId) {
+            adaptRef.current = loadProfile(bikeId, eventRef.current.bikeName);
+          } else if (eventRef.current.bikeName) {
+            adaptRef.current.bikeName = eventRef.current.bikeName;
+          }
 
-        const now = performance.now();
-        if (now - lastAdaptRef.current >= ADAPT_MS) {
-          const dt = lastAdaptRef.current ? Math.min(2, (now - lastAdaptRef.current) / 1000) : 1;
-          lastAdaptRef.current = now;
-          adaptRef.current = observeTelemetry(adaptRef.current, body.packet.telemetry, dt);
-          saveProfile(adaptRef.current);
-          travelRef.current = applyProfileToTravel(userTravelRef.current, adaptRef.current);
+          const now = performance.now();
+          if (now - lastAdaptRef.current >= ADAPT_MS) {
+            const dt = lastAdaptRef.current ? Math.min(2, (now - lastAdaptRef.current) / 1000) : 1;
+            lastAdaptRef.current = now;
+            adaptRef.current = observeTelemetry(adaptRef.current, body.packet.telemetry, dt);
+            saveProfile(adaptRef.current);
+            travelRef.current = applyProfileToTravel(userTravelRef.current, adaptRef.current);
+          }
         }
 
         telemetryRef.current = applyProfileToTelemetry(body.packet.telemetry, adaptRef.current);
-      } else if (!wantLive) {
-        liveRef.current = false;
       } else {
         liveRef.current = false;
+        if (!wantLive || !body.live) {
+          telemetryRef.current = restTelemetry({ rpm: 0 });
+          resetMotionFilter(motionRef.current);
+          poseRef.current = identityPose();
+          if (!wantLive) eventRef.current = DEFAULT_EVENT;
+        }
+      }
+
+      const liveNow = liveRef.current;
+      const liveEdge = liveNow !== lastPublishedLiveRef.current;
+      lastPublishedLiveRef.current = liveNow;
+      if (liveEdge) {
+        setLiveOk(body.live);
+        setLivePacket(body.packet);
+        setStaleMs(body.staleMs);
+        setHudTel(telemetryRef.current);
+        setHudEvent(eventRef.current);
+        setLearnedName(
+          liveNow &&
+            adaptRef.current.learned &&
+            !isPlaceholderBikeName(adaptRef.current.bikeName, adaptRef.current.bikeId)
+            ? adaptRef.current.bikeName
+            : null,
+        );
+        drivingRef.current = liveNow || padOnRef.current;
+        setDriving(drivingRef.current);
+        lastHudRef.current = performance.now();
+        return;
       }
 
       const now = performance.now();
@@ -208,11 +246,13 @@ export function MxForceStudio() {
       setStaleMs(body.staleMs);
       setHudTel(telemetryRef.current);
       setHudEvent(eventRef.current);
-      setLearnedName(adaptRef.current.learned ? adaptRef.current.bikeName : null);
-      if (liveRef.current) {
-        drivingRef.current = true;
-        setDriving(true);
-      }
+      setLearnedName(
+        liveNow &&
+          adaptRef.current.learned &&
+          !isPlaceholderBikeName(adaptRef.current.bikeName, adaptRef.current.bikeId)
+          ? adaptRef.current.bikeName
+          : null,
+      );
     };
 
     const poll = async () => {
@@ -265,8 +305,14 @@ export function MxForceStudio() {
       ? "connected"
       : "waiting";
   const telemetry = hudTel;
-  const event = usingLive ? hudEvent : DEFAULT_EVENT;
-  const bikeLabel = usingLive ? event.bikeName || "Live bike" : padOn ? "Xbox pad" : event.bikeName;
+  const liveName = displayBikeName(hudEvent);
+  const bikeLabel = usingLive
+    ? liveName || "MX Bikes"
+    : padOn
+      ? "Xbox pad"
+      : liveState === "waiting"
+        ? "Waiting"
+        : "Not connected";
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
@@ -281,6 +327,13 @@ export function MxForceStudio() {
             if (connectRequested) {
               setConnectRequested(false);
               liveRef.current = false;
+              telemetryRef.current = restTelemetry();
+              eventRef.current = DEFAULT_EVENT;
+              motionRef.current = createMotionFilter();
+              poseRef.current = identityPose();
+              setHudTel(restTelemetry());
+              setHudEvent(DEFAULT_EVENT);
+              setLearnedName(null);
             } else {
               setConnectRequested(true);
               motionRef.current = createMotionFilter();
@@ -399,7 +452,7 @@ export function MxForceStudio() {
               {liveState === "connected" ? (
                 <>
                   <p className="text-xs leading-4 text-emerald-300">
-                    Live · {event.bikeName} · {fmtAge(staleMs ?? 0)}
+                    Live · {liveName || "MX Bikes"} · {fmtAge(staleMs ?? 0)}
                   </p>
                   <Button
                     size="xs"
@@ -407,6 +460,13 @@ export function MxForceStudio() {
                     onClick={() => {
                       setConnectRequested(false);
                       liveRef.current = false;
+                      telemetryRef.current = restTelemetry();
+                      eventRef.current = DEFAULT_EVENT;
+                      motionRef.current = createMotionFilter();
+                      poseRef.current = identityPose();
+                      setHudTel(restTelemetry());
+                      setHudEvent(DEFAULT_EVENT);
+                      setLearnedName(null);
                     }}
                   >
                     Disconnect

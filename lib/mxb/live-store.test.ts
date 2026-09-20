@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isLive, mergeEvent, normalizeTelemetry, STALE_MS } from "./live-store.ts";
+import { displayBikeName, isLive, isPlaceholderBikeName, mergeEvent, normalizeTelemetry, STALE_MS } from "./live-store.ts";
+import { DEFAULT_EVENT } from "./bike.ts";
 import type { LivePacket, Telemetry } from "./types.ts";
 
 function sample(partial: Partial<Telemetry> = {}): Telemetry {
@@ -49,6 +50,28 @@ test("whitespace bikeName keeps previous", () => {
   const prev = mergeEvent(undefined, { bikeName: "YZ250F" });
   const next = mergeEvent(prev, { bikeName: "   " });
   assert.equal(next.bikeName, "YZ250F");
+});
+
+test("plugin fallback 250 4-stroke is not treated as a selected bike", () => {
+  const fromPlugin = mergeEvent(undefined, { bikeName: "250 4-stroke", bikeId: "250f" });
+  assert.equal(fromPlugin.bikeName, "");
+  assert.equal(fromPlugin.bikeId, "");
+  const real = mergeEvent(fromPlugin, { bikeName: "CRF450R", bikeId: "crf450" });
+  assert.equal(real.bikeName, "CRF450R");
+  assert.equal(displayBikeName(fromPlugin), "");
+  assert.equal(displayBikeName(real), "CRF450R");
+});
+
+test("idle default event has no bike name", () => {
+  assert.equal(displayBikeName(DEFAULT_EVENT), "");
+  assert.equal(isPlaceholderBikeName(DEFAULT_EVENT.bikeName, DEFAULT_EVENT.bikeId), true);
+});
+
+test("YZF250 with plugin 250f id is not a selected bike", () => {
+  const fromPlugin = mergeEvent(undefined, { bikeName: "YZF250", bikeId: "250f" });
+  assert.equal(fromPlugin.bikeName, "");
+  assert.equal(fromPlugin.bikeId, "");
+  assert.equal(displayBikeName(fromPlugin), "");
 });
 
 test("a real name switch is kept for any selected bike", () => {

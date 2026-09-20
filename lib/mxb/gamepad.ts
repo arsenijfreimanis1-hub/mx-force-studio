@@ -10,21 +10,23 @@ function trigger(gp: Gamepad, button: number, axis: number) {
 
 function stick(gp: Gamepad, axis: number) {
   const v = gp.axes[axis] ?? 0;
-  return Math.abs(v) < 0.08 ? 0 : v;
+  return Math.abs(v) < 0.2 ? 0 : v;
 }
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
 
-/** True when an Xbox / Standard Gamepad is doing more than rest noise. */
+/**
+ * True only when the rider is clearly on the sticks/triggers.
+ * Rest noise and a connected-but-idle pad must not drive the frame.
+ */
 export function gamepadActive(gp: Gamepad) {
-  if (trigger(gp, 7, 5) > 0.06 || trigger(gp, 6, 2) > 0.06) return true;
-  if (Math.abs(stick(gp, 0)) > 0.12 || Math.abs(stick(gp, 1)) > 0.12) return true;
-  if (Math.abs(stick(gp, 2)) > 0.12 || Math.abs(stick(gp, 3)) > 0.12) return true;
-  for (let i = 0; i < 8; i++) {
-    if (gp.buttons[i]?.pressed) return true;
-  }
+  if (trigger(gp, 7, 5) > 0.22 || trigger(gp, 6, 2) > 0.22) return true;
+  if (Math.abs(stick(gp, 0)) > 0.28 || Math.abs(stick(gp, 1)) > 0.28) return true;
+  if (Math.abs(stick(gp, 2)) > 0.28 || Math.abs(stick(gp, 3)) > 0.28) return true;
+  if (gp.buttons[4]?.pressed) return true;
+  if (gp.buttons[0]?.pressed) return true;
   return false;
 }
 

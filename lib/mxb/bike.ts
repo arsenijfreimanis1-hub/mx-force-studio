@@ -12,9 +12,9 @@ export const FRONT_R = 0.35;
 export const REAR_R = 0.32;
 
 export const DEFAULT_EVENT: BikeEvent = {
-  riderName: "You",
-  bikeId: "250f",
-  bikeName: "250 4-stroke",
+  riderName: "",
+  bikeId: "",
+  bikeName: "",
   gears: 5,
   maxRpm: 14000,
   limiter: 14400,
@@ -22,8 +22,8 @@ export const DEFAULT_EVENT: BikeEvent = {
   maxFuel: 6.1,
   suspMaxTravel: [0.31, 0.312],
   steerLock: 48,
-  category: "MX2",
-  trackId: "studio",
-  trackName: "Force studio",
+  category: "",
+  trackId: "",
+  trackName: "",
   trackLength: 0,
 };

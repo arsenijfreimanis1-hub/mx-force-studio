@@ -264,11 +264,11 @@ __declspec(dllexport) void RunTelemetry(void *_pData, int _iDataSize, float _fTi
 	if (tn <= 0 || tn >= (int)sizeof(g_tel)) return;
 
 	if (!g_sent_full) {
-		json_escape(g_have_event ? g_event.m_szBikeName : "250 4-stroke", bike, sizeof(bike));
-		json_escape(g_have_event ? g_event.m_szBikeID : "250f", bike_id, sizeof(bike_id));
-		json_escape(g_have_event ? g_event.m_szRiderName : "You", rider, sizeof(rider));
+		json_escape(g_have_event ? g_event.m_szBikeName : "", bike, sizeof(bike));
+		json_escape(g_have_event ? g_event.m_szBikeID : "", bike_id, sizeof(bike_id));
+		json_escape(g_have_event ? g_event.m_szRiderName : "", rider, sizeof(rider));
 		json_escape(g_have_event ? g_event.m_szTrackName : "", track, sizeof(track));
-		json_escape(g_have_event ? g_event.m_szCategory : "MX2", category, sizeof(category));
+		json_escape(g_have_event ? g_event.m_szCategory : "", category, sizeof(category));
 		json_escape(g_have_session ? g_session.m_szSetupFileName : "", setup, sizeof(setup));
 
 		n = snprintf(

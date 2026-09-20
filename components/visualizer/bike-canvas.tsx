@@ -28,7 +28,6 @@ export function BikeCanvas({
   eventRef,
   forcesRef,
   hiddenRef,
-  driving,
 }: {
   telemetryRef: MutableRefObject<Telemetry>;
   hideForces: boolean;
@@ -48,7 +47,7 @@ export function BikeCanvas({
     <Canvas
       shadows={false}
       dpr={[1, 1.25]}
-      frameloop={driving ? "always" : "demand"}
+      frameloop="always"
       gl={{ antialias: true }}
       onCreated={({ invalidate }) => invalidate()}
     >

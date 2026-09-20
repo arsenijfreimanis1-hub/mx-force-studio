@@ -164,6 +164,10 @@ export function createMotionFilter(): MotionFilter {
   };
 }
 
+export function resetMotionFilter(filter: MotionFilter) {
+  Object.assign(filter, createMotionFilter());
+}
+
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }

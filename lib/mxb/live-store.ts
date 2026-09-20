@@ -40,11 +40,27 @@ export function subscribeLive(listener: Listener): () => void {
   };
 }
 
+const PLACEHOLDER_BIKE_NAMES = new Set(["live bike", "250 4-stroke", "250 4 stroke", "250f", "live"]);
+
+export function isPlaceholderBikeName(name: string | undefined, bikeId = "") {
+  const n = (name ?? "").trim().toLowerCase();
+  const id = bikeId.trim().toLowerCase();
+  if (!n) return true;
+  if (PLACEHOLDER_BIKE_NAMES.has(n)) return true;
+  if (id && PLACEHOLDER_BIKE_NAMES.has(id)) return true;
+  return false;
+}
+
+export function displayBikeName(event: BikeEvent | null | undefined) {
+  if (!event || isPlaceholderBikeName(event.bikeName, event.bikeId)) return "";
+  return event.bikeName.trim();
+}
+
 function defaultEvent(partial?: Partial<BikeEvent>): BikeEvent {
   return {
-    riderName: partial?.riderName ?? "MX Bikes",
-    bikeId: partial?.bikeId ?? "live",
-    bikeName: partial?.bikeName ?? "Live bike",
+    riderName: partial?.riderName ?? "",
+    bikeId: partial?.bikeId ?? "",
+    bikeName: partial?.bikeName ?? "",
     gears: partial?.gears ?? 5,
     maxRpm: partial?.maxRpm ?? 13000,
     limiter: partial?.limiter ?? 13500,
@@ -82,14 +98,30 @@ function keepSusp(next: [number, number] | undefined, prev: [number, number]): [
   return [a, b];
 }
 
+function keepBikeId(next: string | undefined, prev: string) {
+  const n = (next ?? "").trim();
+  const p = prev.trim();
+  if (n && !isPlaceholderBikeName(n, n)) return n;
+  if (p && !isPlaceholderBikeName(p, p)) return p;
+  return "";
+}
+
+function keepBikeName(next: string | undefined, prev: string, nextId = "", prevId = "") {
+  const n = (next ?? "").trim();
+  const p = prev.trim();
+  if (n && !isPlaceholderBikeName(n, nextId)) return n;
+  if (p && !isPlaceholderBikeName(p, prevId)) return p;
+  return "";
+}
+
 /** Switching bikes often sends a partial EventInit; never clobber a good name. */
 export function mergeEvent(prev: BikeEvent | undefined, incoming?: Partial<BikeEvent>): BikeEvent {
   const base = defaultEvent(prev);
   if (!incoming) return base;
   return {
-    riderName: keepText(incoming.riderName, base.riderName, base.riderName),
-    bikeId: keepText(incoming.bikeId, base.bikeId, base.bikeId),
-    bikeName: keepText(incoming.bikeName, base.bikeName, base.bikeName),
+    riderName: keepText(incoming.riderName, base.riderName, ""),
+    bikeId: keepBikeId(incoming.bikeId, base.bikeId),
+    bikeName: keepBikeName(incoming.bikeName, base.bikeName, incoming.bikeId, base.bikeId),
     gears: incoming.gears && incoming.gears > 0 ? incoming.gears : base.gears,
     maxRpm: incoming.maxRpm && incoming.maxRpm > 500 ? incoming.maxRpm : base.maxRpm,
     limiter: incoming.limiter && incoming.limiter > 500 ? incoming.limiter : base.limiter,
