@@ -8,7 +8,7 @@ import {
   type CartesianState,
 } from "./cartesian.ts";
 import { chassisCues, heaveFromCues } from "./channels.ts";
-import { detectCrash, isAirborne, isStopped } from "./crash.ts";
+import { detectCrash, isAirborne, isParked, isStopped } from "./crash.ts";
 import { clampDof, dofAxes, maskPose, type DofLevel } from "./dof.ts";
 import type { Telemetry, Vec3 } from "./types";
 
@@ -412,7 +412,9 @@ export function stepMotion(
 
   const crashed = detectCrash(telemetry);
   const airborne = isAirborne(telemetry);
+  const parked = !crashed && isParked(telemetry);
   const stopped = !crashed && isStopped(telemetry);
+  const restDeck = stopped || parked;
   const cartMode = crashed ? "crash" : airborne ? "air" : stopped ? "stop" : "ground";
   if (airborne || telemetry.speedMs > 1.2) filter.cartOn = true;
   else if (!airborne && telemetry.speedMs < 0.35) filter.cartOn = false;
@@ -570,11 +572,11 @@ export function stepMotion(
   filter.pitchHp = follow(filter.pitchHp, 0, step, 0.12);
   filter.vpitch = 0;
 
-  const inputPitch = stopped
+  const inputPitch = restDeck
     ? 0
     : (cues.throttle * 0.18 - cues.frontBrake * 0.26 - cues.rearBrake * 0.08) * response;
-  const tiltPitchTarget = stopped ? 0 : Math.atan(gForce.z) * TILT_PITCH_BLEND * response + inputPitch;
-  const tiltRollTarget = stopped ? 0 : Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
+  const tiltPitchTarget = restDeck ? 0 : Math.atan(gForce.z) * TILT_PITCH_BLEND * response + inputPitch;
+  const tiltRollTarget = restDeck ? 0 : Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
   const tiltRate = dof <= 3 ? (80 * Math.PI) / 180 : TILT_RATE_LIMIT;
   const tiltTau = dof <= 3 ? 0.08 : TILT_TAU;
   filter.tiltPitch = rateLimit(filter.tiltPitch, tiltPitchTarget, step, tiltRate);
@@ -582,9 +584,9 @@ export function stepMotion(
   filter.tiltPitch = follow(filter.tiltPitch, tiltPitchTarget, step, tiltTau);
   filter.tiltRoll = follow(filter.tiltRoll, tiltRollTarget, step, tiltTau);
 
-  const rollCmd = stopped ? 0 : attitude.roll;
-  const pitchCmd = stopped ? 0 : attitude.pitch;
-  const attitudeTau = stopped
+  const rollCmd = restDeck ? 0 : attitude.roll;
+  const pitchCmd = restDeck ? 0 : attitude.pitch;
+  const attitudeTau = restDeck
     ? dof <= 3
       ? 0.12
       : ATTITUDE_TAU_REST

@@ -35,6 +35,18 @@ export function isAirborne(tel: Telemetry): boolean {
   return false;
 }
 
+/** Below this, brake / gas / IMU must not invent deck tilt. */
+export const PARKED_SPEED_MS = 0.8;
+
+/**
+ * Crawl or standstill: ignore pedals and IMU G. A berm at speed still tilts.
+ */
+export function isParked(tel: Telemetry): boolean {
+  if (detectCrash(tel)) return false;
+  if (isAirborne(tel)) return false;
+  return tel.speedMs < PARKED_SPEED_MS;
+}
+
 /**
  * Resting on the pegs: no jump, no crash, no real lean.
  * IMU / Euler noise here is what made the parked bike jitter.

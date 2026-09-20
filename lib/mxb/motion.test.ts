@@ -97,11 +97,11 @@ test("integrator matches the critically damped closed form at 1 s", () => {
   assert.ok(Math.abs(pose.z - expected) < 0.02, `z ${pose.z} vs ${expected}`);
 });
 
-test("braking G shoves the frame backward and pitches the deck", () => {
-  const pose = run(sample({ accelG: { x: 0, y: 1.2, z: -1.2 }, pitch: -8 }), 2.4);
+test("braking G shoves the frame backward without a parked nod", () => {
+  const pose = run(sample({ accelG: { x: 0, y: 1.2, z: -1.2 }, pitch: -8, frontBrake: 1 }), 2.4);
   assert.ok(pose.z <= -0.98, `z ${pose.z}`);
   assert.ok(pose.z >= -1, `z clamp ${pose.z}`);
-  assert.ok(pose.pitch < -0.08, `pitch ${pose.pitch}`);
+  assert.ok(Math.abs(pose.pitch) < 0.04, `pitch ${pose.pitch}`);
 });
 
 test("lateral G shoves the frame sideways 1 m per G", () => {
@@ -113,7 +113,7 @@ test("lateral G shoves the frame sideways 1 m per G", () => {
 });
 
 test("coordinated lean rolls the platform with the bike", () => {
-  const pose = run(sample({ roll: -32, accelG: { x: 0.08, y: 1.05, z: 0.1 } }), 0.6);
+  const pose = run(sample({ speedMs: 12, roll: -32, accelG: { x: 0.08, y: 1.05, z: 0.1 } }), 0.6);
   assert.ok(pose.roll > 0.45, `roll ${pose.roll}`);
   assert.ok(pose.roll <= DEFAULT_FRAME_TRAVEL.limitRoll + 1e-6, `clamp ${pose.roll}`);
   assert.ok(Math.abs(pose.x) < 0.15, `sway ${pose.x}`);
@@ -326,28 +326,44 @@ test("floor clamp lifts a low home so tubes clear 0.12 m", () => {
 });
 
 test("PiBoSo in-game left (negative roll) leans the deck the other way on cam", () => {
-  const pose = run(sample({ roll: -28, accelG: { x: 0, y: 1, z: 0 } }), 0.8);
+  const pose = run(sample({ speedMs: 12, roll: -28, accelG: { x: 0, y: 1, z: 0 } }), 0.8);
   assert.ok(pose.roll > 0.35, `roll ${pose.roll}`);
 });
 
 test("PiBoSo in-game right (positive roll) leans the opposite deck side", () => {
-  const pose = run(sample({ roll: 28, accelG: { x: 0, y: 1, z: 0 } }), 0.8);
+  const pose = run(sample({ speedMs: 12, roll: 28, accelG: { x: 0, y: 1, z: 0 } }), 0.8);
   assert.ok(pose.roll < -0.35, `roll ${pose.roll}`);
 });
 
 test("plugin Euler lean wins over a heading-looking matrix", () => {
   const pose = run(
-    sample({ roll: -28, rot: rzRoll(32), accelG: { x: 0, y: 1, z: 0 } }),
+    sample({ speedMs: 12, roll: -28, rot: rzRoll(32), accelG: { x: 0, y: 1, z: 0 } }),
     0.8,
   );
   assert.ok(pose.roll > 0.35, `euler lean ${pose.roll}`);
 });
 
 test("throttle lifts the front, front brake drops it", () => {
-  const gas = run(sample({ throttle: 1, accelG: { x: 0, y: 1, z: 0.8 }, pitch: 10 }), 0.8);
-  const brake = run(sample({ frontBrake: 1, accelG: { x: 0, y: 1.1, z: -1 }, pitch: -10 }), 0.8);
+  const gas = run(sample({ speedMs: 12, throttle: 1, accelG: { x: 0, y: 1, z: 0.8 }, pitch: 10 }), 0.8);
+  const brake = run(sample({ speedMs: 12, frontBrake: 1, accelG: { x: 0, y: 1.1, z: -1 }, pitch: -10 }), 0.8);
   assert.ok(gas.pitch > 0.12, `gas pitch ${gas.pitch}`);
   assert.ok(brake.pitch < -0.12, `brake pitch ${brake.pitch}`);
+});
+
+test("parked full brake does not nod or lean the deck", () => {
+  const pose = run(
+    sample({
+      speedMs: 0,
+      frontBrake: 1,
+      rearBrake: 0.4,
+      accelG: { x: 0.15, y: 1.1, z: -1 },
+      pitch: -10,
+      roll: 6,
+    }),
+    1.2,
+  );
+  assert.ok(Math.abs(pose.pitch) < 0.03, `pitch ${pose.pitch}`);
+  assert.ok(Math.abs(pose.roll) < 0.03, `roll ${pose.roll}`);
 });
 
 test("compressed shocks lift the deck on a 1 G whoop", () => {
@@ -360,13 +376,13 @@ test("noisy roll rate does not shake a steady lean", () => {
   const dt = 1 / 100;
   let pose = identityPose();
   for (let i = 0; i < 50; i++) {
-    pose = stepMotion(filter, sample({ roll: -24, rollRate: 0, accelG: { x: 0, y: 1, z: 0 } }), dt);
+    pose = stepMotion(filter, sample({ speedMs: 12, roll: -24, rollRate: 0, accelG: { x: 0, y: 1, z: 0 } }), dt);
   }
   let min = pose.roll;
   let max = pose.roll;
   for (let i = 0; i < 180; i++) {
     const rate = i % 2 === 0 ? 160 : -160;
-    pose = stepMotion(filter, sample({ roll: -24, rollRate: rate, accelG: { x: 0, y: 1, z: 0 } }), dt);
+    pose = stepMotion(filter, sample({ speedMs: 12, roll: -24, rollRate: rate, accelG: { x: 0, y: 1, z: 0 } }), dt);
     min = Math.min(min, pose.roll);
     max = Math.max(max, pose.roll);
   }

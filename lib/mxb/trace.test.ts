@@ -8,6 +8,7 @@ import {
   flattenTelemetry,
   newestTraceValue,
   pushTraceSample,
+  humanTraceCallout,
   toggleTraceGroup,
   toggleTraceId,
   traceIndex,
@@ -86,6 +87,13 @@ test("pad overlay is logged next to the game pedals", () => {
   assert.ok(Math.abs(newestTraceValue(buf, "padThr") - 1) < 1e-5);
   assert.ok(Math.abs(newestTraceValue(buf, "throttle") - 0.55) < 1e-5);
   assert.ok(Math.abs(newestTraceValue(buf, "padLX") + 0.5) < 1e-5);
+});
+
+test("human callouts speak gas, brake, lean, and speed", () => {
+  assert.equal(humanTraceCallout("padThr", 1), "Full gas");
+  assert.equal(humanTraceCallout("frontBrake", 0.5), "Half brake");
+  assert.equal(humanTraceCallout("roll", -18), "Lean 18° left");
+  assert.equal(humanTraceCallout("speed", 42), "42 km/h");
 });
 
 test("channel chips toggle one id or a whole group", () => {

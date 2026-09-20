@@ -73,19 +73,30 @@ export const TRACE_CHANNELS: TraceChannel[] = [
   { id: "crashed", label: "Crash", group: "attitude", color: "#ef4444", span: 1, unit: "" },
 ];
 
-export const DEFAULT_TRACE_IDS = [
-  "padThr",
-  "throttle",
-  "padFbrk",
-  "frontBrake",
-  "padRbrk",
-  "rearBrake",
-  "padLX",
-  "padRX",
-];
+export const HANDS_TRACE_IDS = ["padThr", "throttle", "padFbrk", "frontBrake", "padRbrk"];
+export const BIKE_TRACE_IDS = ["roll", "pitch", "speed"];
+
+export const DEFAULT_TRACE_IDS = [...HANDS_TRACE_IDS, ...BIKE_TRACE_IDS];
+
+export const TRACE_TITLES: Record<string, string> = {
+  padThr: "Your gas",
+  throttle: "Game gas",
+  padFbrk: "Your front brake",
+  frontBrake: "Game front brake",
+  padRbrk: "Your rear brake",
+  rearBrake: "Game rear brake",
+  padClh: "Clutch",
+  padLX: "Steer stick",
+  padLY: "Left stick Y",
+  padRX: "Body lean stick",
+  padRY: "Body pitch stick",
+  roll: "Lean",
+  pitch: "Pitch",
+  speed: "Speed",
+};
 
 export const TRACE_OPEN_KEY = "mxb-force-studio.graph";
-export const TRACE_IDS_KEY = "mxb-force-studio.graph-ids-v2";
+export const TRACE_IDS_KEY = "mxb-force-studio.graph-ids-v3";
 
 const CHANNEL_BY_ID = new Map(TRACE_CHANNELS.map((c) => [c.id, c]));
 
@@ -194,6 +205,32 @@ export function toggleTraceGroup(ids: string[], group: TraceGroup): string[] {
   const allOn = members.every((id) => ids.includes(id));
   if (allOn) return ids.filter((id) => !members.includes(id));
   return [...new Set([...ids, ...members])];
+}
+
+function pedalWords(value: number, kind: "gas" | "brake"): string {
+  const n = Math.max(0, Math.min(1, value));
+  if (n < 0.04) return kind === "gas" ? "No gas" : "No brake";
+  if (n < 0.35) return kind === "gas" ? "A little gas" : "Light brake";
+  if (n < 0.7) return kind === "gas" ? "Half gas" : "Half brake";
+  if (n < 0.95) return kind === "gas" ? "Mostly gas" : "Hard brake";
+  return kind === "gas" ? "Full gas" : "Full brake";
+}
+
+export function humanTraceCallout(id: string, value: number): string {
+  if (id === "padThr" || id === "throttle") return pedalWords(value, "gas");
+  if (id === "padFbrk" || id === "frontBrake" || id === "padRbrk" || id === "rearBrake") {
+    return pedalWords(value, "brake");
+  }
+  if (id === "roll") {
+    if (Math.abs(value) < 2) return "Upright";
+    return `Lean ${Math.abs(value).toFixed(0)}° ${value < 0 ? "left" : "right"}`;
+  }
+  if (id === "pitch") {
+    if (Math.abs(value) < 2) return "Level";
+    return value > 0 ? `Nose up ${value.toFixed(0)}°` : `Nose down ${Math.abs(value).toFixed(0)}°`;
+  }
+  if (id === "speed") return `${Math.max(0, value).toFixed(0)} km/h`;
+  return formatTraceValue(id, value);
 }
 
 export function formatTraceValue(id: string, value: number): string {

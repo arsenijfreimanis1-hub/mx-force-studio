@@ -498,7 +498,7 @@ export function MxForceStudio() {
           ) : null}
 
           {graphOpen ? (
-            <div className="absolute inset-x-0 bottom-0 z-20 h-[44%] min-h-[14rem] p-2 pt-0">
+            <div className="absolute inset-x-0 bottom-0 z-20 h-[50%] min-h-[18rem] p-2 pt-0">
               <TelemetryGraph bufferRef={traceRef} live={usingLive} />
             </div>
           ) : (

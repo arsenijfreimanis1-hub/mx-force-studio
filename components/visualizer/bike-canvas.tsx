@@ -2,11 +2,11 @@
 
 import type { MutableRefObject } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Grid, OrbitControls, PerspectiveCamera } from "@react-three/drei";
+import { ContactShadows, OrbitControls, PerspectiveCamera, Sky } from "@react-three/drei";
 import { MotocrossBike } from "@/components/visualizer/motocross-bike";
 import { ForceArrows } from "@/components/visualizer/force-arrows";
 import { ChassisRig } from "@/components/visualizer/chassis-rig";
-import { WorldMotionCues } from "@/components/visualizer/world-motion";
+import { Paddock, WorldMotionCues } from "@/components/visualizer/world-motion";
 import { MotionPedestal } from "@/components/visualizer/support-rod";
 import {
   PLATFORM_HOME_Y,
@@ -57,28 +57,22 @@ export function BikeCanvas({
       gl={{ antialias: true, powerPreference: "high-performance" }}
       onCreated={({ invalidate }) => invalidate()}
     >
-      <color attach="background" args={["#1a1410"]} />
-      <fog attach="fog" args={["#1a1410", 6, 13]} />
-      <PerspectiveCamera makeDefault position={[1.2, 1.02, -2.05]} fov={40} />
-      <ambientLight intensity={0.7} />
-      <directionalLight position={[2.4, 5.5, 1.6]} intensity={2.25} />
+      <color attach="background" args={["#87a0b8"]} />
+      <fog attach="fog" args={["#c4b49a", 14, 42]} />
+      <Sky inclination={0.47} azimuth={0.22} mieCoefficient={0.006} rayleigh={1.2} turbidity={6} />
+      <PerspectiveCamera makeDefault position={[1.35, 1.05, -2.15]} fov={40} />
+      <hemisphereLight color="#fff4e0" groundColor="#6b5340" intensity={0.7} />
+      <directionalLight position={[6, 8, 3]} intensity={1.55} color="#ffe6b8" />
 
       <group>
-        <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[3.4, 32]} />
-          <meshStandardMaterial color="#32261c" roughness={0.95} />
-        </mesh>
-        <Grid
-          args={[10, 10]}
-          cellSize={0.35}
-          cellThickness={0.55}
-          cellColor="#3f2e22"
-          sectionSize={0.7}
-          sectionThickness={1.15}
-          sectionColor="#7c4a1e"
-          fadeDistance={9}
-          fadeStrength={1.2}
+        <Paddock />
+        <ContactShadows
           position={[0, 0.002, 0]}
+          opacity={0.35}
+          scale={8}
+          blur={2.2}
+          far={2.5}
+          frames={driving ? Infinity : 1}
         />
         <WorldMotionCues showLabels={showPadLabels} />
         <MotionPedestal poseRef={poseRef} />
