@@ -46,7 +46,7 @@ function Rod({
 
   return (
     <mesh ref={mesh} frustumCulled={false}>
-      <cylinderGeometry args={[0.014, 0.014, 1, 8]} />
+      <cylinderGeometry args={[0.02, 0.02, 1, 8]} />
       <meshBasicMaterial color={color} transparent opacity={0.88} />
     </mesh>
   );
@@ -120,19 +120,35 @@ export function WorldMotionCues({
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.004, 0]} receiveShadow>
-        <circleGeometry args={[1.2, 48]} />
-        <meshStandardMaterial color="#4a311c" roughness={0.92} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.007, 0]}>
-        <ringGeometry args={[0.96, 1.08, 56]} />
-        <meshBasicMaterial color="#f59e0b" transparent opacity={0.95} />
+        <circleGeometry args={[1.25, 48]} />
+        <meshStandardMaterial color="#9a3412" roughness={0.85} />
       </mesh>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.008, 0]}>
-        <ringGeometry args={[0.08, 0.14, 24]} />
+        <ringGeometry args={[0.92, 1.18, 64]} />
+        <meshBasicMaterial color="#fb923c" />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.01, 0]}>
+        <circleGeometry args={[0.16, 24]} />
         <meshBasicMaterial color="#fde68a" />
       </mesh>
 
-      <axesHelper args={[1]} />
+      <mesh position={[0.5, 0.02, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.018, 0.018, 1, 8]} />
+        <meshBasicMaterial color="#f87171" />
+      </mesh>
+      <mesh position={[0, 0.5, 0]}>
+        <cylinderGeometry args={[0.018, 0.018, 1, 8]} />
+        <meshBasicMaterial color="#4ade80" />
+      </mesh>
+      <mesh position={[0, 0.02, 0.5]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.018, 0.018, 1, 8]} />
+        <meshBasicMaterial color="#60a5fa" />
+      </mesh>
+
+      <mesh position={[0, 0.55, 0]}>
+        <boxGeometry args={[0.5, 1.15, 2]} />
+        <meshBasicMaterial color="#e2e8f0" wireframe transparent opacity={0.22} />
+      </mesh>
 
       <mesh position={[0, restY, 0]}>
         <boxGeometry args={[travel.limitX * 2, travel.limitY * 2, travel.limitZ * 2]} />
