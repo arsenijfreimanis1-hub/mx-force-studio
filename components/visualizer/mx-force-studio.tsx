@@ -1,29 +1,24 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import {
-  Eye,
-  EyeOff,
-  Gamepad2,
-  Gauge,
-  Loader2,
-  Pause,
-  Play,
-  Radio,
-  SlidersHorizontal,
-  Unplug,
-} from "lucide-react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
+import { Eye, EyeOff, Gamepad2, Loader2, Radio, Unplug } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
-import { DEFAULT_EVENT, DEFAULT_SANDBOX } from "@/lib/mxb/defaults";
-import { SCENARIOS, telemetryForScenario } from "@/lib/mxb/demo";
-import { FORCE_META, buildForceModel, formatG, formatNewtons, speedKph } from "@/lib/mxb/forces";
-import { gamepadActive, readFirstGamepad, sandboxFromGamepad } from "@/lib/mxb/gamepad";
+import {
+  applyProfileToTelemetry,
+  applyProfileToTravel,
+  defaultProfile,
+  loadProfile,
+  observeTelemetry,
+  saveProfile,
+  type BikeProfile,
+} from "@/lib/mxb/adapt";
+import { DEFAULT_EVENT, DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
+import { formatG, speedKph } from "@/lib/mxb/forces";
+import { gamepadActive, readFirstGamepad } from "@/lib/mxb/gamepad";
 import {
   createMotionFilter,
   DEFAULT_FRAME_TRAVEL,
@@ -31,15 +26,8 @@ import {
   type FrameTravel,
   type Pose6,
 } from "@/lib/mxb/motion";
-import type {
-  BikeEvent,
-  ForceId,
-  LivePacket,
-  SandboxInputs,
-  ScenarioId,
-  SourceMode,
-  Telemetry,
-} from "@/lib/mxb/types";
+import { buildForceModel } from "@/lib/mxb/forces";
+import type { BikeEvent, ForceId, ForceModel, LivePacket, SandboxInputs, Telemetry } from "@/lib/mxb/types";
 
 const BikeCanvas = dynamic(
   () => import("@/components/visualizer/bike-canvas").then((mod) => mod.BikeCanvas),
@@ -53,24 +41,8 @@ const BikeCanvas = dynamic(
   },
 );
 
-const FORCE_ORDER: ForceId[] = [
-  "gravity",
-  "frontNormal",
-  "rearNormal",
-  "drive",
-  "frontBrake",
-  "rearBrake",
-  "longitudinal",
-  "lateral",
-  "vertical",
-  "fork",
-  "shock",
-  "aero",
-  "steer",
-  "gyro",
-];
-
 const HUD_MS = 50;
+const ADAPT_MS = 1000;
 
 function gearLabel(gear: number) {
   if (gear <= 0) return "N";
@@ -121,124 +93,72 @@ function NumberSlider({
 }
 
 export function MxForceStudio() {
-  const [mode, setMode] = useState<SourceMode>("demo");
-  const [scenario, setScenario] = useState<ScenarioId>("launch");
-  const [playing, setPlaying] = useState(true);
-  const [sandbox, setSandbox] = useState<SandboxInputs>(DEFAULT_SANDBOX);
-  const [hidden, setHidden] = useState<Set<ForceId>>(new Set(["aero", "gyro"]));
-  const [hideForces, setHideForces] = useState(false);
+  const [hideForces, setHideForces] = useState(true);
   const [livePacket, setLivePacket] = useState<LivePacket | null>(null);
   const [liveOk, setLiveOk] = useState(false);
   const [connectRequested, setConnectRequested] = useState(false);
   const [staleMs, setStaleMs] = useState<number | null>(null);
-  const [hudTel, setHudTel] = useState<Telemetry>(() =>
-    telemetryForScenario("launch", 0, DEFAULT_SANDBOX),
-  );
+  const [hudTel, setHudTel] = useState<Telemetry>(() => restTelemetry());
   const [inspect, setInspect] = useState(true);
   const [travel, setTravel] = useState<FrameTravel>(DEFAULT_FRAME_TRAVEL);
-  const clockRef = useRef(0);
+  const [hudEvent, setHudEvent] = useState<BikeEvent>(DEFAULT_EVENT);
+  const [padOn, setPadOn] = useState(false);
+  const [driving, setDriving] = useState(false);
+  const [learnedName, setLearnedName] = useState<string | null>(null);
+
   const pollRef = useRef<() => Promise<void>>(async () => {});
   const motionRef = useRef(createMotionFilter());
   const poseRef = useRef(identityPose());
   const travelRef = useRef(DEFAULT_FRAME_TRAVEL);
-  const modeRef = useRef(mode);
   const connectRef = useRef(connectRequested);
-  const lastDemoHudRef = useRef(0);
-  const lastLiveHudRef = useRef(0);
-  const scenarioRef = useRef(scenario);
-  const sandboxRef = useRef(sandbox);
-  const playingRef = useRef(playing);
+  const lastHudRef = useRef(0);
+  const lastAdaptRef = useRef(0);
   const liveRef = useRef(false);
   const telemetryRef = useRef<Telemetry>(hudTel);
-  const suspMaxRef = useRef<[number, number]>([...DEFAULT_EVENT.suspMaxTravel]);
   const eventRef = useRef<BikeEvent>(DEFAULT_EVENT);
-  const [hudEvent, setHudEvent] = useState<BikeEvent>(DEFAULT_EVENT);
-  const [padOn, setPadOn] = useState(false);
-  const wantSandboxRef = useRef(false);
+  const padActiveRef = useRef(false);
+  const sandboxRef = useRef<SandboxInputs>({ ...DEFAULT_SANDBOX });
+  const forcesRef = useRef<ForceModel>(buildForceModel(hudTel, DEFAULT_EVENT));
+  const hiddenRef = useRef<Set<ForceId>>(new Set());
+  const adaptRef = useRef<BikeProfile>(defaultProfile());
+  const userTravelRef = useRef(DEFAULT_FRAME_TRAVEL);
+  const drivingRef = useRef(false);
+  const padOnRef = useRef(false);
 
   useEffect(() => {
-    modeRef.current = mode;
     connectRef.current = connectRequested;
-    travelRef.current = travel;
-    scenarioRef.current = scenario;
-    sandboxRef.current = sandbox;
-    playingRef.current = playing;
-    if (mode !== "live" || !connectRequested) liveRef.current = false;
+    userTravelRef.current = travel;
+    travelRef.current = applyProfileToTravel(travel, adaptRef.current);
+    if (!connectRequested) liveRef.current = false;
   });
 
   useEffect(() => {
-    if (mode !== "live") liveRef.current = false;
-  }, [mode]);
-
-  useEffect(() => {
-    motionRef.current = createMotionFilter();
-    poseRef.current = identityPose();
-    if (mode !== "live") {
-      const tel = telemetryForScenario(
-        mode === "sandbox" ? "sandbox" : scenario,
-        clockRef.current,
-        sandboxRef.current,
-      );
-      telemetryRef.current = tel;
-      eventRef.current = DEFAULT_EVENT;
-      suspMaxRef.current = [...DEFAULT_EVENT.suspMaxTravel];
-      setHudTel(tel);
-      setHudEvent(DEFAULT_EVENT);
-    } else {
-      poseRef.current = identityPose();
-    }
-  }, [mode, scenario]);
-
-  useEffect(() => {
-    let frame = 0;
-    let last = performance.now();
-    const tick = (now: number) => {
-      const dt = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      let gamepadDirty = false;
-      const inLive = modeRef.current === "live";
-
-      if (!inLive) {
+    const id = window.setInterval(() => {
+      let pad = padActiveRef.current;
+      if (!liveRef.current) {
         const gp = readFirstGamepad();
-        if (gp && gamepadActive(gp)) {
-          sandboxRef.current = sandboxFromGamepad(gp, sandboxRef.current, dt);
-          gamepadDirty = true;
-          if (modeRef.current !== "sandbox") {
-            modeRef.current = "sandbox";
-            scenarioRef.current = "sandbox";
-            wantSandboxRef.current = true;
-          }
-        }
+        pad = Boolean(gp && gamepadActive(gp)) || pad;
+      } else {
+        pad = false;
+      }
+      if (pad !== padOnRef.current) {
+        padOnRef.current = pad;
+        setPadOn(pad);
+      }
+      const nextDriving = liveRef.current || pad;
+      if (nextDriving !== drivingRef.current) {
+        drivingRef.current = nextDriving;
+        setDriving(nextDriving);
       }
 
-      if (!inLive && playingRef.current) {
-        clockRef.current += dt;
-        telemetryRef.current = telemetryForScenario(
-          modeRef.current === "sandbox" ? "sandbox" : scenarioRef.current,
-          clockRef.current,
-          sandboxRef.current,
-        );
-      }
-
-      if (now - lastDemoHudRef.current >= HUD_MS) {
-        lastDemoHudRef.current = now;
-        setHudTel(telemetryRef.current);
-        setHudEvent(eventRef.current);
-        if (gamepadDirty) {
-          setSandbox({ ...sandboxRef.current });
-          setPadOn(true);
-        }
-        if (wantSandboxRef.current) {
-          wantSandboxRef.current = false;
-          setMode("sandbox");
-          setScenario("sandbox");
-          setPlaying(true);
-        }
-      }
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
+      const now = performance.now();
+      if (now - lastHudRef.current < HUD_MS) return;
+      lastHudRef.current = now;
+      setHudTel(telemetryRef.current);
+      setHudEvent(eventRef.current);
+      setLearnedName(adaptRef.current.learned ? adaptRef.current.bikeName : null);
+    }, 50);
+    return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -251,16 +171,29 @@ export function MxForceStudio() {
       staleMs: number | null;
     }) => {
       if (cancelled) return;
-      const wantLive = modeRef.current === "live" && connectRef.current;
+      const wantLive = connectRef.current;
       if (wantLive && body.packet?.telemetry) {
         liveRef.current = Boolean(body.live);
-        telemetryRef.current = body.packet.telemetry;
         if (body.packet.event) {
           eventRef.current = body.packet.event;
-          if (body.packet.event.suspMaxTravel) {
-            suspMaxRef.current = [...body.packet.event.suspMaxTravel];
-          }
         }
+        const bikeId = eventRef.current.bikeId || "live";
+        if (adaptRef.current.bikeId !== bikeId) {
+          adaptRef.current = loadProfile(bikeId, eventRef.current.bikeName);
+        } else if (eventRef.current.bikeName) {
+          adaptRef.current.bikeName = eventRef.current.bikeName;
+        }
+
+        const now = performance.now();
+        if (now - lastAdaptRef.current >= ADAPT_MS) {
+          const dt = lastAdaptRef.current ? Math.min(2, (now - lastAdaptRef.current) / 1000) : 1;
+          lastAdaptRef.current = now;
+          adaptRef.current = observeTelemetry(adaptRef.current, body.packet.telemetry, dt);
+          saveProfile(adaptRef.current);
+          travelRef.current = applyProfileToTravel(userTravelRef.current, adaptRef.current);
+        }
+
+        telemetryRef.current = applyProfileToTelemetry(body.packet.telemetry, adaptRef.current);
       } else if (!wantLive) {
         liveRef.current = false;
       } else {
@@ -268,13 +201,18 @@ export function MxForceStudio() {
       }
 
       const now = performance.now();
-      if (now - lastLiveHudRef.current < HUD_MS) return;
-      lastLiveHudRef.current = now;
+      if (now - lastHudRef.current < HUD_MS) return;
+      lastHudRef.current = now;
       setLiveOk(body.live);
       setLivePacket(body.packet);
       setStaleMs(body.staleMs);
       setHudTel(telemetryRef.current);
       setHudEvent(eventRef.current);
+      setLearnedName(adaptRef.current.learned ? adaptRef.current.bikeName : null);
+      if (liveRef.current) {
+        drivingRef.current = true;
+        setDriving(true);
+      }
     };
 
     const poll = async () => {
@@ -320,7 +258,7 @@ export function MxForceStudio() {
     };
   }, []);
 
-  const usingLive = Boolean(mode === "live" && connectRequested && liveOk && livePacket);
+  const usingLive = Boolean(connectRequested && liveOk && livePacket);
   const liveState: "idle" | "waiting" | "connected" = !connectRequested
     ? "idle"
     : liveOk && livePacket
@@ -328,28 +266,7 @@ export function MxForceStudio() {
       : "waiting";
   const telemetry = hudTel;
   const event = usingLive ? hudEvent : DEFAULT_EVENT;
-  const model = useMemo(() => buildForceModel(telemetry, event), [telemetry, event]);
-
-  const toggleForce = (id: ForceId) => {
-    setHidden((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const patchSandbox = (partial: Partial<SandboxInputs>) => {
-    setMode("sandbox");
-    setScenario("sandbox");
-    setSandbox((prev) => {
-      const next = { ...prev, ...partial };
-      sandboxRef.current = next;
-      return next;
-    });
-  };
-
-  const bikeLabel = usingLive ? event.bikeName || "Live bike" : event.bikeName;
+  const bikeLabel = usingLive ? event.bikeName || "Live bike" : padOn ? "Xbox pad" : event.bikeName;
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
@@ -357,36 +274,26 @@ export function MxForceStudio() {
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-semibold tracking-tight">MX Force Studio</h1>
         </div>
-        <div className="flex items-center gap-1">
-          <Button
-            size="xs"
-            variant={mode === "demo" ? "default" : "ghost"}
-            onClick={() => {
-              setMode("demo");
-              if (scenario === "sandbox") setScenario("launch");
-            }}
-          >
-            <Gauge />
-            Demo
-          </Button>
-          <Button
-            size="xs"
-            variant={mode === "sandbox" ? "default" : "ghost"}
-            onClick={() => {
-              setMode("sandbox");
-              setScenario("sandbox");
-            }}
-          >
-            <SlidersHorizontal />
-            Sandbox
-          </Button>
-          <Button size="xs" variant={mode === "live" ? "default" : "ghost"} onClick={() => setMode("live")}>
-            <Radio />
-            Live
-          </Button>
-        </div>
+        <Button
+          size="xs"
+          variant={connectRequested ? "default" : "ghost"}
+          onClick={() => {
+            if (connectRequested) {
+              setConnectRequested(false);
+              liveRef.current = false;
+            } else {
+              setConnectRequested(true);
+              motionRef.current = createMotionFilter();
+              poseRef.current = identityPose();
+              void pollRef.current();
+            }
+          }}
+        >
+          <Radio />
+          Live
+        </Button>
         {padOn ? (
-          <Badge variant="outline" className="hidden gap-1 sm:flex">
+          <Badge variant="outline" className="gap-1">
             <Gamepad2 className="size-3" />
             Pad
           </Badge>
@@ -409,17 +316,18 @@ export function MxForceStudio() {
         <section className="relative min-h-[52vh] border-b border-border lg:border-r lg:border-b-0">
           <BikeCanvas
             telemetryRef={telemetryRef}
-            suspMaxRef={suspMaxRef}
-            model={model}
-            hidden={hidden}
             hideForces={hideForces}
             inspect={inspect}
             poseRef={poseRef}
             motionRef={motionRef}
             travelRef={travelRef}
-            playingRef={playingRef}
             liveRef={liveRef}
-            travel={travel}
+            padActiveRef={padActiveRef}
+            sandboxRef={sandboxRef}
+            eventRef={eventRef}
+            forcesRef={forcesRef}
+            hiddenRef={hiddenRef}
+            driving={driving}
           />
 
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-2">
@@ -440,7 +348,7 @@ export function MxForceStudio() {
               <span>
                 <PoseReadout poseRef={poseRef} />
               </span>
-              {model.airborne ? <span className="text-amber-300">air</span> : null}
+              {learnedName ? <span className="text-sky-300">Learned · {learnedName}</span> : null}
             </div>
           </div>
 
@@ -452,14 +360,6 @@ export function MxForceStudio() {
             <Button size="xs" variant="secondary" onClick={() => setInspect((v) => !v)}>
               {inspect ? "Orbit" : "Lock"}
             </Button>
-            <Button
-              size="icon-xs"
-              variant="secondary"
-              onClick={() => setPlaying((v) => !v)}
-              disabled={mode === "live"}
-            >
-              {playing ? <Pause /> : <Play />}
-            </Button>
           </div>
 
           <InputsOverlay telemetry={telemetry} />
@@ -468,145 +368,56 @@ export function MxForceStudio() {
         <aside className="flex min-h-0 flex-col bg-card">
           <ScrollArea className="min-h-0 flex-1">
             <div className="flex flex-col gap-4 p-3">
-              {mode === "live" ? (
-                <div className="grid gap-2">
-                  {liveState === "idle" ? (
-                    <Button
-                      size="sm"
-                      className="w-full bg-sky-500 text-white hover:bg-sky-400"
-                      onClick={() => {
-                        setConnectRequested(true);
-                        motionRef.current = createMotionFilter();
-                        poseRef.current = identityPose();
-                        void pollRef.current();
-                      }}
-                    >
-                      <Radio />
-                      Connect
-                    </Button>
-                  ) : null}
-
-                  {liveState === "waiting" ? (
-                    <>
-                      <p className="text-xs leading-4 text-amber-300">
-                        Waiting for MX Bikes
-                        {staleMs != null && staleMs <= 5000 ? ` · ${fmtAge(staleMs)} ago` : " · UDP 47387"}
-                      </p>
-                      <Button size="xs" variant="outline" onClick={() => setConnectRequested(false)}>
-                        Cancel
-                      </Button>
-                    </>
-                  ) : null}
-
-                  {liveState === "connected" ? (
-                    <>
-                      <p className="text-xs leading-4 text-emerald-300">
-                        Live · {event.bikeName} · {fmtAge(staleMs ?? 0)}
-                      </p>
-                      <Button size="xs" variant="outline" onClick={() => setConnectRequested(false)}>
-                        Disconnect
-                      </Button>
-                    </>
-                  ) : null}
-                </div>
+              {liveState === "idle" ? (
+                <Button
+                  size="sm"
+                  className="w-full bg-sky-500 text-white hover:bg-sky-400"
+                  onClick={() => {
+                    setConnectRequested(true);
+                    motionRef.current = createMotionFilter();
+                    poseRef.current = identityPose();
+                    void pollRef.current();
+                  }}
+                >
+                  <Radio />
+                  Connect
+                </Button>
               ) : null}
 
-              {mode !== "live" ? (
-                <div className="grid grid-cols-2 gap-1">
-                  {SCENARIOS.filter((item) => item.id !== "sandbox").map((item) => (
-                    <Button
-                      key={item.id}
-                      size="xs"
-                      variant={mode === "demo" && scenario === item.id ? "default" : "outline"}
-                      className="justify-start"
-                      onClick={() => {
-                        setMode("demo");
-                        setScenario(item.id);
-                        setPlaying(true);
-                      }}
-                    >
-                      {item.name}
-                    </Button>
-                  ))}
-                </div>
-              ) : null}
-
-              {mode === "sandbox" ? (
-                <div className="grid gap-2">
-                  <p className="text-[11px] text-muted-foreground">
-                    {padOn
-                      ? "Xbox / pad driving sandbox — RT throttle, LT brake, stick lean"
-                      : "Xbox pad: RT throttle, LT front brake, LB rear, left stick steer/lean"}
+              {liveState === "waiting" ? (
+                <>
+                  <p className="text-xs leading-4 text-amber-300">
+                    Waiting for MX Bikes
+                    {staleMs != null && staleMs <= 5000 ? ` · ${fmtAge(staleMs)} ago` : " · UDP 47387"}
                   </p>
-                  <NumberSlider
-                    label="Throttle"
-                    value={sandbox.throttle}
-                    min={0}
-                    max={1}
-                    display={`${Math.round(sandbox.throttle * 100)}%`}
-                    onChange={(throttle) => patchSandbox({ throttle })}
-                  />
-                  <NumberSlider
-                    label="Front brake"
-                    value={sandbox.frontBrake}
-                    min={0}
-                    max={1}
-                    display={`${Math.round(sandbox.frontBrake * 100)}%`}
-                    onChange={(frontBrake) => patchSandbox({ frontBrake })}
-                  />
-                  <NumberSlider
-                    label="Rear brake"
-                    value={sandbox.rearBrake}
-                    min={0}
-                    max={1}
-                    display={`${Math.round(sandbox.rearBrake * 100)}%`}
-                    onChange={(rearBrake) => patchSandbox({ rearBrake })}
-                  />
-                  <NumberSlider
-                    label="Clutch"
-                    value={sandbox.clutch}
-                    min={0}
-                    max={1}
-                    display={`${Math.round(sandbox.clutch * 100)}%`}
-                    onChange={(clutch) => patchSandbox({ clutch })}
-                  />
-                  <NumberSlider
-                    label="Steer"
-                    value={sandbox.steer}
-                    min={-40}
-                    max={40}
-                    step={0.5}
-                    display={`${sandbox.steer.toFixed(0)}°`}
-                    onChange={(steer) => patchSandbox({ steer })}
-                  />
-                  <NumberSlider
-                    label="Lean"
-                    value={sandbox.lean}
-                    min={-45}
-                    max={45}
-                    step={0.5}
-                    display={`${sandbox.lean.toFixed(0)}°`}
-                    onChange={(lean) => patchSandbox({ lean })}
-                  />
-                  <NumberSlider
-                    label="Pitch"
-                    value={sandbox.pitch}
-                    min={-20}
-                    max={35}
-                    step={0.5}
-                    display={`${sandbox.pitch.toFixed(0)}°`}
-                    onChange={(pitch) => patchSandbox({ pitch })}
-                  />
-                  <NumberSlider
-                    label="Speed"
-                    value={sandbox.speedKph}
-                    min={0}
-                    max={90}
-                    step={1}
-                    display={`${sandbox.speedKph.toFixed(0)} km/h`}
-                    onChange={(speedKphValue) => patchSandbox({ speedKph: speedKphValue })}
-                  />
-                </div>
+                  <Button size="xs" variant="outline" onClick={() => setConnectRequested(false)}>
+                    Cancel
+                  </Button>
+                </>
+              ) : null}
+
+              {liveState === "connected" ? (
+                <>
+                  <p className="text-xs leading-4 text-emerald-300">
+                    Live · {event.bikeName} · {fmtAge(staleMs ?? 0)}
+                  </p>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => {
+                      setConnectRequested(false);
+                      liveRef.current = false;
+                    }}
+                  >
+                    Disconnect
+                  </Button>
+                </>
+              ) : null}
+
+              {padOn && !usingLive ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Xbox pad driving the frame — RT throttle, LT front brake, LB rear, left stick steer/lean
+                </p>
               ) : null}
 
               <div className="grid gap-2">
@@ -649,44 +460,6 @@ export function MxForceStudio() {
                   display={`${Math.round(travel.response * 100)}%`}
                   onChange={(response) => setTravel((prev) => ({ ...prev, response }))}
                 />
-              </div>
-
-              <Separator />
-
-              <div className="grid gap-1.5">
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                    Forces
-                  </p>
-                  <Button size="xs" variant="ghost" onClick={() => setHidden(new Set())}>
-                    All
-                  </Button>
-                </div>
-                {FORCE_ORDER.map((id) => {
-                  const force = model.forces.find((item) => item.id === id);
-                  if (!force) return null;
-                  const meta = FORCE_META[id];
-                  return (
-                    <div
-                      key={id}
-                      title={force.description}
-                      className="flex items-center gap-2 rounded-md px-1 py-0.5"
-                    >
-                      <span className="size-2 rounded-full" style={{ background: meta.color }} />
-                      <span className="flex-1 truncate text-xs">{force.shortName}</span>
-                      <span className="font-mono text-[10px] text-muted-foreground">
-                        {force.kind === "moment"
-                          ? `${force.magnitude.toFixed(0)}`
-                          : formatNewtons(force.magnitude)}
-                      </span>
-                      <Switch
-                        checked={!hidden.has(id)}
-                        onCheckedChange={() => toggleForce(id)}
-                        size="sm"
-                      />
-                    </div>
-                  );
-                })}
               </div>
             </div>
           </ScrollArea>
