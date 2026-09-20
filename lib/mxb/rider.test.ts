@@ -50,9 +50,9 @@ test("airborne rider stands", () => {
   assert.ok(r.stand > 0.8, `stand ${r.stand}`);
 });
 
-test("in-game left lean (negative roll) hangs the dummy left", () => {
+test("in-game left lean hangs the dummy with the mirrored deck", () => {
   const r = riderFromTelemetry(sample({ roll: -30, speedMs: 12 }));
-  assert.ok(r.lean < -0.1, `lean ${r.lean}`);
+  assert.ok(r.lean > 0.1, `lean ${r.lean}`);
 });
 
 test("front brake sits the dummy back", () => {

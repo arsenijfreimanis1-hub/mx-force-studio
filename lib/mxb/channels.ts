@@ -6,7 +6,7 @@
  * live in `inputs.ts` (stock Xbox map + setup .ssx name).
  *
  *   accelG        G, chassis X right / Y up / Z forward
- *   roll          deg, negative = left (same family as RaceVehicleData m_fLean)
+ *   roll          deg, plugin negative = in-game left (deck mirrors it)
  *   pitch         deg, positive = nose up
  *   yaw / yawRate heading + deg/s
  *   rot[9]        row-major 3×3 (heading lives here; lean uses Euler)
@@ -69,19 +69,14 @@ export function chassisCues(tel: Telemetry, sagF: number, sagR: number): Chassis
 }
 
 /**
- * Seat heave in −1…+1 of travel.
- * Ground: shocks own the whoops (vs rolling sag) + filtered G for landings.
- * Air: vertical G (0 G → drop) + a little world-Y so the crest isn't a step.
+ * Grounded seat heave in −1…+1 of travel.
+ * Whoops come from the forks/shock (damping). Landing G is not an upward
+ * punch — the damper turns that impact into heat, so the deck sinks instead.
+ * Airborne height is a ballistic parabola in `stepMotion`, not this cue.
  */
 export function heaveFromCues(cues: ChassisCues, response: number): number {
-  const g = cues.heaveG;
-  const land = g > 0 ? g : 0;
-  let n: number;
-  if (cues.airborne) {
-    n = g * 0.95 + clamp(cues.climbMs, -8, 8) * 0.03;
-  } else {
-    const bump = clamp(cues.bumpM * 1.55 + cues.suspV * 0.07, -0.4, 0.5);
-    n = g * 0.52 + bump + land * 0.38;
-  }
-  return clamp(n * response, -1, 1);
+  if (cues.airborne) return 0;
+  const bump = clamp(cues.bumpM * 1.55 + cues.suspV * 0.07, -0.4, 0.5);
+  const unload = cues.heaveG < 0 ? cues.heaveG * 0.35 : 0;
+  return clamp((bump + unload) * response, -1, 1);
 }

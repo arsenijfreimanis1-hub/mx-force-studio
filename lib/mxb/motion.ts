@@ -71,12 +71,17 @@ const TILT_RATE_LIMIT = (55 * Math.PI) / 180;
 const TILT_TAU = 0.22;
 /** Follow plugin Euler directly — do not wait on the IMU smoother. */
 const ATTITUDE_TAU = 0.03;
-/** Grounded whoops stay on the shocks; air / landing can move faster. */
+/** Grounded whoops stay on the shocks. Air tracks the ballistic arc. */
 const HEAVE_TAU_GROUND = 0.1;
-const HEAVE_TAU_AIR = 0.06;
-/** Deck roll = plugin m_fRoll. Negative game roll = left on the chase cam. */
-const LEAN_FOLLOW = 1;
+const HEAVE_TAU_AIR = 0.035;
+/**
+ * Chase-cam deck roll. Plugin m_fRoll negative is in-game left, but that
+ * Euler draws the opposite way on the +Z-forward garage.
+ */
+export const LEAN_FOLLOW = -1;
 const PITCH_FOLLOW = 1;
+/** World jump height (m) that fills ±heave travel — typical MX table. */
+const JUMP_WORLD_M = 4.5;
 const REST_SUSP_F = 0.205;
 const REST_SUSP_R = 0.208;
 const SAG_TAU_QUIET = 3.5;
@@ -130,6 +135,11 @@ export type MotionFilter = {
   sRollRate: number;
   sagF: number;
   sagR: number;
+  wasAir: boolean;
+  airY: number;
+  airVy: number;
+  landSink: number;
+  landSinkV: number;
   /** null until parked / high-mag sample locks G vs m/s² for the session. */
   unitsMs2: boolean | null;
   primed: boolean;
@@ -166,6 +176,11 @@ export function createMotionFilter(): MotionFilter {
     sRollRate: 0,
     sagF: REST_SUSP_F,
     sagR: REST_SUSP_R,
+    wasAir: false,
+    airY: 0,
+    airVy: 0,
+    landSink: 0,
+    landSinkV: 0,
     unitsMs2: null,
     primed: false,
     shown: identityPose(),
@@ -386,6 +401,11 @@ export function stepMotion(
     filter.sRollRate = 0;
     filter.sagF = REST_SUSP_F;
     filter.sagR = REST_SUSP_R;
+    filter.wasAir = false;
+    filter.airY = 0;
+    filter.airVy = 0;
+    filter.landSink = 0;
+    filter.landSinkV = 0;
     filter.shown = identityPose();
     return filter.shown;
   }
@@ -425,8 +445,36 @@ export function stepMotion(
 
   const aSway = gForce.x * scale;
   const aSurge = gForce.z * scale;
-  const heaveTarget = heaveFromCues(cues, response) * limY;
-  const heaveTau = airborne || rawG.y > 1.45 ? HEAVE_TAU_AIR : HEAVE_TAU_GROUND;
+  let heaveTarget: number;
+  let heaveTau = HEAVE_TAU_GROUND;
+  const climb = Number.isFinite(telemetry.velocity.y) ? telemetry.velocity.y : filter.airVy;
+
+  if (airborne) {
+    if (!filter.wasAir) {
+      filter.airY = 0;
+      filter.airVy = climb;
+      filter.landSink = 0;
+      filter.landSinkV = 0;
+    } else {
+      filter.airVy = follow(filter.airVy, climb, step, 0.04);
+      filter.airY += filter.airVy * step;
+    }
+    heaveTarget = clamp((filter.airY / JUMP_WORLD_M) * limY * response, -limY, limY);
+    heaveTau = HEAVE_TAU_AIR;
+  } else {
+    if (filter.wasAir) {
+      const impact = Math.max(0, -filter.airVy, -climb);
+      filter.landSink = -clamp(0.1 + impact * 0.055, 0.08, 0.55) * response;
+      filter.landSinkV = 0;
+      filter.airY = 0;
+    }
+    filter.airVy = follow(filter.airVy, 0, step, 0.06);
+    const sink = stepAxis(filter.landSink, filter.landSinkV, 0, step, limY, WASH_OMEGA * 1.35);
+    filter.landSink = sink.pos;
+    filter.landSinkV = sink.vel;
+    heaveTarget = heaveFromCues(cues, response) * limY + filter.landSink;
+  }
+  filter.wasAir = airborne;
 
   const sway = stepAxis(filter.x, filter.vx, aSway, step, limX, WASH_OMEGA);
   filter.x = sway.pos;

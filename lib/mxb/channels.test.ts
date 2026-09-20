@@ -46,20 +46,20 @@ test("parked cues are a level 1 G bike on sag", () => {
   assert.equal(heaveFromCues(c, 1), 0);
 });
 
-test("0 G jump drops the seat", () => {
+test("airborne heave is left to the ballistic path", () => {
   const c = chassisCues(
     sample({ accelG: { x: 0, y: 0.04, z: 0 }, wheelMaterial: [0, 0], velocity: { x: 0, y: -2, z: 12 } }),
     0.205,
     0.208,
   );
   assert.equal(c.airborne, true);
-  const h = heaveFromCues(c, 1);
-  assert.ok(h < -0.85, `heave ${h}`);
+  assert.equal(c.climbMs, -2);
+  assert.equal(heaveFromCues(c, 1), 0);
 });
 
-test("landing G punches the seat up", () => {
+test("landing G is absorbed — no upward punch", () => {
   const c = chassisCues(sample({ accelG: { x: 0, y: 2.8, z: 0 } }), 0.205, 0.208);
-  assert.ok(heaveFromCues(c, 1) > 0.98);
+  assert.ok(heaveFromCues(c, 1) < 0.08, `heave ${heaveFromCues(c, 1)}`);
 });
 
 test("compressed shocks lift without a G spike", () => {

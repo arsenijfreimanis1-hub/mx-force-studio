@@ -8,6 +8,7 @@ import {
   FLOOR_CLEAR_Y,
   FRAME_HALF_SPAN,
   FRAME_LOW_Y,
+  identityPose,
   PLATFORM_HOME_Y,
   specificForceG,
   stepMotion,
@@ -110,42 +111,92 @@ test("lateral G shoves the frame sideways 1 m per G", () => {
 
 test("coordinated lean rolls the platform with the bike", () => {
   const pose = run(sample({ roll: -32, accelG: { x: 0.08, y: 1.05, z: 0.1 } }), 0.6);
-  assert.ok(pose.roll < -0.45, `roll ${pose.roll}`);
-  assert.ok(pose.roll >= -DEFAULT_FRAME_TRAVEL.limitRoll - 1e-6, `clamp ${pose.roll}`);
+  assert.ok(pose.roll > 0.45, `roll ${pose.roll}`);
+  assert.ok(pose.roll <= DEFAULT_FRAME_TRAVEL.limitRoll + 1e-6, `clamp ${pose.roll}`);
   assert.ok(Math.abs(pose.x) < 0.15, `sway ${pose.x}`);
 });
 
-test("jump 0G drops the seat within 250 ms", () => {
+test("a jump rises then falls on a parabola", () => {
+  const filter = createMotionFilter();
+  const dt = 1 / 60;
+  const v0 = 8;
+  let peak = -Infinity;
+  let yAtRise = 0;
+  let yAtFall = 0;
+  for (let i = 0; i < 90; i++) {
+    const t = i * dt;
+    const vy = v0 - GRAVITY * t;
+    const py = v0 * t - 0.5 * GRAVITY * t * t;
+    const pose = stepMotion(
+      filter,
+      sample({
+        accelG: { x: 0, y: 0.05, z: 0 },
+        wheelMaterial: [0, 0],
+        velocity: { x: 0, y: vy, z: 14 },
+        position: { x: 0, y: py, z: 20 },
+        pitch: 6,
+      }),
+      dt,
+    );
+    if (i === 18) yAtRise = pose.y;
+    if (pose.y > peak) peak = pose.y;
+    if (i === 70) yAtFall = pose.y;
+  }
+  assert.ok(yAtRise > 0.12, `rise ${yAtRise}`);
+  assert.ok(peak > yAtRise, `peak ${peak}`);
+  assert.ok(yAtFall < peak - 0.08, `fall ${yAtFall} vs peak ${peak}`);
+});
+
+test("falling airtime drops the deck instead of hovering", () => {
   const pose = run(
     sample({
       accelG: { x: 0, y: 0.04, z: 0 },
       pitch: 8,
       wheelMaterial: [0, 0],
+      velocity: { x: 0, y: -6, z: 12 },
+      position: { x: 0, y: -1.2, z: 10 },
     }),
-    0.25,
+    0.35,
   );
-  assert.ok(pose.y < -0.5, `onset y ${pose.y}`);
+  assert.ok(pose.y < -0.15, `y ${pose.y}`);
 });
 
-test("jump 0G unloads the seat — platform drops, not lifts", () => {
-  const pose = run(
-    sample({
-      accelG: { x: 0, y: 0.04, z: 0 },
-      pitch: 8,
-      wheelMaterial: [0, 0],
-      position: { x: 0, y: 2.2, z: 0 },
-    }),
-    2.5,
-  );
-  assert.ok(pose.y < -0.85, `y ${pose.y}`);
-  assert.ok(pose.y >= -1, `y clamp ${pose.y}`);
-  assert.ok(pose.pitch > 0.05, `pitch ${pose.pitch}`);
-});
-
-test("landing G spike punches the platform up into the rider", () => {
-  const pose = run(sample({ accelG: { x: 0, y: 2.8, z: 0 }, pitch: -6 }), 2.4);
-  assert.ok(pose.y > 0.98, `y ${pose.y}`);
-  assert.ok(pose.y <= 1, `y clamp ${pose.y}`);
+test("landing compresses the deck and does not hop up", () => {
+  const filter = createMotionFilter();
+  const dt = 1 / 60;
+  let pose = identityPose();
+  for (let i = 0; i < 55; i++) {
+    const t = i * dt;
+    pose = stepMotion(
+      filter,
+      sample({
+        accelG: { x: 0, y: 0.05, z: 0 },
+        wheelMaterial: [0, 0],
+        velocity: { x: 0, y: 5 - GRAVITY * t, z: 14 },
+        position: { x: 0, y: 5 * t - 0.5 * GRAVITY * t * t, z: 16 },
+      }),
+      dt,
+    );
+  }
+  let maxLand = -Infinity;
+  let minLand = Infinity;
+  for (let i = 0; i < 36; i++) {
+    pose = stepMotion(
+      filter,
+      sample({
+        accelG: { x: 0, y: 2.8, z: 0 },
+        pitch: -6,
+        wheelMaterial: [3, 3],
+        velocity: { x: 0, y: -2, z: 10 },
+        suspLength: [0.11, 0.12],
+      }),
+      dt,
+    );
+    maxLand = Math.max(maxLand, pose.y);
+    minLand = Math.min(minLand, pose.y);
+  }
+  assert.ok(maxLand < 0.2, `landing hop ${maxLand}`);
+  assert.ok(minLand < -0.05, `compress ${minLand}`);
 });
 
 test("travel limits are adjustable", () => {
@@ -226,27 +277,14 @@ test("floor clamp lifts a low home so tubes clear 0.12 m", () => {
   assert.ok(pose.y > -1, `lifted y ${pose.y}`);
 });
 
-test("jump drop still reaches −0.5 m inside 0.25 s with live EMA", () => {
-  const pose = run(
-    sample({
-      accelG: { x: 0, y: 0.04, z: 0 },
-      pitch: 8,
-      wheelMaterial: [0, 0],
-    }),
-    0.25,
-    { ...DEFAULT_FRAME_TRAVEL, smoothTau: 0.05 },
-  );
-  assert.ok(pose.y < -0.5, `onset y ${pose.y}`);
-});
-
-test("PiBoSo negative roll is a left lean on the deck", () => {
+test("PiBoSo in-game left (negative roll) leans the deck the other way on cam", () => {
   const pose = run(sample({ roll: -28, accelG: { x: 0, y: 1, z: 0 } }), 0.8);
-  assert.ok(pose.roll < -0.35, `roll ${pose.roll}`);
+  assert.ok(pose.roll > 0.35, `roll ${pose.roll}`);
 });
 
-test("PiBoSo positive roll is a right lean on the deck", () => {
+test("PiBoSo in-game right (positive roll) leans the opposite deck side", () => {
   const pose = run(sample({ roll: 28, accelG: { x: 0, y: 1, z: 0 } }), 0.8);
-  assert.ok(pose.roll > 0.35, `roll ${pose.roll}`);
+  assert.ok(pose.roll < -0.35, `roll ${pose.roll}`);
 });
 
 test("plugin Euler lean wins over a heading-looking matrix", () => {
@@ -254,7 +292,7 @@ test("plugin Euler lean wins over a heading-looking matrix", () => {
     sample({ roll: -28, rot: rzRoll(32), accelG: { x: 0, y: 1, z: 0 } }),
     0.8,
   );
-  assert.ok(pose.roll < -0.35, `euler lean ${pose.roll}`);
+  assert.ok(pose.roll > 0.35, `euler lean ${pose.roll}`);
 });
 
 test("throttle lifts the front, front brake drops it", () => {
