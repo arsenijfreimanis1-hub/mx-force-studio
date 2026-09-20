@@ -230,6 +230,46 @@ test("steady speed does not pin the frame at the travel limit", () => {
   assert.ok(Math.abs(pose.z) < 0.12, `z ${pose.z}`);
 });
 
+test("moving world XYZ drives the deck on the Cartesian frame", () => {
+  const filter = createMotionFilter();
+  const dt = 1 / 60;
+  let z = 80;
+  const cruise = 14;
+  let pose = identityPose();
+  for (let i = 0; i < 90; i++) {
+    z += cruise * dt;
+    pose = stepMotion(
+      filter,
+      sample({
+        speedMs: cruise,
+        position: { x: 6, y: 3.2, z },
+        velocity: { x: 0, y: 0, z: cruise },
+        accelG: { x: 0, y: 1, z: 0 },
+      }),
+      dt,
+    );
+  }
+  assert.ok(Math.abs(pose.z) < 0.16, `cruise z ${pose.z}`);
+  let surge = -Infinity;
+  let v = cruise;
+  for (let i = 0; i < 40; i++) {
+    v += 8 * dt;
+    z += v * dt;
+    pose = stepMotion(
+      filter,
+      sample({
+        speedMs: v,
+        position: { x: 6, y: 3.2, z },
+        velocity: { x: 0, y: 0, z: v },
+        accelG: { x: 0, y: 1, z: 0.35 },
+      }),
+      dt,
+    );
+    surge = Math.max(surge, pose.z);
+  }
+  assert.ok(surge > 0.04, `cartesian surge ${surge}`);
+});
+
 test("m/s² accelerometer readings are converted to G", () => {
   const g = specificForceG({ x: 0, y: 9.80665, z: 0 });
   assert.ok(Math.abs(g.y - 1) < 1e-6, JSON.stringify(g));

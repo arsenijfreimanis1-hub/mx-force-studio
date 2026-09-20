@@ -455,6 +455,7 @@ export function MxForceStudio() {
                 <>
                   <p className="text-xs leading-4 text-muted-foreground">
                     Garage is parked upright. Start MX Bikes on this PC, go on track, then Connect.
+                    Deck XYZ follows the game Cartesian point (chassis X right, Y up, Z forward).
                     Stock Xbox: RT throttle, LT front brake, LB rear, A clutch, left stick steer,
                     right stick body weight (dummy lean / sit).
                   </p>

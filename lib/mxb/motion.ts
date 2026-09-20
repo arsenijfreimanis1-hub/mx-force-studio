@@ -1,7 +1,18 @@
 import { resolveAttitude } from "./attitude.ts";
+import {
+  CART_XZ_M,
+  CART_Y_M,
+  cartesianUseful,
+  createCartesianState,
+  stepCartesian,
+  type CartesianState,
+} from "./cartesian.ts";
 import { chassisCues, heaveFromCues } from "./channels.ts";
 import { detectCrash, isStopped } from "./crash.ts";
 import type { Telemetry, Vec3 } from "./types";
+
+export { worldToChassis } from "./cartesian.ts";
+export { CART_XZ_M, CART_Y_M };
 
 /** Bottom-middle of the main cradle, bike-local meters. */
 export const FRAME_BOTTOM: Vec3 = { x: 0, y: 0.09, z: 0.02 };
@@ -83,7 +94,7 @@ const HEAVE_TAU_AIR = 0.035;
 export const LEAN_FOLLOW = -1;
 const PITCH_FOLLOW = 1;
 /** World jump height (m) that fills ±heave travel — typical MX table. */
-const JUMP_WORLD_M = 4.5;
+const JUMP_WORLD_M = CART_Y_M;
 const REST_SUSP_F = 0.205;
 const REST_SUSP_R = 0.208;
 const SAG_TAU_QUIET = 3.5;
@@ -146,6 +157,8 @@ export type MotionFilter = {
   groundY: number;
   groundPrimed: boolean;
   prevWorldY: number;
+  /** Drifting Cartesian origin for live world XYZ. */
+  cart: CartesianState;
   /** null until parked / high-mag sample locks G vs m/s² for the session. */
   unitsMs2: boolean | null;
   primed: boolean;
@@ -190,6 +203,7 @@ export function createMotionFilter(): MotionFilter {
     groundY: 0,
     groundPrimed: false,
     prevWorldY: 0,
+    cart: createCartesianState(),
     unitsMs2: null,
     primed: false,
     shown: identityPose(),
@@ -236,20 +250,6 @@ export function specificForceG(raw: Vec3, forceIsMs2: boolean | null = null): Ve
     return { x: raw.x / GRAVITY, y: raw.y / GRAVITY, z: raw.z / GRAVITY };
   }
   return raw;
-}
-
-/**
- * Map MX Bikes world XZ into chassis right/forward using yaw (degrees).
- * Heading 0 faces +Z (bike forward in the garage).
- */
-export function worldToChassis(wx: number, wz: number, yawDeg: number) {
-  const yaw = deg(yawDeg);
-  const c = Math.cos(yaw);
-  const s = Math.sin(yaw);
-  return {
-    right: wx * c - wz * s,
-    fwd: wx * s + wz * c,
-  };
 }
 
 /** Closed-form critically damped step to `a / ω²` meters. */
@@ -384,6 +384,12 @@ export function stepMotion(
   const crashed = detectCrash(telemetry);
   const airborne = telemetry.wheelMaterial[0] === 0 && telemetry.wheelMaterial[1] === 0;
   const stopped = !crashed && isStopped(telemetry);
+  const cartMode = crashed ? "crash" : airborne ? "air" : stopped ? "stop" : "ground";
+  const useCart = cartesianUseful(telemetry.position, telemetry.speedMs, airborne);
+  if (!useCart) filter.cart.primed = false;
+  const cart = useCart
+    ? stepCartesian(filter.cart, telemetry.position, telemetry.velocity, attitude.yaw, step, cartMode)
+    : { x: 0, y: 0, z: 0 };
   const gTau = airborne ? 0.07 : smoothTau;
 
   filter.sAx = follow(filter.sAx, rawG.x, step, smoothTau);
@@ -449,7 +455,8 @@ export function stepMotion(
     }
     const worldRel = hasWorld && filter.groundPrimed ? worldY - filter.groundY : filter.airY;
     const worldMoved = hasWorld && Math.abs(worldY - filter.prevWorldY) > 0.003;
-    if (worldMoved) filter.airY = follow(filter.airY, worldRel, step, 0.06);
+    if (useCart && worldMoved) filter.airY = follow(filter.airY, cart.y, step, 0.05);
+    else if (worldMoved) filter.airY = follow(filter.airY, worldRel, step, 0.06);
     heaveTarget = clamp((filter.airY / JUMP_WORLD_M) * limY * response, -limY, limY);
     heaveTau = HEAVE_TAU_AIR;
   } else if (stopped) {
@@ -473,8 +480,11 @@ export function stepMotion(
     const sink = stepAxis(filter.landSink, filter.landSinkV, 0, step, limY, WASH_OMEGA * 1.35);
     filter.landSink = sink.pos;
     filter.landSinkV = sink.vel;
-    const ride =
-      hasWorld && filter.groundPrimed ? clamp((worldY - filter.groundY) / JUMP_WORLD_M, -1, 1) * limY : 0;
+    const ride = useCart
+      ? clamp(cart.y / JUMP_WORLD_M, -1, 1) * limY
+      : hasWorld && filter.groundPrimed
+        ? clamp((worldY - filter.groundY) / JUMP_WORLD_M, -1, 1) * limY
+        : 0;
     const whoop = Math.abs(filter.landSink) > 0.03 ? 0 : heaveFromCues(cues, response) * limY;
     const surface = Math.abs(ride) > 0.03 ? ride : whoop;
     heaveTarget = surface + filter.landSink;
@@ -482,13 +492,22 @@ export function stepMotion(
   }
   filter.wasAir = airborne;
 
-  const sway = stepAxis(filter.x, filter.vx, aSway, step, limX, WASH_OMEGA);
-  filter.x = sway.pos;
-  filter.vx = sway.vel;
+  if (useCart && !stopped && !crashed) {
+    const tx = clamp(cart.x / CART_XZ_M, -1, 1) * limX * response;
+    const tz = clamp(cart.z / CART_XZ_M, -1, 1) * limZ * response;
+    filter.x = follow(filter.x, tx, step, 0.07);
+    filter.z = follow(filter.z, tz, step, 0.07);
+    filter.vx = follow(filter.vx, 0, step, 0.1);
+    filter.vz = follow(filter.vz, 0, step, 0.1);
+  } else {
+    const sway = stepAxis(filter.x, filter.vx, aSway, step, limX, WASH_OMEGA);
+    filter.x = sway.pos;
+    filter.vx = sway.vel;
 
-  const surge = stepAxis(filter.z, filter.vz, aSurge, step, limZ, WASH_OMEGA);
-  filter.z = surge.pos;
-  filter.vz = surge.vel;
+    const surge = stepAxis(filter.z, filter.vz, aSurge, step, limZ, WASH_OMEGA);
+    filter.z = surge.pos;
+    filter.vz = surge.vel;
+  }
 
   if (stopped || crashed) {
     filter.x = follow(filter.x, 0, step, 0.18);
