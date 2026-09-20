@@ -63,7 +63,7 @@ export function BikeCanvas({
         <sphereGeometry args={[40, 24, 16]} />
         <meshBasicMaterial color="#8eb7d9" side={1} />
       </mesh>
-      <PerspectiveCamera makeDefault position={[1.85, 1.45, -2.7]} fov={42} />
+      <PerspectiveCamera makeDefault position={[2.05, 1.62, -2.55]} fov={40} />
       <hemisphereLight color="#fff1d6" groundColor="#7a5a3c" intensity={0.85} />
       <directionalLight position={[8, 10, 4]} intensity={1.7} color="#ffe7c2" />
 
@@ -103,7 +103,7 @@ export function BikeCanvas({
         maxPolarAngle={Math.PI / 2 - 0.04}
         minDistance={0.95}
         maxDistance={7}
-        target={[0, PLATFORM_HOME_Y, 0]}
+        target={[0, PLATFORM_HOME_Y + 0.42, 0]}
       />
     </Canvas>
   );
