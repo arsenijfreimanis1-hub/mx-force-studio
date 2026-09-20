@@ -48,7 +48,7 @@ function Find-MxBikesRoot {
 }
 
 if (-not (Test-Path -LiteralPath $srcDlo) -or -not (Test-Path -LiteralPath $srcIni)) {
-  Write-Host "Plugin files missing in $root\plugin — skip install."
+  Write-Host "Plugin files missing in $root\plugin - skip install."
   exit 0
 }
 
@@ -69,4 +69,4 @@ Copy-Item -LiteralPath $srcDlo -Destination (Join-Path $dest "mxb_force_studio.d
 Copy-Item -LiteralPath $srcIni -Destination (Join-Path $dest "force_studio.ini") -Force
 
 Write-Host "Plugin installed to $dest"
-Write-Host "MX Bikes loads plugins at startup — if the game is already open, restart it."
+Write-Host "MX Bikes loads plugins at startup - if the game is already open, restart it."

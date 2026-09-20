@@ -6,41 +6,27 @@ Tuned for a **250 4-stroke** (YZ250F-class): 180 kg with rider (105 kg wet bike 
 
 ## Start here (Windows)
 
-In **this folder** (`mx-hub`), double-click:
+Double-click **`MX Force Studio.bat`**. That is the whole app. You can save just that one file — it unpacks itself, downloads Node.js if needed (no admin), installs the MX Bikes plugin, puts **MX Force Studio** on your Desktop, and opens the garage.
 
-**`MX Force Studio.bat`**
+A window titled **MX Bikes Force Studio** stays open. Keep it open while you ride. Close it to stop.
 
-That is the app. It puts **MX Force Studio** on your Desktop and in the Start Menu (with the orange arrow icon), then starts the garage. A window titled **MX Bikes Force Studio** stays open — keep it open while you ride.
+There is no `.exe`. If Windows SmartScreen says “Windows protected your PC”, click **More info** → **Run anyway**. If the file opens as text, rename it so it ends in `.bat` (not `.bat.txt`).
 
-There is no `.exe`. Windows will run the `.bat` if you double-click it. If Explorer hides extensions, look for **MX Force Studio**.
+First run needs internet and can take a couple of minutes. When the window says **APP READY**, launch MX Bikes on **this same PC**, go on track, switch Force Studio to **Live**, and click **Connect to MX Bikes**. If the game was already open, restart it so the plugin loads.
 
-First run downloads **Node.js** automatically (portable, no admin) if it is not already installed, then installs packages and builds. That can take a couple of minutes and needs internet.
+Later launches use the Desktop icon (orange arrow). You do not need Git.
 
-If you cloned with Origin/WSL, open the folder from Windows first, for example `\\wsl$\Ubuntu\home\<you>\mx-hub`, then double-click the file there. A shortcut created from WSL may not show on a Windows Desktop until you run the `.bat` from Explorer.
-
-**Do not** save only the `.bat` from the browser. You need the whole `mx-hub` folder (`package.json`, `windows\`, `plugin\`, …). Extract **MX_Force_Studio_Windows.zip** if you have it, then double-click `MX Force Studio.bat` inside `MX-Force-Studio`. If you already saved a lone `.bat`, run it anyway — it will try to git-clone the app into `%LOCALAPPDATA%\MXForceStudio\app`.
+If you cloned with Origin/WSL, open the folder from Windows first, for example `\\wsl$\Ubuntu\home\<you>\mx-hub`, then double-click the file there.
 
 ## Run it on Windows (one icon, no terminal)
 
-Force Studio runs as a clickable app. Set it up once, then it lives on your Desktop.
-
-1. **Install Node.js once** (only if you have never installed it). In Command Prompt:
-
-```bat
-winget install OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
-```
-
-If `winget` is missing, download the LTS installer from [nodejs.org](https://nodejs.org/en/download), keep **Add to PATH** checked, and finish the wizard.
-
-2. **Double-click `MX Force Studio.bat`** inside the `mx-hub` folder. First run installs packages, builds the app, copies the telemetry plugin into MX Bikes, and drops the Desktop icon. (It will tell you if Node is missing.)
-
-3. From now on you can use the **Desktop icon**, or double-click `MX Force Studio.bat` again. When the launcher prints **APP READY**, launch MX Bikes, go on track, switch Force Studio to **Live**, and click **Connect to MX Bikes**.
+1. Double-click `MX Force Studio.bat` (Downloads is fine).
+2. Wait until the window prints **APP READY** and the browser opens.
+3. Launch MX Bikes, go on track, switch to **Live**, click **Connect**.
 
 To stop it, close the **MX Bikes Force Studio** window.
 
-> First launch takes about a minute (install + build). Later launches are instant.
-
-If you cloned with Origin in WSL, the Windows path is usually `\\wsl$\Ubuntu\home\<you>\mx-hub` or `/mnt/c/Users/user/mx-hub` if you cloned onto C:.
+> First launch takes about a minute (Node + install + build). Later launches are instant.
 
 ## Run it (macOS / Linux / WSL)
 

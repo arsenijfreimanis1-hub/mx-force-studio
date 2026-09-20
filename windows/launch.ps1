@@ -8,8 +8,6 @@ $ErrorActionPreference = "Stop"
 $NodeVersion = "22.14.0"
 $NodeZipName = "node-v$NodeVersion-win-x64.zip"
 $NodeUrl = "https://nodejs.org/dist/v$NodeVersion/$NodeZipName"
-$RepoUrl = "https://origin.cursor.com/git/arsenij-freimanis/mx-hub.git"
-$RepoBranch = "cursor/windows-clickable-launcher-e196"
 
 function Write-Step($msg) {
   Write-Host ""
@@ -27,27 +25,32 @@ function Get-AppRoot {
   }
   $here = (Get-Location).Path
   if (Test-Path -LiteralPath (Join-Path $here "package.json")) { return $here }
+  $installed = Join-Path $env:LOCALAPPDATA "MXForceStudio\app"
+  if (Test-Path -LiteralPath (Join-Path $installed "package.json")) { return $installed }
   return $null
 }
 
-function Install-Repo($dest) {
-  Write-Step "App files are missing here — downloading MX Force Studio to $dest"
-  New-Item -ItemType Directory -Force -Path $dest | Out-Null
-  $git = Get-Command git -ErrorAction SilentlyContinue
-  if ($git) {
-    if (Test-Path -LiteralPath (Join-Path $dest ".git")) {
-      & git -C $dest fetch origin $RepoBranch
-      & git -C $dest checkout $RepoBranch
-      & git -C $dest pull origin $RepoBranch
-    } else {
-      if ((Get-ChildItem -LiteralPath $dest -Force -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0) {
-        $dest = Join-Path $dest "mx-hub"
-      }
-      & git clone --depth 1 --branch $RepoBranch $RepoUrl $dest
-    }
-    return $dest
+function Unblock-Tree($dir) {
+  Get-ChildItem -LiteralPath $dir -Recurse -File -ErrorAction SilentlyContinue |
+    ForEach-Object { Unblock-File -LiteralPath $_.FullName -ErrorAction SilentlyContinue }
+}
+
+function Invoke-Npm([string]$ArgsLine) {
+  if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue) -and -not (Get-Command npm -ErrorAction SilentlyContinue)) {
+    throw "npm was not found after installing Node.js."
   }
-  throw "This folder is missing the rest of MX Force Studio (package.json / Force Studio.cmd), and git is not installed, so it cannot download the app. Extract the whole mx-hub folder (not just the .bat) and double-click 'MX Force Studio.bat' inside it."
+  Write-Host "npm $ArgsLine"
+  cmd.exe /c "npm.cmd $ArgsLine"
+  if ($LASTEXITCODE -ne 0) { throw "npm $ArgsLine failed (exit $LASTEXITCODE)" }
+}
+
+function Save-Url($url, $outFile) {
+  $curl = Join-Path $env:SystemRoot "System32\curl.exe"
+  if (Test-Path -LiteralPath $curl) {
+    & $curl -L --fail --retry 3 --retry-delay 2 -o $outFile $url
+    if ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath $outFile)) { return }
+  }
+  Invoke-WebRequest -Uri $url -OutFile $outFile -UseBasicParsing
 }
 
 function Install-Node {
@@ -56,21 +59,31 @@ function Install-Node {
     Write-Host "Using Node $($existing.Source)"
     return
   }
+  foreach ($candidate in @(
+    (Join-Path $env:ProgramFiles "nodejs\node.exe"),
+    (Join-Path ${env:ProgramFiles(x86)} "nodejs\node.exe")
+  )) {
+    if ($candidate -and (Test-Path -LiteralPath $candidate)) {
+      $env:PATH = "$(Split-Path -Parent $candidate);$env:PATH"
+      Write-Host "Using Node $candidate"
+      return
+    }
+  }
 
   $tools = Join-Path $env:LOCALAPPDATA "MXForceStudio"
   $nodeHome = Join-Path $tools "node-v$NodeVersion-win-x64"
   $nodeExe = Join-Path $nodeHome "node.exe"
   if (-not (Test-Path -LiteralPath $nodeExe)) {
-    Write-Step "Node.js not found — downloading portable Node $NodeVersion (no admin needed)"
+    Write-Step "Node.js not found - downloading portable Node $NodeVersion (no admin needed)"
     New-Item -ItemType Directory -Force -Path $tools | Out-Null
     $zip = Join-Path $tools $NodeZipName
-    Invoke-WebRequest -Uri $NodeUrl -OutFile $zip -UseBasicParsing
+    Save-Url $NodeUrl $zip
     Write-Host "Extracting $zip"
     if (Test-Path -LiteralPath $nodeHome) { Remove-Item -LiteralPath $nodeHome -Recurse -Force }
     Expand-Archive -LiteralPath $zip -DestinationPath $tools -Force
   }
   if (-not (Test-Path -LiteralPath $nodeExe)) {
-    throw "Failed to install Node.js. Download the LTS installer from https://nodejs.org/en/download and run MX Force Studio.bat again."
+    throw "Failed to install Node.js. Download the LTS installer from https://nodejs.org/en/download , keep Add to PATH checked, then double-click MX Force Studio.bat again."
   }
   $env:PATH = "$nodeHome;$env:PATH"
   Write-Host "Using portable Node $nodeHome"
@@ -83,56 +96,59 @@ try {
 
   $root = Get-AppRoot
   if (-not $root) {
-    $root = Install-Repo (Join-Path $env:LOCALAPPDATA "MXForceStudio\app")
+    throw "App files are missing. Double-click the MX Force Studio.bat that unpacks itself, or extract MX_Force_Studio_Windows.zip and run the .bat inside the folder."
   }
   Set-Location -LiteralPath $root
+  Unblock-Tree $root
   Write-Host "App folder: $root"
 
   Install-Node
-  Write-Host "node $(node -v)   npm $(npm -v)"
+  Write-Host "node $(node -v)   npm $(cmd.exe /c npm.cmd -v)"
 
-  if (-not (Test-Path -LiteralPath (Join-Path $root "node_modules"))) {
-    Write-Step "Installing packages (first run only, a minute or two)"
-    & npm install
-    if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+  if (-not (Test-Path -LiteralPath (Join-Path $root "node_modules\next"))) {
+    Write-Step "Installing packages (first run only, a minute or two - needs internet)"
+    if (Test-Path -LiteralPath (Join-Path $root "package-lock.json")) {
+      Invoke-Npm "ci"
+    } else {
+      Invoke-Npm "install"
+    }
   }
 
   if (-not (Test-Path -LiteralPath (Join-Path $root ".next\BUILD_ID"))) {
     Write-Step "Building Force Studio (first run only)"
-    & npm run build
-    if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
+    Invoke-Npm "run build"
   }
 
   $shortcut = Join-Path $root "windows\create-shortcut.ps1"
   if (Test-Path -LiteralPath $shortcut) {
     Write-Step "Creating Desktop / Start Menu icon"
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $shortcut
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $shortcut
   }
 
   $plugin = Join-Path $root "windows\install-plugin.ps1"
   if (Test-Path -LiteralPath $plugin) {
     Write-Step "Installing MX Bikes telemetry plugin"
-    & powershell -NoProfile -ExecutionPolicy Bypass -File $plugin
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $plugin
   }
 
   Write-Host ""
   Write-Host "================================================================" -ForegroundColor Green
-  Write-Host "  Starting at http://127.0.0.1:43187" -ForegroundColor Green
-  Write-Host "  When the browser opens: launch MX Bikes, go on track," -ForegroundColor Green
-  Write-Host "  switch to Live, click Connect." -ForegroundColor Green
+  Write-Host "  APP READY   http://127.0.0.1:43187" -ForegroundColor Green
+  Write-Host "  NOW launch MX Bikes on this same PC, go on track," -ForegroundColor Green
+  Write-Host "  switch Force Studio to Live, click Connect." -ForegroundColor Green
   Write-Host "  If the game is already open, restart it so the plugin loads." -ForegroundColor Green
   Write-Host "================================================================" -ForegroundColor Green
   Write-Host ""
 
   $bridge = Start-Process -FilePath "node" -ArgumentList "bridge\udp-bridge.mjs" -WorkingDirectory $root -PassThru -WindowStyle Hidden
 
-  $opener = Start-Process -FilePath "powershell" -ArgumentList @(
+  $opener = Start-Process -FilePath "powershell.exe" -ArgumentList @(
     "-NoProfile", "-Command",
     "`$u='http://127.0.0.1:43187'; for(`$i=0;`$i -lt 120;`$i++){ try{ `$null = Invoke-WebRequest -UseBasicParsing `$u -TimeoutSec 1; Start-Process `$u; break } catch { Start-Sleep -Milliseconds 500 } }"
   ) -PassThru -WindowStyle Hidden
 
   try {
-    & npm run start
+    Invoke-Npm "run start"
   } finally {
     foreach ($proc in @($bridge, $opener)) {
       if ($proc -and -not $proc.HasExited) {
@@ -144,8 +160,8 @@ try {
   Write-Host ""
   Write-Host "FAILED: $($_.Exception.Message)" -ForegroundColor Red
   Write-Host ""
-  Write-Host "If you only downloaded the .bat, that is why. You need the whole mx-hub folder."
-  Write-Host "Put MX Force Studio.bat next to package.json, Force Studio.cmd, and the windows\ folder."
+  Write-Host "Leave this window open so you can read the error."
+  Write-Host "Need internet on the first run (Node.js + npm packages)."
   Write-Host ""
   exit 1
 }
