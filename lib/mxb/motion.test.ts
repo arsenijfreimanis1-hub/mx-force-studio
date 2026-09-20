@@ -244,6 +244,11 @@ test("PiBoSo negative roll is a left lean on the deck", () => {
   assert.ok(pose.roll < -0.35, `roll ${pose.roll}`);
 });
 
+test("PiBoSo positive roll is a right lean on the deck", () => {
+  const pose = run(sample({ roll: 28, accelG: { x: 0, y: 1, z: 0 } }), 0.8);
+  assert.ok(pose.roll > 0.35, `roll ${pose.roll}`);
+});
+
 test("plugin Euler lean wins over a heading-looking matrix", () => {
   const pose = run(
     sample({ roll: -28, rot: rzRoll(32), accelG: { x: 0, y: 1, z: 0 } }),

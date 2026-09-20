@@ -84,7 +84,7 @@ export function loadProfile(
     const raw = storage.getItem(profileKey(bikeId));
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<BikeProfile>;
-    return { ...fallback, ...parsed, bikeId, bikeName: parsed.bikeName || bikeName };
+    return { ...fallback, ...parsed, bikeId, bikeName: parsed.bikeName || bikeName, rollSign: 1 };
   } catch {
     return fallback;
   }
@@ -203,19 +203,13 @@ export function applyProfileToTravel(travel: FrameTravel, profile: BikeProfile):
 }
 
 export function applyProfileToTelemetry(tel: Telemetry, profile: BikeProfile): Telemetry {
-  const accel =
-    profile.forceIsMs2 === true
-      ? {
-          x: tel.accelG.x / GRAVITY,
-          y: tel.accelG.y / GRAVITY,
-          z: tel.accelG.z / GRAVITY,
-        }
-      : tel.accelG;
-  if (profile.rollSign === 1 && profile.forceIsMs2 !== true) return tel;
+  if (profile.forceIsMs2 !== true) return tel;
   return {
     ...tel,
-    accelG: accel,
-    roll: tel.roll * profile.rollSign,
-    rollRate: tel.rollRate * profile.rollSign,
+    accelG: {
+      x: tel.accelG.x / GRAVITY,
+      y: tel.accelG.y / GRAVITY,
+      z: tel.accelG.z / GRAVITY,
+    },
   };
 }

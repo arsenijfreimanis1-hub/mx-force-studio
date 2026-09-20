@@ -7,6 +7,7 @@ import {
   loadProfile,
   lockParkedUnits,
   observeTelemetry,
+  profileKey,
   saveProfile,
 } from "./adapt.ts";
 import { DEFAULT_FRAME_TRAVEL } from "./motion.ts";
@@ -90,7 +91,7 @@ test("20 s of moving samples learns a response near 80% of travel", () => {
   assert.ok(travel.smoothTau >= 0.03);
 });
 
-test("applyProfileToTelemetry converts locked m/s² and roll sign", () => {
+test("applyProfileToTelemetry converts locked m/s² and never flips roll", () => {
   const profile = {
     ...defaultProfile("crf"),
     forceIsMs2: true as const,
@@ -98,7 +99,23 @@ test("applyProfileToTelemetry converts locked m/s² and roll sign", () => {
   };
   const tel = applyProfileToTelemetry(sample({ accelG: { x: 0, y: 9.80665, z: 0 }, roll: 12 }), profile);
   assert.ok(Math.abs(tel.accelG.y - 1) < 1e-6, JSON.stringify(tel.accelG));
-  assert.equal(tel.roll, -12);
+  assert.equal(tel.roll, 12);
+});
+
+test("saved rollSign -1 is ignored on load", () => {
+  const mem = new Map<string, string>();
+  const storage = {
+    getItem: (k: string) => mem.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      mem.set(k, v);
+    },
+  };
+  storage.setItem(
+    profileKey("old"),
+    JSON.stringify({ ...defaultProfile("old"), rollSign: -1, learned: true }),
+  );
+  const loaded = loadProfile("old", "Old", storage);
+  assert.equal(loaded.rollSign, 1);
 });
 
 test("profiles persist per bikeId", () => {

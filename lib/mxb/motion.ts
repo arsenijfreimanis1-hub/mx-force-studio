@@ -69,8 +69,8 @@ const INTEGRATOR_HZ = 120;
  */
 const TILT_RATE_LIMIT = (55 * Math.PI) / 180;
 const TILT_TAU = 0.22;
-/** Follow in-game Euler tightly so throttle / brake / lean match the sim. */
-const ATTITUDE_TAU = 0.05;
+/** Follow plugin Euler directly — do not wait on the IMU smoother. */
+const ATTITUDE_TAU = 0.03;
 /** Grounded whoops stay on the shocks; air / landing can move faster. */
 const HEAVE_TAU_GROUND = 0.1;
 const HEAVE_TAU_AIR = 0.06;
@@ -449,7 +449,7 @@ export function stepMotion(
   filter.vpitch = 0;
 
   const inputPitch =
-    (cues.throttle * 0.14 - cues.frontBrake * 0.2 - cues.rearBrake * 0.06) * response;
+    (cues.throttle * 0.18 - cues.frontBrake * 0.26 - cues.rearBrake * 0.08) * response;
   const tiltPitchTarget = Math.atan(gForce.z) * TILT_PITCH_BLEND * response + inputPitch;
   const tiltRollTarget = Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
   filter.tiltPitch = rateLimit(filter.tiltPitch, tiltPitchTarget, step, TILT_RATE_LIMIT);
@@ -457,9 +457,8 @@ export function stepMotion(
   filter.tiltPitch = follow(filter.tiltPitch, tiltPitchTarget, step, TILT_TAU);
   filter.tiltRoll = follow(filter.tiltRoll, tiltRollTarget, step, TILT_TAU);
 
-  const attitudeTau = Math.min(ATTITUDE_TAU, Math.max(0.04, smoothTau));
-  filter.followRoll = follow(filter.followRoll, deg(filter.sRoll) * LEAN_FOLLOW, step, attitudeTau);
-  filter.followPitch = follow(filter.followPitch, deg(filter.sPitch) * PITCH_FOLLOW, step, attitudeTau);
+  filter.followRoll = follow(filter.followRoll, deg(attitude.roll) * LEAN_FOLLOW, step, ATTITUDE_TAU);
+  filter.followPitch = follow(filter.followPitch, deg(attitude.pitch) * PITCH_FOLLOW, step, ATTITUDE_TAU);
 
   filter.shown = clearPoseFromFloor({
     x: filter.x,

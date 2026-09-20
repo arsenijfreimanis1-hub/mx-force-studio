@@ -114,9 +114,16 @@ try {
     }
   }
 
-  if (-not (Test-Path -LiteralPath (Join-Path $root ".next\BUILD_ID"))) {
-    Write-Step "Building Force Studio (first run only)"
+  $revFile = Join-Path $root "windows\app-revision.txt"
+  $builtRevFile = Join-Path $root ".next\app-revision.txt"
+  $rev = if (Test-Path -LiteralPath $revFile) { (Get-Content -LiteralPath $revFile -Raw).Trim() } else { "unknown" }
+  $builtRev = if (Test-Path -LiteralPath $builtRevFile) { (Get-Content -LiteralPath $builtRevFile -Raw).Trim() } else { "" }
+  $haveBuild = Test-Path -LiteralPath (Join-Path $root ".next\BUILD_ID")
+  if (-not $haveBuild -or $builtRev -ne $rev) {
+    Write-Step "Building Force Studio"
     Invoke-Npm "run build"
+    New-Item -ItemType Directory -Force -Path (Join-Path $root ".next") | Out-Null
+    Set-Content -LiteralPath $builtRevFile -Value $rev -NoNewline
   }
 
   $shortcut = Join-Path $root "windows\create-shortcut.ps1"

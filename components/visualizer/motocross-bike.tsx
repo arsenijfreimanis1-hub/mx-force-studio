@@ -120,8 +120,11 @@ function SteerBars({
   });
   return (
     <group ref={group} position={[0, 0.74, 0.52]}>
+      <mesh position={[0, -0.08, 0]} material={bar}>
+        <cylinderGeometry args={[0.016, 0.016, 0.16, 8]} />
+      </mesh>
       <mesh rotation={[0, 0, Math.PI / 2]} material={bar}>
-        <cylinderGeometry args={[0.02, 0.02, 0.52, 8]} />
+        <cylinderGeometry args={[0.022, 0.022, 0.56, 8]} />
       </mesh>
     </group>
   );

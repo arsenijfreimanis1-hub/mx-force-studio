@@ -163,6 +163,11 @@ function Unpack-Payload($dest) {
   $stage = Join-Path $env:TEMP ('MXForceStudio-unpack-' + [guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Force -Path $stage | Out-Null
   Expand-Archive -LiteralPath $zip -DestinationPath $stage -Force
+  $oldNext = Join-Path $dest '.next'
+  if (Test-Path -LiteralPath $oldNext) {
+    Write-Host "Replacing previous build so this pack's source is what you run"
+    Remove-Item -LiteralPath $oldNext -Recurse -Force
+  }
   Get-ChildItem -LiteralPath $stage -Recurse -File | ForEach-Object {
     $rel = $_.FullName.Substring($stage.Length).TrimStart('\')
     $target = Join-Path $dest $rel
