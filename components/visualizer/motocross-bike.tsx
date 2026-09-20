@@ -1,7 +1,11 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { memo, useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
+import type { MutableRefObject } from "react";
+import { idleRider, riderFromTelemetry } from "@/lib/mxb/rider";
+import type { Telemetry } from "@/lib/mxb/types";
 
 type Vec = [number, number, number];
 
@@ -45,28 +49,91 @@ function Tube({
 
   return (
     <mesh position={position} quaternion={quaternion} material={material}>
-      <cylinderGeometry args={[radius, radius, length, 8]} />
+      <cylinderGeometry args={[radius, radius, length, 6]} />
     </mesh>
   );
 }
 
-function RiderDummy() {
+function RiderDummy({
+  telemetryRef,
+  liveRef,
+  padActiveRef,
+}: {
+  telemetryRef: MutableRefObject<Telemetry>;
+  liveRef: MutableRefObject<boolean>;
+  padActiveRef: MutableRefObject<boolean>;
+}) {
+  const group = useRef<THREE.Group>(null);
+  const hips = useRef<THREE.Mesh>(null);
+  const leftLeg = useRef<THREE.Mesh>(null);
+  const rightLeg = useRef<THREE.Mesh>(null);
+  const last = useRef(idleRider());
+
+  useFrame((_, dt) => {
+    const node = group.current;
+    if (!node) return;
+    const active = liveRef.current || padActiveRef.current;
+    const want = active ? riderFromTelemetry(telemetryRef.current) : idleRider();
+    const a = active ? 1 - Math.exp(-Math.min(0.05, dt) / 0.1) : 1;
+    const pose = last.current;
+    pose.stand += (want.stand - pose.stand) * a;
+    pose.lean += (want.lean - pose.lean) * a;
+    pose.foreAft += (want.foreAft - pose.foreAft) * a;
+    node.position.set(0, 0.78 + pose.stand * 0.16, 0.04 + pose.foreAft);
+    node.rotation.set(pose.stand * -0.18, 0, pose.lean);
+    if (hips.current) hips.current.scale.set(1, 1 + pose.stand * 0.12, 1);
+    const squat = 0.55 - pose.stand * 0.28;
+    if (leftLeg.current) leftLeg.current.rotation.x = squat;
+    if (rightLeg.current) rightLeg.current.rotation.x = squat;
+  });
+
+  const kit = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#1e293b", roughness: 0.7 }),
+    [],
+  );
+  const lid = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#334155", roughness: 0.45, metalness: 0.15 }),
+    [],
+  );
+  const limb = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#0f172a", roughness: 0.75 }),
+    [],
+  );
+
   return (
-    <group position={[0, 0.92, 0.02]}>
-      <mesh position={[0, 0.16, 0]}>
-        <capsuleGeometry args={[0.09, 0.28, 4, 8]} />
-        <meshStandardMaterial color="#1e293b" roughness={0.7} />
+    <group ref={group} position={[0, 0.78, 0.04]}>
+      <mesh ref={hips} position={[0, 0.14, 0]} material={kit}>
+        <capsuleGeometry args={[0.085, 0.24, 3, 6]} />
       </mesh>
-      <mesh position={[0, 0.42, 0.02]}>
-        <sphereGeometry args={[0.095, 12, 10]} />
-        <meshStandardMaterial color="#334155" roughness={0.45} metalness={0.15} />
+      <mesh position={[0, 0.38, 0.02]} material={lid}>
+        <sphereGeometry args={[0.088, 8, 6]} />
+      </mesh>
+      <mesh position={[0.11, 0.02, 0.02]} rotation={[0.15, 0, 0.2]} material={limb}>
+        <capsuleGeometry args={[0.038, 0.2, 3, 5]} />
+      </mesh>
+      <mesh position={[-0.11, 0.02, 0.02]} rotation={[0.15, 0, -0.2]} material={limb}>
+        <capsuleGeometry args={[0.038, 0.2, 3, 5]} />
+      </mesh>
+      <mesh ref={leftLeg} position={[0.07, -0.16, 0.04]} rotation={[0.55, 0, 0]} material={limb}>
+        <capsuleGeometry args={[0.04, 0.22, 3, 5]} />
+      </mesh>
+      <mesh ref={rightLeg} position={[-0.07, -0.16, 0.04]} rotation={[0.55, 0, 0]} material={limb}>
+        <capsuleGeometry args={[0.04, 0.22, 3, 5]} />
       </mesh>
     </group>
   );
 }
 
 /** MX chassis only — no wheels, swingarm, or lower fork legs. */
-export const MotocrossBike = memo(function MotocrossBike() {
+export const MotocrossBike = memo(function MotocrossBike({
+  telemetryRef,
+  liveRef,
+  padActiveRef,
+}: {
+  telemetryRef: MutableRefObject<Telemetry>;
+  liveRef: MutableRefObject<boolean>;
+  padActiveRef: MutableRefObject<boolean>;
+}) {
   const chrome = useMemo(
     () => new THREE.MeshStandardMaterial({ color: "#f8fafc", metalness: 0.7, roughness: 0.34 }),
     [],
@@ -103,13 +170,13 @@ export const MotocrossBike = memo(function MotocrossBike() {
       <Tube from={STUB_R} to={STUB_END_R} radius={0.018} material={stub} />
 
       <mesh position={CROWN} rotation={[-0.33, 0, 0]} material={clampMat}>
-        <cylinderGeometry args={[0.032, 0.032, 0.16, 10]} />
+        <cylinderGeometry args={[0.032, 0.032, 0.16, 8]} />
       </mesh>
       <mesh position={[0, 0.74, 0.52]} rotation={[0, 0, Math.PI / 2]} material={bar}>
-        <cylinderGeometry args={[0.014, 0.014, 0.5, 8]} />
+        <cylinderGeometry args={[0.014, 0.014, 0.5, 6]} />
       </mesh>
 
-      <RiderDummy />
+      <RiderDummy telemetryRef={telemetryRef} liveRef={liveRef} padActiveRef={padActiveRef} />
     </group>
   );
 });

@@ -19,6 +19,7 @@ import {
 import { DEFAULT_EVENT, DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
 import { formatG, speedKph } from "@/lib/mxb/forces";
 import { gamepadActive, readFirstGamepad } from "@/lib/mxb/gamepad";
+import { setupLabel } from "@/lib/mxb/inputs";
 import { displayBikeName, isPlaceholderBikeName } from "@/lib/mxb/live-store";
 import { fmtLapMs, fmtOnTrackS, sessionKind, suspUsedPct, trackPct } from "@/lib/mxb/session";
 import {
@@ -307,13 +308,14 @@ export function MxForceStudio() {
       : "waiting";
   const telemetry = hudTel;
   const liveName = displayBikeName(hudEvent);
+  const setupName = setupLabel(livePacket?.session.setupFileName);
   const bikeLabel = usingLive
     ? liveName || "MX Bikes"
     : padOn
       ? "Xbox pad"
       : liveState === "waiting"
-        ? "Waiting"
-        : "Not connected";
+        ? "Waiting for MX Bikes"
+        : "Awaiting game";
   const frontSuspPct = Math.round(suspUsedPct(telemetry.suspLength[0], hudEvent.suspMaxTravel[0]) * 100);
   const rearSuspPct = Math.round(suspUsedPct(telemetry.suspLength[1], hudEvent.suspMaxTravel[1]) * 100);
   const onTrackPct = Math.round(trackPct(telemetry) * 100);
@@ -364,7 +366,7 @@ export function MxForceStudio() {
             <Unplug className="size-3" />
           )}
           <span className="truncate">
-            {usingLive ? bikeLabel : liveState === "waiting" ? "Waiting" : bikeLabel}
+            {bikeLabel}
           </span>
         </Badge>
       </header>
@@ -428,6 +430,14 @@ export function MxForceStudio() {
             </Button>
           </div>
 
+          {!driving && liveState === "idle" ? (
+            <div className="pointer-events-none absolute inset-0 z-10 flex items-end justify-center pb-16">
+              <p className="rounded-md border border-white/10 bg-black/60 px-3 py-2 text-center text-xs text-amber-100">
+                Awaiting MX Bikes — frame stays upright until you go on track and Connect
+              </p>
+            </div>
+          ) : null}
+
           <InputsOverlay telemetry={telemetry} />
         </section>
 
@@ -435,19 +445,25 @@ export function MxForceStudio() {
           <ScrollArea className="min-h-0 flex-1">
             <div className="flex flex-col gap-4 p-3">
               {liveState === "idle" ? (
-                <Button
-                  size="sm"
-                  className="w-full bg-sky-500 text-white hover:bg-sky-400"
-                  onClick={() => {
-                    setConnectRequested(true);
-                    motionRef.current = createMotionFilter();
-                    poseRef.current = identityPose();
-                    void pollRef.current();
-                  }}
-                >
-                  <Radio />
-                  Connect
-                </Button>
+                <>
+                  <p className="text-xs leading-4 text-muted-foreground">
+                    Garage is parked upright. Start MX Bikes on this PC, go on track, then Connect.
+                    Stock Xbox: RT throttle, LT front brake, LB rear, A clutch, left stick steer/lean.
+                  </p>
+                  <Button
+                    size="sm"
+                    className="w-full bg-sky-500 text-white hover:bg-sky-400"
+                    onClick={() => {
+                      setConnectRequested(true);
+                      motionRef.current = createMotionFilter();
+                      poseRef.current = identityPose();
+                      void pollRef.current();
+                    }}
+                  >
+                    <Radio />
+                    Connect
+                  </Button>
+                </>
               ) : null}
 
               {liveState === "waiting" ? (
@@ -483,6 +499,7 @@ export function MxForceStudio() {
                     <p>
                       Susp F {frontSuspPct}% · R {rearSuspPct}%
                     </p>
+                    {setupName ? <p>Setup {setupName}</p> : null}
                   </div>
                   <Button
                     size="xs"

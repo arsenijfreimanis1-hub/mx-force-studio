@@ -12,7 +12,7 @@ Double-click the **MX Force Studio** desktop icon (or `setup-windows.cmd`). It c
 
 `force_studio.ini` stays at `127.0.0.1:47387` when the visualizer runs on the same PC.
 
-Then wait for **APP READY**, launch MX Bikes, go on track, switch Force Studio to **Live**, and click **Connect to MX Bikes**.
+Then wait for **APP READY**. The garage stays upright until you launch MX Bikes, go on track, and click **Connect**.
 
 A license is not required for output plugins. The plugin is fire-and-forget UDP; it will not stall the sim if the bridge is down.
 

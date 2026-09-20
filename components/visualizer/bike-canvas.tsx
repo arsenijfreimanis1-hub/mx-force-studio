@@ -7,6 +7,7 @@ import { MotocrossBike } from "@/components/visualizer/motocross-bike";
 import { ForceArrows } from "@/components/visualizer/force-arrows";
 import { ChassisRig } from "@/components/visualizer/chassis-rig";
 import { WorldMotionCues } from "@/components/visualizer/world-motion";
+import { MotionPedestal } from "@/components/visualizer/support-rod";
 import {
   PLATFORM_HOME_Y,
   type FrameTravel,
@@ -28,6 +29,7 @@ export function BikeCanvas({
   eventRef,
   forcesRef,
   hiddenRef,
+  driving,
 }: {
   telemetryRef: MutableRefObject<Telemetry>;
   hideForces: boolean;
@@ -47,13 +49,13 @@ export function BikeCanvas({
     <Canvas
       shadows={false}
       dpr={[1, 1.25]}
-      frameloop="always"
-      gl={{ antialias: true }}
+      frameloop={driving ? "always" : "demand"}
+      gl={{ antialias: true, powerPreference: "high-performance" }}
       onCreated={({ invalidate }) => invalidate()}
     >
       <color attach="background" args={["#120e0b"]} />
       <fog attach="fog" args={["#120e0b", 14, 32]} />
-      <PerspectiveCamera makeDefault position={[3.6, 2.7, -5.4]} fov={36} />
+      <PerspectiveCamera makeDefault position={[2.8, 2.35, -5.8]} fov={34} />
       <ambientLight intensity={0.48} />
       <directionalLight position={[4, 10, 3]} intensity={2.05} />
 
@@ -75,6 +77,7 @@ export function BikeCanvas({
           position={[0, 0.002, 0]}
         />
         <WorldMotionCues />
+        <MotionPedestal poseRef={poseRef} />
         <ChassisRig
           poseRef={poseRef}
           telemetryRef={telemetryRef}
@@ -86,7 +89,7 @@ export function BikeCanvas({
           eventRef={eventRef}
           forcesRef={forcesRef}
         >
-          <MotocrossBike />
+          <MotocrossBike telemetryRef={telemetryRef} liveRef={liveRef} padActiveRef={padActiveRef} />
           {hideForces ? null : <ForceArrows forcesRef={forcesRef} hiddenRef={hiddenRef} />}
         </ChassisRig>
       </group>

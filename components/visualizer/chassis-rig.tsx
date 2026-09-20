@@ -21,7 +21,7 @@ import { buildForceModel } from "@/lib/mxb/forces";
 import type { BikeEvent, ForceModel, SandboxInputs, Telemetry } from "@/lib/mxb/types";
 
 /** Visual follow of the washout pose. Longer than the IMU hash, still under jump-drop budget. */
-export const VISUAL_POSE_TAU = 0.08;
+export const VISUAL_POSE_TAU = 0.1;
 
 export function ChassisRig({
   poseRef,
@@ -50,6 +50,7 @@ export function ChassisRig({
   const lastMs = useRef(0);
   const clockRef = useRef(0);
   const visualPrimed = useRef(false);
+  const parked = useRef(true);
   const targetQuat = useMemo(() => new THREE.Quaternion(), []);
   const targetPos = useMemo(() => new THREE.Vector3(), []);
   const euler = useMemo(() => new THREE.Euler(0, 0, 0, "YXZ"), []);
@@ -80,21 +81,23 @@ export function ChassisRig({
     const driving = liveRef.current || padActiveRef.current;
     const wasPrimed = motionRef.current.primed;
     if (driving) {
+      parked.current = false;
       poseRef.current = stepMotion(
         motionRef.current,
         telemetryRef.current,
         dt,
         travelRef.current,
       );
-    } else {
-      if (wasPrimed) resetMotionFilter(motionRef.current);
+      forcesRef.current = buildForceModel(telemetryRef.current, eventRef.current);
+    } else if (!parked.current || wasPrimed) {
+      resetMotionFilter(motionRef.current);
       poseRef.current = identityPose();
       telemetryRef.current = restTelemetry({ rpm: 0 });
       sandboxRef.current = { ...DEFAULT_SANDBOX };
       clockRef.current = 0;
+      parked.current = true;
+      forcesRef.current = buildForceModel(telemetryRef.current, eventRef.current);
     }
-
-    forcesRef.current = buildForceModel(telemetryRef.current, eventRef.current);
 
     const pose = poseRef.current;
     targetPos.set(pose.x, PLATFORM_HOME_Y + pose.y, pose.z);
