@@ -1,6 +1,5 @@
 "use client";
 
-import { Html } from "@react-three/drei";
 import * as THREE from "three";
 import type { ForceId, ForceVector } from "@/lib/mxb/types";
 
@@ -25,9 +24,7 @@ export function ForceArrows({
           2.4,
           Math.max(0.18, force.magnitude * (force.kind === "moment" ? 0.012 : scale)),
         );
-        return (
-          <ForceArrow key={force.id} force={force} length={length} />
-        );
+        return <ForceArrow key={force.id} force={force} length={length} />;
       })}
     </group>
   );
@@ -60,17 +57,6 @@ function ForceArrow({ force, length }: { force: ForceVector; length: number }) {
           roughness={0.3}
         />
       </mesh>
-      <Html
-        position={[0, length + 0.08, 0]}
-        center
-        sprite
-        distanceFactor={8}
-        style={{ pointerEvents: "none" }}
-      >
-        <div className="rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-white whitespace-nowrap">
-          {force.shortName}
-        </div>
-      </Html>
     </group>
   );
 }

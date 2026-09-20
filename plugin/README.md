@@ -1,6 +1,6 @@
 # MX Bikes Force Studio output plugin
 
-64-bit `.dlo` that MX Bikes loads from its `plugins` folder. Every physics tick (20 Hz) it UDP-sends the same JSON Force Studio already accepts on port `47387`.
+64-bit `.dlo` that MX Bikes loads from its `plugins` folder. Every physics tick (~50 Hz) it UDP-sends the same JSON Force Studio already accepts on port `47387`.
 
 ## Install on the Windows gaming PC
 

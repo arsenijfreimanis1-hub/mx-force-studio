@@ -1,6 +1,6 @@
 # MX Bikes Force Studio
 
-A garage visualizer for [MX Bikes](https://www.mx-bikes.com/). The bike stays put. The arrows move.
+A garage visualizer for [MX Bikes](https://www.mx-bikes.com/). The skeleton stays. The frame origin (bottom-middle of the cradle) moves up to **±1 m** on each axis from live telemetry. The arrows and inputs update with the same packet.
 
 Tuned for a **250 4-stroke** (YZ250F-class): 180 kg with rider (105 kg wet bike + 75 kg rider), 1.476 m wheelbase, 310 / 312 mm travel, 14,000 rpm. Livery can be swapped later.
 

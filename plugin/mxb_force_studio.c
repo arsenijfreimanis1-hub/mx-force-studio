@@ -172,8 +172,8 @@ __declspec(dllexport) int Startup(char *_szSavePath)
 		g_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 	}
 
-	/* 20 Hz. Keep RunTelemetry cheap. */
-	return 2;
+	/* Telemetry period: 1 ≈ 50 Hz (was 2 ≈ 20 Hz). Keep RunTelemetry cheap. */
+	return 1;
 }
 
 __declspec(dllexport) void Shutdown(void)

@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "MX Bikes Force Studio",
   description:
-    "Static motocross bike visualizer for MX Bikes. Watch gravity, grip, suspension, and G-forces update while the bike stays in place.",
+    "Motocross garage visualizer for MX Bikes. The skeleton stays put; the frame origin moves ±1 m from live telemetry.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

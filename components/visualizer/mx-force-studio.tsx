@@ -20,6 +20,13 @@ import { Switch } from "@/components/ui/switch";
 import { DEFAULT_EVENT, DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
 import { SCENARIOS, telemetryForScenario } from "@/lib/mxb/demo";
 import { FORCE_META, buildForceModel, formatG, formatNewtons, speedKph } from "@/lib/mxb/forces";
+import {
+  createMotionFilter,
+  DEFAULT_FRAME_TRAVEL,
+  identityPose,
+  stepMotion,
+  type FrameTravel,
+} from "@/lib/mxb/motion";
 import type {
   BikeEvent,
   ForceId,
@@ -88,8 +95,8 @@ function NumberSlider({
   onChange: (value: number) => void;
 }) {
   return (
-    <label className="grid gap-1.5">
-      <span className="flex items-center justify-between text-xs text-muted-foreground">
+    <label className="grid gap-1">
+      <span className="flex items-center justify-between text-[11px] text-muted-foreground">
         <span>{label}</span>
         <span className="font-mono text-foreground">{display}</span>
       </span>
@@ -119,8 +126,41 @@ export function MxForceStudio() {
   const [staleMs, setStaleMs] = useState<number | null>(null);
   const [clock, setClock] = useState(0);
   const [inspect, setInspect] = useState(true);
+  const [travel, setTravel] = useState<FrameTravel>(DEFAULT_FRAME_TRAVEL);
+  const [poseHud, setPoseHud] = useState(identityPose());
   const clockRef = useRef(0);
   const pollRef = useRef<() => Promise<void>>(async () => {});
+  const motionRef = useRef(createMotionFilter());
+  const poseRef = useRef(identityPose());
+  const travelRef = useRef(DEFAULT_FRAME_TRAVEL);
+  const lastStepRef = useRef(0);
+  const modeRef = useRef(mode);
+  const connectRef = useRef(connectRequested);
+  const lastHudRef = useRef(0);
+  const scenarioRef = useRef(scenario);
+  const sandboxRef = useRef(sandbox);
+
+  useEffect(() => {
+    modeRef.current = mode;
+    connectRef.current = connectRequested;
+    travelRef.current = travel;
+    scenarioRef.current = scenario;
+    sandboxRef.current = sandbox;
+  });
+
+  const stepPose = (next: Telemetry) => {
+    const now = performance.now();
+    const dt = Math.min(0.05, Math.max(0.001, (now - lastStepRef.current) / 1000));
+    lastStepRef.current = now;
+    const pose = stepMotion(motionRef.current, next, dt, travelRef.current);
+    poseRef.current = pose;
+    return pose;
+  };
+
+  useEffect(() => {
+    motionRef.current = createMotionFilter();
+    lastStepRef.current = performance.now();
+  }, [mode, scenario]);
 
   useEffect(() => {
     let frame = 0;
@@ -128,18 +168,45 @@ export function MxForceStudio() {
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      if (playing && mode !== "live") {
+      if (playing && modeRef.current !== "live") {
         clockRef.current += dt;
+        const tel = telemetryForScenario(
+          modeRef.current === "sandbox" ? "sandbox" : scenarioRef.current,
+          clockRef.current,
+          sandboxRef.current,
+        );
+        const pose = stepPose(tel);
+        setPoseHud(pose);
         setClock(clockRef.current);
       }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing, mode]);
+  }, [playing]);
 
   useEffect(() => {
     let cancelled = false;
+    let lastSse = 0;
+
+    const applyHud = (body: {
+      live: boolean;
+      packet: LivePacket | null;
+      staleMs: number | null;
+    }) => {
+      if (cancelled) return;
+      if (body.packet?.telemetry && modeRef.current === "live" && connectRef.current) {
+        stepPose(body.packet.telemetry);
+      }
+      const now = performance.now();
+      if (now - lastHudRef.current < 40) return;
+      lastHudRef.current = now;
+      setLiveOk(body.live);
+      setLivePacket(body.packet);
+      setStaleMs(body.staleMs);
+      setPoseHud(poseRef.current);
+    };
+
     const poll = async () => {
       try {
         const response = await fetch("/api/telemetry", { cache: "no-store" });
@@ -148,20 +215,35 @@ export function MxForceStudio() {
           packet: LivePacket | null;
           staleMs: number | null;
         };
-        if (!cancelled) {
-          setLiveOk(body.live);
-          setLivePacket(body.packet);
-          setStaleMs(body.staleMs);
-        }
+        applyHud(body);
       } catch {
         if (!cancelled) setLiveOk(false);
       }
     };
     pollRef.current = poll;
-    poll();
-    const id = window.setInterval(poll, 80);
+
+    const es = new EventSource("/api/telemetry/stream");
+    es.onmessage = (event) => {
+      lastSse = performance.now();
+      try {
+        applyHud(JSON.parse(event.data) as {
+          live: boolean;
+          packet: LivePacket | null;
+          staleMs: number | null;
+        });
+      } catch {
+        // ignore malformed chunks
+      }
+    };
+
+    const id = window.setInterval(() => {
+      if (performance.now() - lastSse < 400) return;
+      void poll();
+    }, 50);
+
     return () => {
       cancelled = true;
+      es.close();
       window.clearInterval(id);
     };
   }, []);
@@ -177,11 +259,12 @@ export function MxForceStudio() {
     : liveOk && livePacket
       ? "connected"
       : "waiting";
-  const telemetry: Telemetry = usingLive && livePacket
-    ? livePacket.telemetry
-    : mode === "live"
-      ? restTelemetry({ rpm: 0, wheelMaterial: [0, 0] })
-      : demoTelemetry;
+  const telemetry: Telemetry =
+    usingLive && livePacket
+      ? livePacket.telemetry
+      : mode === "live"
+        ? restTelemetry({ rpm: 0, wheelMaterial: [0, 0] })
+        : demoTelemetry;
   const event: BikeEvent = usingLive && livePacket ? livePacket.event : DEFAULT_EVENT;
   const model = useMemo(() => buildForceModel(telemetry, event), [telemetry, event]);
 
@@ -202,64 +285,93 @@ export function MxForceStudio() {
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 md:px-6">
-        <div>
-          <p className="text-[11px] font-medium tracking-[0.22em] text-sky-400 uppercase">
-            MX Bikes · 250F Force Studio
-          </p>
-          <h1 className="text-lg font-semibold tracking-tight md:text-xl">
-            Static 250, live forces
-          </h1>
+      <header className="flex items-center gap-3 border-b border-border px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <h1 className="truncate text-sm font-semibold tracking-tight">MX Force Studio</h1>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={usingLive ? "default" : "outline"} className="gap-1.5">
-            {usingLive ? (
-              <Radio className="size-3" />
-            ) : liveState === "waiting" ? (
-              <Loader2 className="size-3 animate-spin" />
-            ) : (
-              <Unplug className="size-3" />
-            )}
-            {usingLive
-              ? "MX Bikes live"
-              : liveState === "waiting"
-                ? "Waiting for MX Bikes"
-                : "Demo physics"}
-          </Badge>
-          <Badge variant="secondary">
-            {event.bikeName}
-            {event.trackName ? ` · ${event.trackName}` : ""}
-          </Badge>
+        <div className="flex items-center gap-1">
+          <Button
+            size="xs"
+            variant={mode === "demo" ? "default" : "ghost"}
+            onClick={() => {
+              setMode("demo");
+              if (scenario === "sandbox") setScenario("launch");
+            }}
+          >
+            <Gauge />
+            Demo
+          </Button>
+          <Button
+            size="xs"
+            variant={mode === "sandbox" ? "default" : "ghost"}
+            onClick={() => {
+              setMode("sandbox");
+              setScenario("sandbox");
+            }}
+          >
+            <SlidersHorizontal />
+            Sandbox
+          </Button>
+          <Button size="xs" variant={mode === "live" ? "default" : "ghost"} onClick={() => setMode("live")}>
+            <Radio />
+            Live
+          </Button>
         </div>
+        <Badge variant={usingLive ? "default" : "outline"} className="gap-1">
+          {usingLive ? (
+            <Radio className="size-3" />
+          ) : liveState === "waiting" ? (
+            <Loader2 className="size-3 animate-spin" />
+          ) : (
+            <Unplug className="size-3" />
+          )}
+          {usingLive ? "Live" : liveState === "waiting" ? "Waiting" : event.bikeName}
+        </Badge>
       </header>
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_16.5rem]">
         <section className="relative min-h-[52vh] border-b border-border lg:border-r lg:border-b-0">
-          <BikeCanvas telemetry={telemetry} model={model} hidden={hidden} inspect={inspect} />
+          <BikeCanvas
+            telemetry={telemetry}
+            model={model}
+            hidden={hidden}
+            inspect={inspect}
+            poseRef={poseRef}
+            travel={travel}
+          />
 
-          <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-wrap gap-2 p-3 md:p-4">
-            <HudChip label="Speed" value={`${speedKph(telemetry.speedMs).toFixed(0)} km/h`} />
-            <HudChip label="RPM" value={Math.round(telemetry.rpm).toLocaleString()} />
-            <HudChip label="Gear" value={gearLabel(telemetry.gear)} />
-            <HudChip label="Lean" value={`${telemetry.roll.toFixed(0)}°`} />
-            <HudChip label="Long G" value={formatG(telemetry.accelG.z)} />
-            <HudChip label="Lat G" value={formatG(telemetry.accelG.x)} />
-            <HudChip label="Vert G" value={formatG(telemetry.accelG.y)} />
-            {model.airborne ? <HudChip label="Contact" value="Airborne" warn /> : null}
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-2">
+            <div className="flex max-w-full items-center gap-x-3 overflow-x-auto rounded-md border border-white/10 bg-black/55 px-2.5 py-1.5 font-mono text-[11px] text-white backdrop-blur-sm">
+              <span>{speedKph(telemetry.speedMs).toFixed(0)} km/h</span>
+              <span>{Math.round(telemetry.rpm)}</span>
+              <span>{gearLabel(telemetry.gear)}</span>
+              <span className="text-white/35">·</span>
+              <span>Gx {formatG(telemetry.accelG.x)}</span>
+              <span>Gy {formatG(telemetry.accelG.y)}</span>
+              <span>Gz {formatG(telemetry.accelG.z)}</span>
+              <span className="text-white/35">·</span>
+              <span>
+                {telemetry.pitch.toFixed(0)}° / {telemetry.roll.toFixed(0)}°
+              </span>
+              <span className="text-white/35">·</span>
+              <span>
+                {fmtCm(poseHud.x)} {fmtCm(poseHud.y)} {fmtCm(poseHud.z)}
+              </span>
+              {model.airborne ? <span className="text-amber-300">air</span> : null}
+            </div>
           </div>
 
-          <div className="absolute top-[4.75rem] right-3 z-20 flex gap-2 md:top-20 md:right-4">
-            <Button size="sm" variant="secondary" onClick={() => setInspect((v) => !v)}>
-              {inspect ? "Inspect on" : "Orbit lock"}
+          <div className="absolute top-11 right-2 z-20 flex gap-1">
+            <Button size="xs" variant="secondary" onClick={() => setInspect((v) => !v)}>
+              {inspect ? "Orbit" : "Lock"}
             </Button>
             <Button
-              size="sm"
+              size="icon-xs"
               variant="secondary"
               onClick={() => setPlaying((v) => !v)}
               disabled={mode === "live"}
             >
               {playing ? <Pause /> : <Play />}
-              {playing ? "Pause" : "Play"}
             </Button>
           </div>
 
@@ -268,161 +380,71 @@ export function MxForceStudio() {
 
         <aside className="flex min-h-0 flex-col bg-card">
           <ScrollArea className="min-h-0 flex-1">
-            <div className="flex flex-col gap-5 p-4">
-              <div className="grid gap-2">
-                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                  Source
-                </p>
-                <div className="grid grid-cols-3 gap-1.5">
-                  <Button
-                    size="sm"
-                    variant={mode === "demo" ? "default" : "outline"}
-                    onClick={() => {
-                      setMode("demo");
-                      if (scenario === "sandbox") setScenario("launch");
-                    }}
-                  >
-                    <Gauge />
-                    Demo
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={mode === "sandbox" ? "default" : "outline"}
-                    onClick={() => {
-                      setMode("sandbox");
-                      setScenario("sandbox");
-                    }}
-                  >
-                    <SlidersHorizontal />
-                    Sandbox
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant={mode === "live" ? "default" : "outline"}
-                    onClick={() => setMode("live")}
-                  >
-                    <Radio />
-                    Live
-                  </Button>
+            <div className="flex flex-col gap-4 p-3">
+              {mode === "live" ? (
+                <div className="grid gap-2">
+                  {liveState === "idle" ? (
+                    <Button
+                      size="sm"
+                      className="w-full bg-sky-500 text-white hover:bg-sky-400"
+                      onClick={() => {
+                        setConnectRequested(true);
+                        motionRef.current = createMotionFilter();
+                        void pollRef.current();
+                      }}
+                    >
+                      <Radio />
+                      Connect
+                    </Button>
+                  ) : null}
+
+                  {liveState === "waiting" ? (
+                    <>
+                      <p className="text-xs leading-4 text-amber-300">
+                        Waiting for MX Bikes
+                        {staleMs != null && staleMs <= 5000 ? ` · ${fmtAge(staleMs)} ago` : " · UDP 47387"}
+                      </p>
+                      <Button size="xs" variant="outline" onClick={() => setConnectRequested(false)}>
+                        Cancel
+                      </Button>
+                    </>
+                  ) : null}
+
+                  {liveState === "connected" ? (
+                    <>
+                      <p className="text-xs leading-4 text-emerald-300">
+                        Live · {fmtAge(staleMs ?? 0)}
+                      </p>
+                      <Button size="xs" variant="outline" onClick={() => setConnectRequested(false)}>
+                        Disconnect
+                      </Button>
+                    </>
+                  ) : null}
                 </div>
-                {mode === "live" ? (
-                  <div className="grid gap-2">
-                    {liveState === "idle" ? (
-                      <>
-                        <Button
-                          size="sm"
-                          className="w-full bg-sky-500 text-white hover:bg-sky-400"
-                          onClick={() => {
-                            setConnectRequested(true);
-                            void pollRef.current();
-                          }}
-                        >
-                          <Radio />
-                          Connect to MX Bikes
-                        </Button>
-                        <p className="text-xs leading-5 text-muted-foreground">
-                          Launch MX Bikes and go out on track, then click Connect. The desktop
-                          icon already started the telemetry bridge — there is no in-game button,
-                          so you connect from here.
-                        </p>
-                      </>
-                    ) : null}
-
-                    {liveState === "waiting" ? (
-                      <>
-                        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5">
-                          <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-amber-400" />
-                          <div className="grid gap-0.5">
-                            <p className="text-sm font-medium text-amber-300">
-                              Waiting for MX Bikes…
-                            </p>
-                            <p className="text-[11px] leading-4 text-amber-200/80">
-                              Launch the game and go on track (listening on UDP 47387).
-                            </p>
-                            <p className="mt-0.5 font-mono text-[11px] text-amber-200/60">
-                              {staleMs != null && staleMs <= 5000
-                                ? `signal lost · last packet ${fmtAge(staleMs)} ago`
-                                : "no live telemetry on 47387 — check the bridge + plugin, and that you're on track"}
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full"
-                          onClick={() => setConnectRequested(false)}
-                        >
-                          <Unplug />
-                          Cancel
-                        </Button>
-                      </>
-                    ) : null}
-
-                    {liveState === "connected" ? (
-                      <>
-                        <div className="flex items-start gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2.5">
-                          <Radio className="mt-0.5 size-4 shrink-0 text-emerald-400" />
-                          <div className="grid gap-0.5">
-                            <p className="text-sm font-medium text-emerald-300">
-                              Connected — live forces streaming
-                            </p>
-                            <p className="text-[11px] leading-4 text-emerald-200/80">
-                              The bike stays in the garage while the arrows update from your
-                              session.
-                            </p>
-                            <p className="mt-0.5 font-mono text-[11px] text-emerald-200/60">
-                              receiving · last packet {fmtAge(staleMs ?? 0)} ago
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full"
-                          onClick={() => setConnectRequested(false)}
-                        >
-                          <Unplug />
-                          Disconnect
-                        </Button>
-                      </>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+              ) : null}
 
               {mode !== "live" ? (
-                <div className="grid gap-2">
-                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    Riding case
-                  </p>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {SCENARIOS.filter((item) => item.id !== "sandbox").map((item) => (
-                      <Button
-                        key={item.id}
-                        size="sm"
-                        variant={mode === "demo" && scenario === item.id ? "default" : "outline"}
-                        className="h-auto justify-start py-2 text-left whitespace-normal"
-                        onClick={() => {
-                          setMode("demo");
-                          setScenario(item.id);
-                          setPlaying(true);
-                        }}
-                      >
-                        {item.name}
-                      </Button>
-                    ))}
-                  </div>
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    {SCENARIOS.find((item) => item.id === (mode === "sandbox" ? "sandbox" : scenario))?.blurb}
-                  </p>
+                <div className="grid grid-cols-2 gap-1">
+                  {SCENARIOS.filter((item) => item.id !== "sandbox").map((item) => (
+                    <Button
+                      key={item.id}
+                      size="xs"
+                      variant={mode === "demo" && scenario === item.id ? "default" : "outline"}
+                      className="justify-start"
+                      onClick={() => {
+                        setMode("demo");
+                        setScenario(item.id);
+                        setPlaying(true);
+                      }}
+                    >
+                      {item.name}
+                    </Button>
+                  ))}
                 </div>
               ) : null}
 
               {mode === "sandbox" ? (
-                <div className="grid gap-3">
-                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                    Simulate each input
-                  </p>
+                <div className="grid gap-2">
                   <NumberSlider
                     label="Throttle"
                     value={sandbox.throttle}
@@ -448,7 +470,7 @@ export function MxForceStudio() {
                     onChange={(rearBrake) => patchSandbox({ rearBrake })}
                   />
                   <NumberSlider
-                    label="Steer (neg = right)"
+                    label="Steer"
                     value={sandbox.steer}
                     min={-40}
                     max={40}
@@ -457,7 +479,7 @@ export function MxForceStudio() {
                     onChange={(steer) => patchSandbox({ steer })}
                   />
                   <NumberSlider
-                    label="Lean right"
+                    label="Lean"
                     value={sandbox.lean}
                     min={-45}
                     max={45}
@@ -466,7 +488,7 @@ export function MxForceStudio() {
                     onChange={(lean) => patchSandbox({ lean })}
                   />
                   <NumberSlider
-                    label="Pitch (wheelie +)"
+                    label="Pitch"
                     value={sandbox.pitch}
                     min={-20}
                     max={35}
@@ -483,92 +505,87 @@ export function MxForceStudio() {
                     display={`${sandbox.speedKph.toFixed(0)} km/h`}
                     onChange={(speedKphValue) => patchSandbox({ speedKph: speedKphValue })}
                   />
-                  <NumberSlider
-                    label="Fork travel"
-                    value={sandbox.frontTravel}
-                    min={0}
-                    max={0.95}
-                    display={`${Math.round(sandbox.frontTravel * 100)}%`}
-                    onChange={(frontTravel) => patchSandbox({ frontTravel })}
-                  />
-                  <NumberSlider
-                    label="Shock travel"
-                    value={sandbox.rearTravel}
-                    min={0}
-                    max={0.95}
-                    display={`${Math.round(sandbox.rearTravel * 100)}%`}
-                    onChange={(rearTravel) => patchSandbox({ rearTravel })}
-                  />
-                  <NumberSlider
-                    label="RPM"
-                    value={sandbox.rpm}
-                    min={1500}
-                    max={14000}
-                    step={50}
-                    display={`${Math.round(sandbox.rpm)}`}
-                    onChange={(rpm) => patchSandbox({ rpm })}
-                  />
-                  <NumberSlider
-                    label="Gear"
-                    value={sandbox.gear}
-                    min={0}
-                    max={5}
-                    step={1}
-                    display={gearLabel(sandbox.gear)}
-                    onChange={(gear) => patchSandbox({ gear: Math.round(gear) })}
-                  />
                 </div>
               ) : null}
 
+              <div className="grid gap-2">
+                <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                  Frame travel ±m
+                </p>
+                <NumberSlider
+                  label="Left / right"
+                  value={travel.limitX}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  display={`${travel.limitX.toFixed(2)} m`}
+                  onChange={(limitX) => setTravel((prev) => ({ ...prev, limitX }))}
+                />
+                <NumberSlider
+                  label="Up / down"
+                  value={travel.limitY}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  display={`${travel.limitY.toFixed(2)} m`}
+                  onChange={(limitY) => setTravel((prev) => ({ ...prev, limitY }))}
+                />
+                <NumberSlider
+                  label="Fore / aft"
+                  value={travel.limitZ}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  display={`${travel.limitZ.toFixed(2)} m`}
+                  onChange={(limitZ) => setTravel((prev) => ({ ...prev, limitZ }))}
+                />
+                <NumberSlider
+                  label="Response"
+                  value={travel.response}
+                  min={0.25}
+                  max={2}
+                  step={0.05}
+                  display={`${Math.round(travel.response * 100)}%`}
+                  onChange={(response) => setTravel((prev) => ({ ...prev, response }))}
+                />
+              </div>
+
               <Separator />
 
-              <div className="grid gap-2">
+              <div className="grid gap-1.5">
                 <div className="flex items-center justify-between">
-                  <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
                     Forces
                   </p>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    onClick={() => setHidden(new Set())}
-                  >
-                    Show all
+                  <Button size="xs" variant="ghost" onClick={() => setHidden(new Set())}>
+                    All
                   </Button>
                 </div>
-                <div className="grid gap-2">
-                  {FORCE_ORDER.map((id) => {
-                    const force = model.forces.find((item) => item.id === id);
-                    if (!force) return null;
-                    const meta = FORCE_META[id];
-                    return (
-                      <div
-                        key={id}
-                        className="rounded-lg border border-border bg-background/60 px-3 py-2"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="size-2.5 rounded-full"
-                            style={{ background: meta.color }}
-                          />
-                          <span className="flex-1 text-sm font-medium">{force.name}</span>
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {force.kind === "moment"
-                              ? `${force.magnitude.toFixed(0)} Nm`
-                              : formatNewtons(force.magnitude)}
-                          </span>
-                          <Switch
-                            checked={!hidden.has(id)}
-                            onCheckedChange={() => toggleForce(id)}
-                            size="sm"
-                          />
-                        </div>
-                        <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
-                          {force.description}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
+                {FORCE_ORDER.map((id) => {
+                  const force = model.forces.find((item) => item.id === id);
+                  if (!force) return null;
+                  const meta = FORCE_META[id];
+                  return (
+                    <div
+                      key={id}
+                      title={force.description}
+                      className="flex items-center gap-2 rounded-md px-1 py-0.5"
+                    >
+                      <span className="size-2 rounded-full" style={{ background: meta.color }} />
+                      <span className="flex-1 truncate text-xs">{force.shortName}</span>
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {force.kind === "moment"
+                          ? `${force.magnitude.toFixed(0)}`
+                          : formatNewtons(force.magnitude)}
+                      </span>
+                      <Switch
+                        checked={!hidden.has(id)}
+                        onCheckedChange={() => toggleForce(id)}
+                        size="sm"
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </ScrollArea>
@@ -578,6 +595,11 @@ export function MxForceStudio() {
   );
 }
 
+function fmtCm(m: number) {
+  const cm = Math.round(m * 100);
+  return `${cm >= 0 ? "+" : ""}${cm}`;
+}
+
 function InputsOverlay({ telemetry }: { telemetry: Telemetry }) {
   const steerMax = 40;
   const steerT = Math.min(1, Math.max(-1, telemetry.steer / steerMax));
@@ -585,20 +607,18 @@ function InputsOverlay({ telemetry }: { telemetry: Telemetry }) {
   const steerWidth = Math.abs(steerT) * 50;
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-3 pl-14 md:p-4 md:pl-16">
-      <div className="grid grid-cols-3 gap-x-3 gap-y-2 rounded-lg border border-white/10 bg-black/60 px-3 py-2 backdrop-blur-sm sm:grid-cols-6">
-        <InputBar label="Throttle" value={telemetry.throttle} fillClass="bg-emerald-400" />
-        <InputBar label="Front brake" value={telemetry.frontBrake} fillClass="bg-rose-500" />
-        <InputBar label="Rear brake" value={telemetry.rearBrake} fillClass="bg-pink-400" />
-        <InputBar label="Clutch" value={telemetry.clutch} fillClass="bg-slate-300" />
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2">
+      <div className="grid grid-cols-5 gap-x-2 rounded-md border border-white/10 bg-black/55 px-2.5 py-1.5 backdrop-blur-sm">
+        <InputBar label="Thr" value={telemetry.throttle} fillClass="bg-emerald-400" />
+        <InputBar label="F brk" value={telemetry.frontBrake} fillClass="bg-rose-500" />
+        <InputBar label="R brk" value={telemetry.rearBrake} fillClass="bg-pink-400" />
+        <InputBar label="Clh" value={telemetry.clutch} fillClass="bg-slate-300" />
         <div className="grid gap-1">
           <div className="flex items-center justify-between text-[10px] tracking-wide text-white/55 uppercase">
-            <span>Steer</span>
-            <span className="font-mono text-white">
-              {telemetry.steer.toFixed(0)}°{telemetry.steer < 0 ? " R" : telemetry.steer > 0 ? " L" : ""}
-            </span>
+            <span>Str</span>
+            <span className="font-mono text-white">{telemetry.steer.toFixed(0)}°</span>
           </div>
-          <div className="relative h-1.5 overflow-hidden rounded-full bg-white/15">
+          <div className="relative h-1 overflow-hidden rounded-full bg-white/15">
             <div className="absolute inset-y-0 left-1/2 w-px bg-white/50" />
             <div
               className="absolute inset-y-0 bg-violet-400"
@@ -609,10 +629,6 @@ function InputsOverlay({ telemetry }: { telemetry: Telemetry }) {
               }
             />
           </div>
-        </div>
-        <div className="grid gap-1">
-          <p className="text-[10px] tracking-wide text-white/55 uppercase">Gear</p>
-          <p className="font-mono text-sm leading-none text-white">{gearLabel(telemetry.gear)}</p>
         </div>
       </div>
     </div>
@@ -633,28 +649,11 @@ function InputBar({
     <div className="grid gap-1">
       <div className="flex items-center justify-between text-[10px] tracking-wide text-white/55 uppercase">
         <span>{label}</span>
-        <span className="font-mono text-white">{pct}%</span>
+        <span className="font-mono text-white">{pct}</span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-white/15">
+      <div className="h-1 overflow-hidden rounded-full bg-white/15">
         <div className={`h-full ${fillClass}`} style={{ width: `${pct}%` }} />
       </div>
-    </div>
-  );
-}
-
-function HudChip({
-  label,
-  value,
-  warn = false,
-}: {
-  label: string;
-  value: string;
-  warn?: boolean;
-}) {
-  return (
-    <div className="pointer-events-auto rounded-lg border border-white/10 bg-black/55 px-2.5 py-1.5 backdrop-blur-sm">
-      <p className="text-[10px] tracking-wide text-white/55 uppercase">{label}</p>
-      <p className={`font-mono text-sm ${warn ? "text-amber-300" : "text-white"}`}>{value}</p>
     </div>
   );
 }
