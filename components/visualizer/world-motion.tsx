@@ -70,6 +70,12 @@ export function WorldMotionCues({
   const sampleAcc = useRef(0);
   const last = useMemo(() => new THREE.Vector3(), []);
   const restY = REST_Y + 0.24;
+  const trailLine = useMemo(() => {
+    const mat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.75 });
+    const line = new THREE.Line(trailGeom, mat);
+    line.frustumCulled = false;
+    return line;
+  }, [trailGeom]);
 
   useFrame((_, dt) => {
     const pose = poseRef.current;
@@ -141,9 +147,7 @@ export function WorldMotionCues({
       <Rod poseRef={poseRef} color="#fbbf24" fromHome />
       <Rod poseRef={poseRef} color="#86efac" fromHome={false} />
 
-      <line geometry={trailGeom} frustumCulled={false}>
-        <lineBasicMaterial color="#38bdf8" transparent opacity={0.75} />
-      </line>
+      <primitive object={trailLine} />
     </group>
   );
 }
