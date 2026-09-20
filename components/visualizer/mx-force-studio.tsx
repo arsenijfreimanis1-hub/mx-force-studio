@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { Eye, EyeOff, Gamepad2, Loader2, Radio, Unplug } from "lucide-react";
+import { Eye, EyeOff, Gamepad2, LineChart, Loader2, Radio, Unplug } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -40,7 +40,15 @@ import {
   type Pose6,
 } from "@/lib/mxb/motion";
 import { buildForceModel } from "@/lib/mxb/forces";
+import {
+  clearTraceBuffer,
+  createTraceBuffer,
+  loadTraceOpen,
+  pushTraceSample,
+  saveTraceOpen,
+} from "@/lib/mxb/trace";
 import type { BikeEvent, ForceId, ForceModel, LivePacket, SandboxInputs, Telemetry } from "@/lib/mxb/types";
+import { TelemetryGraph } from "@/components/visualizer/telemetry-graph";
 
 const BikeCanvas = dynamic(
   () => import("@/components/visualizer/bike-canvas").then((mod) => mod.BikeCanvas),
@@ -116,6 +124,7 @@ export function MxForceStudio() {
   const [hudEvent, setHudEvent] = useState<BikeEvent>(DEFAULT_EVENT);
   const [padOn, setPadOn] = useState(false);
   const [driving, setDriving] = useState(false);
+  const [graphOpen, setGraphOpen] = useState(false);
 
   const pollRef = useRef<() => Promise<void>>(async () => {});
   const motionRef = useRef(createMotionFilter());
@@ -136,10 +145,20 @@ export function MxForceStudio() {
   const drivingRef = useRef(false);
   const padOnRef = useRef(false);
   const lastPublishedLiveRef = useRef(false);
+  const traceRef = useRef(createTraceBuffer(900));
+  const lastTraceMs = useRef(0);
+
+  const recordTrace = (tel: Telemetry) => {
+    const now = performance.now();
+    if (now - lastTraceMs.current < 16) return;
+    lastTraceMs.current = now;
+    pushTraceSample(traceRef.current, tel, now);
+  };
 
   useEffect(() => {
     const stored = loadStoredDof(2);
     setTravel((prev) => ({ ...prev, dof: stored }));
+    setGraphOpen(loadTraceOpen(false));
   }, []);
 
   useEffect(() => {
@@ -178,6 +197,7 @@ export function MxForceStudio() {
       const now = performance.now();
       if (now - lastHudRef.current < HUD_MS) return;
       lastHudRef.current = now;
+      if (liveRef.current) recordTrace(telemetryRef.current);
       setHudTel(telemetryRef.current);
       setHudEvent(eventRef.current);
     }, 50);
@@ -212,6 +232,7 @@ export function MxForceStudio() {
         telemetryRef.current = sanitizeTelemetry(
           applyProfileToTelemetry(body.packet.telemetry, adaptRef.current),
         );
+        recordTrace(telemetryRef.current);
       } else {
         liveRef.current = false;
         const reallyGone = !wantLive || (body.staleMs != null && body.staleMs > 1500);
@@ -219,6 +240,7 @@ export function MxForceStudio() {
           telemetryRef.current = restTelemetry({ rpm: 0 });
           resetMotionFilter(motionRef.current);
           poseRef.current = identityPose();
+          clearTraceBuffer(traceRef.current);
           if (!wantLive) {
             eventRef.current = DEFAULT_EVENT;
             bikeLatchRef.current = { id: "", name: "" };
@@ -341,6 +363,7 @@ export function MxForceStudio() {
               setHudTel(restTelemetry());
               setHudEvent(DEFAULT_EVENT);
               bikeLatchRef.current = { id: "", name: "" };
+              clearTraceBuffer(traceRef.current);
             } else {
               setConnectRequested(true);
               telemetryRef.current = restTelemetry({ rpm: 0 });
@@ -433,6 +456,18 @@ export function MxForceStudio() {
           </div>
 
           <div className="absolute top-11 right-2 z-20 flex gap-1">
+            <Button
+              size="xs"
+              variant={graphOpen ? "default" : "secondary"}
+              onClick={() => {
+                const next = !graphOpen;
+                setGraphOpen(next);
+                saveTraceOpen(next);
+              }}
+            >
+              <LineChart />
+              {graphOpen ? "Hide graph" : "Graph"}
+            </Button>
             <Button size="xs" variant={hideForces ? "default" : "secondary"} onClick={() => setHideForces((v) => !v)}>
               {hideForces ? <Eye /> : <EyeOff />}
               {hideForces ? "Show arrows" : "Hide arrows"}
@@ -461,7 +496,13 @@ export function MxForceStudio() {
             </div>
           ) : null}
 
-          <InputsOverlay telemetry={telemetry} />
+          {graphOpen ? (
+            <div className="absolute inset-x-0 bottom-0 z-20 h-[44%] min-h-[14rem] p-2 pt-0">
+              <TelemetryGraph bufferRef={traceRef} live={usingLive} />
+            </div>
+          ) : (
+            <InputsOverlay telemetry={telemetry} />
+          )}
         </section>
 
         <aside className="flex min-h-0 flex-col bg-card">
@@ -544,6 +585,7 @@ export function MxForceStudio() {
                       setHudTel(restTelemetry());
                       setHudEvent(DEFAULT_EVENT);
                       bikeLatchRef.current = { id: "", name: "" };
+                      clearTraceBuffer(traceRef.current);
                     }}
                   >
                     Disconnect
