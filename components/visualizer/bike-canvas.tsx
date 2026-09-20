@@ -56,25 +56,25 @@ export function BikeCanvas({
       onCreated={({ invalidate }) => invalidate()}
     >
       <color attach="background" args={["#120e0b"]} />
-      <fog attach="fog" args={["#120e0b", 14, 32]} />
-      <PerspectiveCamera makeDefault position={[2.8, 2.35, -5.8]} fov={34} />
-      <ambientLight intensity={0.48} />
-      <directionalLight position={[4, 10, 3]} intensity={2.05} />
+      <fog attach="fog" args={["#120e0b", 8, 18]} />
+      <PerspectiveCamera makeDefault position={[1.55, 1.42, -3.15]} fov={38} />
+      <ambientLight intensity={0.52} />
+      <directionalLight position={[3, 7, 2]} intensity={2.05} />
 
       <group>
         <mesh rotation={[-Math.PI / 2, 0, 0]}>
-          <circleGeometry args={[8, 32]} />
+          <circleGeometry args={[5.5, 32]} />
           <meshStandardMaterial color="#292018" roughness={0.95} />
         </mesh>
         <Grid
-          args={[16, 16]}
-          cellSize={0.5}
+          args={[10, 10]}
+          cellSize={0.35}
           cellThickness={0.55}
           cellColor="#3f2e22"
-          sectionSize={1}
+          sectionSize={0.7}
           sectionThickness={1.15}
           sectionColor="#7c4a1e"
-          fadeDistance={14}
+          fadeDistance={9}
           fadeStrength={1.2}
           position={[0, 0.002, 0]}
         />
@@ -102,8 +102,8 @@ export function BikeCanvas({
         enableZoom
         enableRotate={inspect}
         maxPolarAngle={Math.PI / 2 - 0.04}
-        minDistance={2.4}
-        maxDistance={18}
+        minDistance={1.2}
+        maxDistance={10}
         target={[0, PLATFORM_HOME_Y, 0]}
       />
     </Canvas>

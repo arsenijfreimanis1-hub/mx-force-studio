@@ -19,12 +19,21 @@ import { formatG, speedKph } from "@/lib/mxb/forces";
 import { gamepadActive, readFirstGamepad } from "@/lib/mxb/gamepad";
 import { detectCrash } from "@/lib/mxb/crash";
 import { setupLabel } from "@/lib/mxb/inputs";
+import {
+  DOF_STEPS,
+  clampDof,
+  dofAxes,
+  dofStep,
+  loadStoredDof,
+  saveStoredDof,
+  type DofLevel,
+} from "@/lib/mxb/dof";
 import { displayBikeName, holdLive, isPlaceholderBikeName, stabilizeBikeEvent } from "@/lib/mxb/live-store";
 import { sanitizeTelemetry } from "@/lib/mxb/sanitize";
 import { fmtLapMs, fmtOnTrackS, sessionKind, suspUsedPct, trackPct } from "@/lib/mxb/session";
 import {
   createMotionFilter,
-  DEFAULT_FRAME_TRAVEL,
+  STUDIO_TRAVEL,
   identityPose,
   resetMotionFilter,
   type FrameTravel,
@@ -103,7 +112,7 @@ export function MxForceStudio() {
   const [staleMs, setStaleMs] = useState<number | null>(null);
   const [hudTel, setHudTel] = useState<Telemetry>(() => restTelemetry({ rpm: 0 }));
   const [inspect, setInspect] = useState(true);
-  const [travel, setTravel] = useState<FrameTravel>(DEFAULT_FRAME_TRAVEL);
+  const [travel, setTravel] = useState<FrameTravel>(STUDIO_TRAVEL);
   const [hudEvent, setHudEvent] = useState<BikeEvent>(DEFAULT_EVENT);
   const [padOn, setPadOn] = useState(false);
   const [driving, setDriving] = useState(false);
@@ -111,7 +120,7 @@ export function MxForceStudio() {
   const pollRef = useRef<() => Promise<void>>(async () => {});
   const motionRef = useRef(createMotionFilter());
   const poseRef = useRef(identityPose());
-  const travelRef = useRef(DEFAULT_FRAME_TRAVEL);
+  const travelRef = useRef(STUDIO_TRAVEL);
   const connectRef = useRef(connectRequested);
   const lastHudRef = useRef(0);
   const bikeLatchRef = useRef({ id: "", name: "" });
@@ -123,10 +132,15 @@ export function MxForceStudio() {
   const forcesRef = useRef<ForceModel>(buildForceModel(hudTel, DEFAULT_EVENT));
   const hiddenRef = useRef<Set<ForceId>>(new Set());
   const adaptRef = useRef<BikeProfile>(defaultProfile());
-  const userTravelRef = useRef(DEFAULT_FRAME_TRAVEL);
+  const userTravelRef = useRef(STUDIO_TRAVEL);
   const drivingRef = useRef(false);
   const padOnRef = useRef(false);
   const lastPublishedLiveRef = useRef(false);
+
+  useEffect(() => {
+    const stored = loadStoredDof(2);
+    setTravel((prev) => ({ ...prev, dof: stored }));
+  }, []);
 
   useEffect(() => {
     connectRef.current = connectRequested;
@@ -134,6 +148,12 @@ export function MxForceStudio() {
     travelRef.current = travel;
     if (!connectRequested) liveRef.current = false;
   });
+
+  const setDof = (dof: DofLevel) => {
+    const next = clampDof(dof);
+    saveStoredDof(next);
+    setTravel((prev) => ({ ...prev, dof: next }));
+  };
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -294,12 +314,18 @@ export function MxForceStudio() {
   const frontSuspPct = Math.round(suspUsedPct(telemetry.suspLength[0], hudEvent.suspMaxTravel[0]) * 100);
   const rearSuspPct = Math.round(suspUsedPct(telemetry.suspLength[1], hudEvent.suspMaxTravel[1]) * 100);
   const onTrackPct = Math.round(trackPct(telemetry) * 100);
+  const dof = clampDof(travel.dof);
+  const axes = dofAxes(dof);
+  const step = dofStep(dof);
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
       <header className="flex items-center gap-3 border-b border-border px-3 py-2">
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-semibold tracking-tight">MX Force Studio</h1>
+          <p className="truncate text-[11px] text-muted-foreground">
+            {step.title} · {step.adds}
+          </p>
         </div>
         <Button
           size="xs"
@@ -378,19 +404,20 @@ export function MxForceStudio() {
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-2">
             <div className="flex max-w-full items-center gap-x-3 overflow-x-auto rounded-md border border-white/10 bg-black/55 px-2.5 py-1.5 font-mono text-[11px] text-white backdrop-blur-sm">
               <span className="max-w-[10rem] truncate text-amber-200">{bikeLabel}</span>
+              <span className="text-sky-200">{step.title}</span>
               <span>{speedKph(telemetry.speedMs).toFixed(0)} km/h</span>
               <span>{Math.round(telemetry.rpm)}</span>
               <span>{gearLabel(telemetry.gear)}</span>
               <span className="text-white/35">·</span>
-              <span>Gx {formatG(telemetry.accelG.x)}</span>
-              <span>Gy {formatG(telemetry.accelG.y)}</span>
-              <span>Gz {formatG(telemetry.accelG.z)}</span>
-              <span className="text-white/35">·</span>
               <span>
-                {telemetry.pitch.toFixed(0)}° / {telemetry.roll.toFixed(0)}°
+                lean {telemetry.roll.toFixed(0)}° · pitch {telemetry.pitch.toFixed(0)}°
               </span>
               {usingLive ? (
                 <>
+                  <span className="text-white/35">·</span>
+                  <span>Gx {formatG(telemetry.accelG.x)}</span>
+                  <span>Gy {formatG(telemetry.accelG.y)}</span>
+                  <span>Gz {formatG(telemetry.accelG.z)}</span>
                   <span className="text-white/35">·</span>
                   <span className="max-w-[9rem] truncate">{hudEvent.trackName || "Track"}</span>
                   <span>{onTrackPct}%</span>
@@ -400,7 +427,7 @@ export function MxForceStudio() {
               ) : null}
               <span className="text-white/35">·</span>
               <span>
-                <PoseReadout poseRef={poseRef} />
+                <PoseReadout poseRef={poseRef} dof={dof} />
               </span>
             </div>
           </div>
@@ -415,11 +442,22 @@ export function MxForceStudio() {
             </Button>
           </div>
 
+          <div className="pointer-events-none absolute top-11 left-2 z-10 hidden font-mono text-[10px] text-white/70 sm:grid gap-1">
+            <span className="text-amber-300">▲ FRONT</span>
+            <span className="text-sky-300">▶ RIGHT</span>
+            <span className="text-rose-300">◀ LEFT</span>
+          </div>
+
           {!driving && liveState === "idle" ? (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-end justify-center pb-16">
-              <p className="rounded-md border border-white/10 bg-black/60 px-3 py-2 text-center text-xs text-amber-100">
-                Awaiting MX Bikes — frame stays upright until you go on track and Connect
-              </p>
+              <div className="max-w-sm rounded-md border border-white/10 bg-black/65 px-3 py-2 text-xs text-amber-50">
+                <p className="font-medium text-amber-100">New here?</p>
+                <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-white/80">
+                  <li>Start MX Bikes on this PC and go on track.</li>
+                  <li>Press Connect. The pad stays with the game.</li>
+                  <li>Stay on 2DOF until lean and gas/brake feel right, then add heave.</li>
+                </ol>
+              </div>
             </div>
           ) : null}
 
@@ -429,13 +467,13 @@ export function MxForceStudio() {
         <aside className="flex min-h-0 flex-col bg-card">
           <ScrollArea className="min-h-0 flex-1">
             <div className="flex flex-col gap-4 p-3">
+              <DofPicker dof={dof} onChange={setDof} />
+
               {liveState === "idle" ? (
                 <>
                   <p className="text-xs leading-4 text-muted-foreground">
-                    Garage is parked upright. Start MX Bikes on this PC, go on track, then Connect.
-                    Deck XYZ follows the game Cartesian point (chassis X right, Y up, Z forward).
-                    Stock Xbox: RT throttle, LT front brake, LB rear, A clutch, left stick steer,
-                    right stick body weight (dummy lean / sit).
+                    {step.hint} Amber edge is the front of the deck. Start MX Bikes, go on track,
+                    then Connect. Xbox: RT gas, LT front brake, LB rear, right stick body weight.
                   </p>
                   <Button
                     size="sm"
@@ -521,35 +559,41 @@ export function MxForceStudio() {
 
               <div className="grid gap-2">
                 <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                  Frame travel ±m
+                  {dof <= 2 ? "2DOF tilt" : `Travel · ${step.title}`}
                 </p>
-                <NumberSlider
-                  label="Left / right"
-                  value={travel.limitX}
-                  min={0}
-                  max={2}
-                  step={0.05}
-                  display={`${travel.limitX.toFixed(2)} m`}
-                  onChange={(limitX) => setTravel((prev) => ({ ...prev, limitX }))}
-                />
-                <NumberSlider
-                  label="Up / down"
-                  value={travel.limitY}
-                  min={0}
-                  max={2}
-                  step={0.05}
-                  display={`${travel.limitY.toFixed(2)} m`}
-                  onChange={(limitY) => setTravel((prev) => ({ ...prev, limitY }))}
-                />
-                <NumberSlider
-                  label="Fore / aft"
-                  value={travel.limitZ}
-                  min={0}
-                  max={2}
-                  step={0.05}
-                  display={`${travel.limitZ.toFixed(2)} m`}
-                  onChange={(limitZ) => setTravel((prev) => ({ ...prev, limitZ }))}
-                />
+                {axes.x ? (
+                  <NumberSlider
+                    label="Sway · left / right"
+                    value={travel.limitX}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    display={`${travel.limitX.toFixed(2)} m`}
+                    onChange={(limitX) => setTravel((prev) => ({ ...prev, limitX }))}
+                  />
+                ) : null}
+                {axes.y ? (
+                  <NumberSlider
+                    label="Heave · up / down"
+                    value={travel.limitY}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    display={`${travel.limitY.toFixed(2)} m`}
+                    onChange={(limitY) => setTravel((prev) => ({ ...prev, limitY }))}
+                  />
+                ) : null}
+                {axes.z ? (
+                  <NumberSlider
+                    label="Surge · fore / aft"
+                    value={travel.limitZ}
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    display={`${travel.limitZ.toFixed(2)} m`}
+                    onChange={(limitZ) => setTravel((prev) => ({ ...prev, limitZ }))}
+                  />
+                ) : null}
                 <NumberSlider
                   label="Response"
                   value={travel.response}
@@ -577,21 +621,50 @@ function fmtDeg(rad: number) {
   return `${d >= 0 ? "+" : ""}${d.toFixed(0)}°`;
 }
 
-function PoseReadout({ poseRef }: { poseRef: MutableRefObject<Pose6> }) {
+function PoseReadout({ poseRef, dof }: { poseRef: MutableRefObject<Pose6>; dof: DofLevel }) {
   const el = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     let frame = 0;
     const tick = () => {
       const pose = poseRef.current;
+      const axes = dofAxes(dof);
       if (el.current) {
-        el.current.textContent = `X ${fmtM(pose.x)}  Y ${fmtM(pose.y)}  Z ${fmtM(pose.z)} m  R ${fmtDeg(pose.roll)}  P ${fmtDeg(pose.pitch)}  Yw ${fmtDeg(pose.yaw)}`;
+        const parts = [`R ${fmtDeg(pose.roll)}`, `P ${fmtDeg(pose.pitch)}`];
+        if (axes.y) parts.push(`Y ${fmtM(pose.y)}`);
+        if (axes.z) parts.push(`Z ${fmtM(pose.z)}`);
+        if (axes.x) parts.push(`X ${fmtM(pose.x)}`);
+        if (axes.yaw) parts.push(`Yw ${fmtDeg(pose.yaw)}`);
+        el.current.textContent = parts.join("  ");
       }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [poseRef]);
-  return <span ref={el}>X +0.00  Y +0.00  Z +0.00 m  R +0°  P +0°  Yw +0°</span>;
+  }, [poseRef, dof]);
+  return <span ref={el}>R +0°  P +0°</span>;
+}
+
+function DofPicker({ dof, onChange }: { dof: DofLevel; onChange: (dof: DofLevel) => void }) {
+  return (
+    <div className="grid gap-2">
+      <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+        Dial in · start at 2DOF
+      </p>
+      <div className="grid grid-cols-5 gap-1">
+        {DOF_STEPS.map((item) => (
+          <Button
+            key={item.dof}
+            size="xs"
+            variant={item.dof === dof ? "default" : "outline"}
+            onClick={() => onChange(item.dof)}
+          >
+            {item.dof}
+          </Button>
+        ))}
+      </div>
+      <p className="text-[11px] leading-4 text-muted-foreground">{dofStep(dof).hint}</p>
+    </div>
+  );
 }
 
 function InputsOverlay({ telemetry }: { telemetry: Telemetry }) {

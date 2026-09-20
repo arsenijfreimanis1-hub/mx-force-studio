@@ -8,6 +8,7 @@ import type { MutableRefObject, ReactNode } from "react";
 import { telemetryFromSandbox } from "@/lib/mxb/demo";
 import { DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
 import { gamepadActive, readFirstGamepad, sandboxFromGamepad } from "@/lib/mxb/gamepad";
+import { visualPoseTau } from "@/lib/mxb/dof";
 import {
   PLATFORM_HOME_Y,
   identityPose,
@@ -20,8 +21,8 @@ import {
 import { buildForceModel } from "@/lib/mxb/forces";
 import type { BikeEvent, ForceModel, SandboxInputs, Telemetry } from "@/lib/mxb/types";
 
-/** Visual follow of the washout pose. One tau — switching taus was extra jitter. */
-export const VISUAL_POSE_TAU = 0.12;
+/** Fallback when travel has no DOF yet. 2DOF uses a much shorter tau. */
+export const VISUAL_POSE_TAU = 0.07;
 
 export function ChassisRig({
   poseRef,
@@ -120,7 +121,7 @@ export function ChassisRig({
       node.quaternion.copy(targetQuat);
       visualPrimed.current = true;
     } else {
-      const a = 1 - Math.exp(-dt / VISUAL_POSE_TAU);
+      const a = 1 - Math.exp(-dt / visualPoseTau(travelRef.current.dof ?? 6));
       node.position.lerp(targetPos, a);
       node.quaternion.slerp(targetQuat, a);
     }

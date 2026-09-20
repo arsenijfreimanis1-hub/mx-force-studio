@@ -9,6 +9,7 @@ import {
 } from "./cartesian.ts";
 import { chassisCues, heaveFromCues } from "./channels.ts";
 import { detectCrash, isAirborne, isStopped } from "./crash.ts";
+import { clampDof, dofAxes, maskPose, type DofLevel } from "./dof.ts";
 import type { Telemetry, Vec3 } from "./types";
 
 export { worldToChassis } from "./cartesian.ts";
@@ -21,12 +22,14 @@ export const FRAME_BOTTOM: Vec3 = { x: 0, y: 0.09, z: 0.02 };
  * Stewart-platform mid-stroke. ±1 m heave then still clears the garage floor.
  * Rider-head washout (Barbagli / MORIS) is computed about this deck height.
  */
-export const PLATFORM_HOME_Y = 1.75;
+export const PLATFORM_HOME_Y = 1.18;
+/** Visual bike scale vs the original 1:1 tube drawing. */
+export const BIKE_SCALE = 0.5;
 
 /** Lowest remaining frame tube vs the rig origin (after FRAME_CENTER_Y pin). */
-export const FRAME_LOW_Y = 0.28 + 0.55;
+export const FRAME_LOW_Y = (0.28 + 0.55) * BIKE_SCALE;
 /** Half-length used to keep rolled/pitched tubes off the pad. */
-export const FRAME_HALF_SPAN = 0.72;
+export const FRAME_HALF_SPAN = 0.72 * BIKE_SCALE;
 export const FLOOR_CLEAR_Y = 0.12;
 
 /** Rider vestibular point above the cradle, bike-local meters (seat → inner ear). */
@@ -49,6 +52,8 @@ export type FrameTravel = {
   smoothTau: number;
   /** 1 = default cue strength. */
   response: number;
+  /** 2 = lean+pitch only. Tests default to 6 so washout identity stays. */
+  dof: DofLevel;
 };
 
 export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
@@ -60,6 +65,20 @@ export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
   limitYaw: (15 * Math.PI) / 180,
   smoothTau: 0.08,
   response: 1,
+  dof: 6,
+};
+
+/** Compact garage rig — start on 2DOF and add axes when that feels right. */
+export const STUDIO_TRAVEL: FrameTravel = {
+  limitX: 0.4,
+  limitY: 0.4,
+  limitZ: 0.4,
+  limitRoll: (28 * Math.PI) / 180,
+  limitPitch: (18 * Math.PI) / 180,
+  limitYaw: (10 * Math.PI) / 180,
+  smoothTau: 0.045,
+  response: 1,
+  dof: 2,
 };
 
 /** Standard gravity (m/s²). Must match `GRAVITY` in bike.ts. */
@@ -357,14 +376,17 @@ export function stepMotion(
   travel: FrameTravel = DEFAULT_FRAME_TRAVEL,
 ): Pose6 {
   const step = Math.min(0.05, Math.max(0.0005, dt));
+  const dof = clampDof(travel.dof ?? 6);
+  const axes = dofAxes(dof);
   const response = clamp(travel.response, 0.05, 3);
-  const limX = Math.max(0, travel.limitX);
-  const limY = Math.max(0, travel.limitY);
-  const limZ = Math.max(0, travel.limitZ);
+  const limX = axes.x ? Math.max(0, travel.limitX) : 0;
+  const limY = axes.y ? Math.max(0, travel.limitY) : 0;
+  const limZ = axes.z ? Math.max(0, travel.limitZ) : 0;
   const limRoll = Math.max(0, travel.limitRoll);
   const limPitch = Math.max(0, travel.limitPitch);
-  const limYaw = Math.max(0, travel.limitYaw);
-  const smoothTau = Math.max(0.08, travel.smoothTau);
+  const limYaw = axes.yaw ? Math.max(0, travel.limitYaw) : 0;
+  const smoothTau =
+    dof <= 3 ? Math.max(0.03, travel.smoothTau * 0.45) : Math.max(0.08, travel.smoothTau);
 
   const mag = Math.hypot(telemetry.accelG.x, telemetry.accelG.y, telemetry.accelG.z);
   filter.unitsMs2 = detectForceUnitsMs2(mag, filter.unitsMs2);
@@ -394,7 +416,9 @@ export function stepMotion(
   const cartMode = crashed ? "crash" : airborne ? "air" : stopped ? "stop" : "ground";
   if (airborne || telemetry.speedMs > 1.2) filter.cartOn = true;
   else if (!airborne && telemetry.speedMs < 0.35) filter.cartOn = false;
-  const useCart = filter.cartOn && cartesianUseful(telemetry.position, telemetry.speedMs, airborne);
+  const wantCart = axes.x || axes.z || (axes.y && dof >= 4);
+  const useCart =
+    wantCart && filter.cartOn && cartesianUseful(telemetry.position, telemetry.speedMs, airborne);
   const cart = useCart
     ? stepCartesian(filter.cart, telemetry.position, telemetry.velocity, attitude.yaw, step, cartMode)
     : { x: 0, y: 0, z: 0 };
@@ -500,7 +524,12 @@ export function stepMotion(
   }
   filter.wasAir = airborne;
 
-  if (useCart && !stopped && !crashed) {
+  if (!axes.x && !axes.z) {
+    filter.x = follow(filter.x, 0, step, 0.06);
+    filter.vx = follow(filter.vx, 0, step, 0.05);
+    filter.z = follow(filter.z, 0, step, 0.06);
+    filter.vz = follow(filter.vz, 0, step, 0.05);
+  } else if (useCart && !stopped && !crashed) {
     const tx = clamp(cart.x / CART_XZ_M, -1, 1) * limX * response;
     const tz = clamp(cart.z / CART_XZ_M, -1, 1) * limZ * response;
     filter.x = follow(filter.x, tx, step, 0.12);
@@ -524,6 +553,11 @@ export function stepMotion(
     filter.vz = follow(filter.vz, 0, step, 0.1);
   }
 
+  if (!axes.y) {
+    filter.y = follow(filter.y, 0, step, 0.06);
+    filter.landSink = follow(filter.landSink, 0, step, 0.06);
+    heaveTarget = 0;
+  }
   filter.y = clamp(follow(filter.y, heaveTarget, step, heaveTau), -limY, limY);
 
   const yawAccel = stopped || crashed ? 0 : (deg(filter.sYawRate) * 1.4 + deg(cues.steerDeg) * 0.12) * response;
@@ -541,14 +575,22 @@ export function stepMotion(
     : (cues.throttle * 0.18 - cues.frontBrake * 0.26 - cues.rearBrake * 0.08) * response;
   const tiltPitchTarget = stopped ? 0 : Math.atan(gForce.z) * TILT_PITCH_BLEND * response + inputPitch;
   const tiltRollTarget = stopped ? 0 : Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
-  filter.tiltPitch = rateLimit(filter.tiltPitch, tiltPitchTarget, step, TILT_RATE_LIMIT);
-  filter.tiltRoll = rateLimit(filter.tiltRoll, tiltRollTarget, step, TILT_RATE_LIMIT);
-  filter.tiltPitch = follow(filter.tiltPitch, tiltPitchTarget, step, TILT_TAU);
-  filter.tiltRoll = follow(filter.tiltRoll, tiltRollTarget, step, TILT_TAU);
+  const tiltRate = dof <= 3 ? (80 * Math.PI) / 180 : TILT_RATE_LIMIT;
+  const tiltTau = dof <= 3 ? 0.08 : TILT_TAU;
+  filter.tiltPitch = rateLimit(filter.tiltPitch, tiltPitchTarget, step, tiltRate);
+  filter.tiltRoll = rateLimit(filter.tiltRoll, tiltRollTarget, step, tiltRate);
+  filter.tiltPitch = follow(filter.tiltPitch, tiltPitchTarget, step, tiltTau);
+  filter.tiltRoll = follow(filter.tiltRoll, tiltRollTarget, step, tiltTau);
 
   const rollCmd = stopped ? 0 : attitude.roll;
   const pitchCmd = stopped ? 0 : attitude.pitch;
-  const attitudeTau = stopped ? ATTITUDE_TAU_REST : ATTITUDE_TAU;
+  const attitudeTau = stopped
+    ? dof <= 3
+      ? 0.12
+      : ATTITUDE_TAU_REST
+    : dof <= 3
+      ? 0.05
+      : ATTITUDE_TAU;
   filter.followRoll = follow(filter.followRoll, deg(rollCmd) * LEAN_FOLLOW, step, attitudeTau);
   filter.followPitch = follow(filter.followPitch, deg(pitchCmd) * PITCH_FOLLOW, step, attitudeTau);
 
@@ -557,27 +599,37 @@ export function stepMotion(
 
   if (hasWorld) filter.prevWorldY = worldY;
 
-  const rawShown = clearPoseFromFloor({
-    x: filter.x,
-    y: filter.y,
-    z: filter.z,
-    yaw: clamp(filter.yaw, -limYaw, limYaw),
-    pitch: clamp(filter.followPitch + filter.tiltPitch, -pitchLimit, pitchLimit),
-    roll: clamp(filter.followRoll + filter.tiltRoll, -rollLimit, rollLimit),
-  });
-  filter.shown = limitShownPose(filter.shown, rawShown, step);
+  const rawShown = maskPose(
+    clearPoseFromFloor({
+      x: filter.x,
+      y: filter.y,
+      z: filter.z,
+      yaw: clamp(filter.yaw, -limYaw, limYaw),
+      pitch: clamp(filter.followPitch + filter.tiltPitch, -pitchLimit, pitchLimit),
+      roll: clamp(filter.followRoll + filter.tiltRoll, -rollLimit, rollLimit),
+    }),
+    dof,
+  );
+  filter.shown = limitShownPose(filter.shown, rawShown, step, dof);
 
   return filter.shown;
 }
 
 /** Cap deck velocity so a human on the frame is not thrown by a twitch. */
-export function limitShownPose(prev: Pose6, next: Pose6, dt: number): Pose6 {
+export function limitShownPose(
+  prev: Pose6,
+  next: Pose6,
+  dt: number,
+  dof: DofLevel = 6,
+): Pose6 {
+  const lin = dof <= 3 ? HUMAN_LIN_MS * 1.35 : HUMAN_LIN_MS;
+  const ang = dof <= 3 ? 2.15 : HUMAN_ANG_RS;
   return {
-    x: rateLimit(prev.x, next.x, dt, HUMAN_LIN_MS),
-    y: rateLimit(prev.y, next.y, dt, HUMAN_LIN_MS),
-    z: rateLimit(prev.z, next.z, dt, HUMAN_LIN_MS),
-    yaw: rateLimit(prev.yaw, next.yaw, dt, HUMAN_ANG_RS),
-    pitch: rateLimit(prev.pitch, next.pitch, dt, HUMAN_ANG_RS),
-    roll: rateLimit(prev.roll, next.roll, dt, HUMAN_ANG_RS),
+    x: rateLimit(prev.x, next.x, dt, lin),
+    y: rateLimit(prev.y, next.y, dt, lin),
+    z: rateLimit(prev.z, next.z, dt, lin),
+    yaw: rateLimit(prev.yaw, next.yaw, dt, ang),
+    pitch: rateLimit(prev.pitch, next.pitch, dt, ang),
+    roll: rateLimit(prev.roll, next.roll, dt, ang),
   };
 }

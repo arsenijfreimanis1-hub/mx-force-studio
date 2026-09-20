@@ -6,7 +6,9 @@ import * as THREE from "three";
 import type { MutableRefObject } from "react";
 import { readBodyStick, readFirstGamepad } from "@/lib/mxb/gamepad";
 import { idleRider, riderFromTelemetry } from "@/lib/mxb/rider";
+import { BIKE_SCALE } from "@/lib/mxb/motion";
 import type { Telemetry } from "@/lib/mxb/types";
+import { MotionDeck } from "@/components/visualizer/motion-deck";
 
 type Vec = [number, number, number];
 
@@ -168,7 +170,9 @@ export const MotocrossBike = memo(function MotocrossBike({
   );
 
   return (
+    <group scale={BIKE_SCALE}>
     <group position={[0, FRAME_CENTER_Y, 0]}>
+      <MotionDeck />
       {([-HALF, HALF] as const).map((x) => (
         <group key={x}>
           <Tube from={offsetX(CROWN, x)} to={offsetX(SHOCK_TOP, x)} radius={0.032} material={chrome} />
@@ -188,6 +192,7 @@ export const MotocrossBike = memo(function MotocrossBike({
       </mesh>
       <SteerBars telemetryRef={telemetryRef} bar={bar} />
       <SeatBean telemetryRef={telemetryRef} liveRef={liveRef} padActiveRef={padActiveRef} />
+    </group>
     </group>
   );
 });
