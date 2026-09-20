@@ -19,7 +19,7 @@ export function MotionDeck() {
   );
 
   return (
-    <group position={[0, 0.02, 0]}>
+    <group position={[0, 0.26, 0]}>
       <mesh material={plate} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0.02]}>
         <planeGeometry args={[0.42, 0.72]} />
       </mesh>

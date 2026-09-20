@@ -1,7 +1,7 @@
 import { BIKE_SCALE, PLATFORM_HOME_Y } from "./motion.ts";
 
-/** Matches MotionDeck inside the scaled bike group (FRAME_CENTER_Y = 0.55). */
-export const DECK_ATTACH_Y = (0.55 + 0.02) * BIKE_SCALE;
+/** Matches MotionDeck under the lowest tubes (FRAME_CENTER_Y = 0.55). */
+export const DECK_ATTACH_Y = (0.55 + 0.26) * BIKE_SCALE;
 export const DECK_HALF_W = 0.21 * BIKE_SCALE;
 export const DECK_HALF_L = 0.36 * BIKE_SCALE;
 export const ROD_BASE_Y = 0.075;
