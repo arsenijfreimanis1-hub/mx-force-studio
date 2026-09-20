@@ -1,316 +1,127 @@
 "use client";
 
-import { useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { useMemo } from "react";
 import * as THREE from "three";
 import type { Telemetry } from "@/lib/mxb/types";
 import { FRONT_R, REAR_R, REAR_Z } from "@/lib/mxb/defaults";
 
 function metal(color: string, extras: THREE.MeshStandardMaterialParameters = {}) {
-  return <meshStandardMaterial color={color} metalness={0.72} roughness={0.32} {...extras} />;
+  return <meshStandardMaterial color={color} metalness={0.7} roughness={0.34} {...extras} />;
 }
 
-function KnobbyTire({
-  radius,
-  width,
-  spinRef,
+type Vec = [number, number, number];
+
+const UP = new THREE.Vector3(0, 1, 0);
+
+/** A straight round tube between two points — the skeleton's only building block. */
+function Tube({
+  from,
+  to,
+  radius = 0.02,
+  color = "#e5e7eb",
 }: {
-  radius: number;
-  width: number;
-  spinRef: React.RefObject<THREE.Group | null>;
+  from: Vec;
+  to: Vec;
+  radius?: number;
+  color?: string;
 }) {
-  const knobs = useMemo(() => {
-    const items: { rot: number; y: number }[] = [];
-    for (let i = 0; i < 18; i++) items.push({ rot: (i / 18) * Math.PI * 2, y: 0 });
-    return items;
-  }, []);
+  const { position, quaternion, length } = useMemo(() => {
+    const a = new THREE.Vector3(...from);
+    const b = new THREE.Vector3(...to);
+    const dir = b.clone().sub(a);
+    const len = dir.length();
+    const mid = a.clone().add(b).multiplyScalar(0.5);
+    const quat = new THREE.Quaternion().setFromUnitVectors(UP, dir.clone().normalize());
+    return { position: mid, quaternion: quat, length: len };
+  }, [from, to]);
 
   return (
-    <group ref={spinRef}>
-      <mesh rotation={[0, 0, Math.PI / 2]} castShadow>
-        <torusGeometry args={[radius - 0.045, 0.055, 10, 28]} />
-        {metal("#1c1917", { metalness: 0.1, roughness: 0.78 })}
-      </mesh>
-      <mesh rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[radius - 0.09, radius - 0.09, width * 0.7, 24]} />
-        {metal("#d6d3d1")}
-      </mesh>
-      <mesh rotation={[0, 0, Math.PI / 2]}>
-        <torusGeometry args={[0.11, 0.018, 8, 18]} />
-        {metal("#a8a29e")}
-      </mesh>
-      {knobs.map((knob, i) => (
-        <mesh
-          key={i}
-          position={[
-            Math.cos(knob.rot) * (radius - 0.012),
-            Math.sin(knob.rot) * (radius - 0.012),
-            0,
-          ]}
-          rotation={[0, 0, knob.rot]}
-        >
-          <boxGeometry args={[0.05, 0.028, width * 0.85]} />
-          {metal("#292524", { metalness: 0.05, roughness: 0.9 })}
-        </mesh>
-      ))}
-    </group>
+    <mesh position={position} quaternion={quaternion}>
+      <cylinderGeometry args={[radius, radius, length, 10]} />
+      {metal(color)}
+    </mesh>
+  );
+}
+
+/** Thin wheel-position ring — marks where the tyre sits, no knobs, no spin. */
+function WheelRing({ radius }: { radius: number }) {
+  return (
+    <mesh rotation={[0, Math.PI / 2, 0]}>
+      <torusGeometry args={[radius, 0.02, 8, 40]} />
+      {metal("#9ca3af", { metalness: 0.4, roughness: 0.6 })}
+    </mesh>
   );
 }
 
 export function MotocrossBike({ telemetry }: { telemetry: Telemetry }) {
-  const frontSpin = useRef<THREE.Group>(null);
-  const rearSpin = useRef<THREE.Group>(null);
-  const angle = useRef({ f: 0, r: 0 });
-
-  // Number plate "250" painted onto a CanvasTexture. This avoids drei <Text>
-  // (troika), which spins up a second WebGL context for SDF glyph generation
-  // and causes the primary R3F canvas to lose its context (blank viewport).
-  const plateTexture = useMemo(() => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 280;
-    canvas.height = 200;
-    const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "#f8fafc";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#1e3a8a";
-    ctx.font = "bold 150px 'Arial', system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("250", canvas.width / 2, canvas.height / 2 + 8);
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.anisotropy = 4;
-    return texture;
-  }, []);
-
   const forkTravel = Math.max(0, 0.31 - telemetry.suspLength[0]);
   const shockTravel = Math.max(0, 0.315 - telemetry.suspLength[1]);
   const steer = THREE.MathUtils.degToRad(telemetry.steer);
   const roll = THREE.MathUtils.degToRad(telemetry.roll);
   const pitch = THREE.MathUtils.degToRad(telemetry.pitch);
 
-  useFrame((_, dt) => {
-    angle.current.f += (telemetry.wheelSpeed[0] / FRONT_R) * dt;
-    angle.current.r += (telemetry.wheelSpeed[1] / REAR_R) * dt;
-    if (frontSpin.current) frontSpin.current.rotation.x = angle.current.f;
-    if (rearSpin.current) rearSpin.current.rotation.x = angle.current.r;
-  });
+  // Steering-head crown and the frame joints that hang off it.
+  const crown: Vec = [0, 0.62, 0.55];
+  const swingPivot: Vec = [0, 0.12, -0.14];
+  const lowerFront: Vec = [0, 0.06, 0.18];
+  const shockTop: Vec = [0, 0.44, -0.16];
 
-  const swing = shockTravel * 0.55;
-  const riderLean = -roll * 0.15;
+  // Rear axle rises toward the chassis as the shock compresses.
+  const rearAxleY = 0.02 + shockTravel * 0.45;
+  const rearAxle: Vec = [0, rearAxleY, REAR_Z];
+  const shockLower: Vec = [0, rearAxleY + 0.12, REAR_Z + 0.28];
+
+  // Fork length in the steering frame; the slider retracts under compression.
+  const forkLen = 0.6 - forkTravel * 0.42;
 
   return (
     <group rotation={[pitch, 0, roll]}>
       <group position={[0, FRONT_R - forkTravel * 0.55, 0]}>
-        {/* rear wheel */}
-        <group position={[0, 0, REAR_Z]}>
-          <KnobbyTire radius={REAR_R} width={0.12} spinRef={rearSpin} />
-          <mesh position={[0.07, 0, 0]} rotation={[0, 0, Math.PI / 2]}>
-            <cylinderGeometry args={[0.09, 0.09, 0.04, 16]} />
-            {metal("#e11d48")}
-          </mesh>
+        {/* rear wheel position ring */}
+        <group position={rearAxle}>
+          <WheelRing radius={REAR_R} />
         </group>
 
         {/* swingarm */}
-        <mesh
-          position={[0.04, 0.02 - swing * 0.15, REAR_Z + 0.32]}
-          rotation={[0.18 + swing, 0, 0]}
-        >
-          <boxGeometry args={[0.045, 0.035, 0.62]} />
-          {metal("#d6d3d1")}
-        </mesh>
-        <mesh
-          position={[-0.04, 0.02 - swing * 0.15, REAR_Z + 0.32]}
-          rotation={[0.18 + swing, 0, 0]}
-        >
-          <boxGeometry args={[0.045, 0.035, 0.62]} />
-          {metal("#d6d3d1")}
-        </mesh>
+        <Tube from={swingPivot} to={rearAxle} radius={0.022} color="#cbd5e1" />
 
-        {/* shock */}
-        <mesh
-          position={[0.07, 0.38 - shockTravel * 0.4, -0.22]}
-          rotation={[0.55, 0, 0.12]}
-        >
-          <cylinderGeometry args={[0.028, 0.032, 0.32 - shockTravel * 0.25, 10]} />
-          {metal("#f97316")}
-        </mesh>
-        <mesh position={[0.07, 0.5 - shockTravel * 0.35, -0.16]} rotation={[0.55, 0, 0.12]}>
-          <cylinderGeometry args={[0.018, 0.018, 0.14, 8]} />
-          {metal("#e5e7eb")}
-        </mesh>
+        {/* rear shock */}
+        <Tube from={shockTop} to={shockLower} radius={0.026} color="#f97316" />
 
-        {/* frame backbone */}
-        <mesh position={[0, 0.48, -0.08]} rotation={[0.55, 0, 0]}>
-          <boxGeometry args={[0.05, 0.04, 0.72]} />
-          {metal("#f8fafc")}
-        </mesh>
-        <mesh position={[0, 0.42, 0.18]} rotation={[-0.9, 0, 0]}>
-          <boxGeometry args={[0.045, 0.035, 0.42]} />
-          {metal("#f8fafc")}
-        </mesh>
-        <mesh position={[0, 0.28, -0.08]} rotation={[1.15, 0, 0]}>
-          <boxGeometry args={[0.04, 0.03, 0.38]} />
-          {metal("#e2e8f0")}
-        </mesh>
+        {/* frame skeleton: backbone + downtube + cradle */}
+        <Tube from={crown} to={shockTop} radius={0.024} color="#f8fafc" />
+        <Tube from={crown} to={lowerFront} radius={0.024} color="#f8fafc" />
+        <Tube from={lowerFront} to={swingPivot} radius={0.022} color="#e2e8f0" />
+        <Tube from={shockTop} to={swingPivot} radius={0.02} color="#e2e8f0" />
 
-        {/* engine */}
-        <mesh position={[0, 0.31, 0.02]} castShadow>
-          <boxGeometry args={[0.2, 0.26, 0.28]} />
-          {metal("#3f3f46")}
-        </mesh>
-        <mesh position={[0.12, 0.34, 0.02]}>
-          <cylinderGeometry args={[0.07, 0.07, 0.08, 12]} />
+        {/* steering head */}
+        <mesh position={crown} rotation={[-0.33, 0, 0]}>
+          <cylinderGeometry args={[0.032, 0.032, 0.16, 12]} />
           {metal("#a1a1aa")}
         </mesh>
-        <mesh position={[-0.02, 0.18, 0.18]} rotation={[0.4, 0, 0]}>
-          <boxGeometry args={[0.16, 0.08, 0.18]} />
-          {metal("#27272a")}
-        </mesh>
-        <mesh position={[0.02, 0.55, 0.08]}>
-          <cylinderGeometry args={[0.045, 0.05, 0.16, 10]} />
-          {metal("#d4d4d8")}
-        </mesh>
-        <mesh position={[0.04, 0.62, 0.22]} rotation={[1.1, 0, 0]}>
-          <cylinderGeometry args={[0.022, 0.028, 0.28, 8]} />
-          {metal("#78716c")}
-        </mesh>
 
-        {/* radiator / shrouds */}
-        <mesh position={[0.13, 0.58, 0.28]} rotation={[0.1, 0.15, 0]}>
-          <boxGeometry args={[0.04, 0.28, 0.22]} />
-          {metal("#2563eb", { metalness: 0.35, roughness: 0.45 })}
-        </mesh>
-        <mesh position={[-0.13, 0.58, 0.28]} rotation={[0.1, -0.15, 0]}>
-          <boxGeometry args={[0.04, 0.28, 0.22]} />
-          {metal("#2563eb", { metalness: 0.35, roughness: 0.45 })}
-        </mesh>
-        <mesh position={[0, 0.7, 0.32]}>
-          <boxGeometry args={[0.18, 0.12, 0.08]} />
-          {metal("#f8fafc")}
-        </mesh>
-        <mesh position={[0, 0.7, 0.365]}>
-          <boxGeometry args={[0.14, 0.1, 0.01]} />
-          <meshStandardMaterial map={plateTexture} metalness={0.08} roughness={0.55} />
-        </mesh>
-
-        {/* tank / seat */}
-        <mesh position={[0, 0.78, 0.08]}>
-          <boxGeometry args={[0.2, 0.12, 0.38]} />
-          {metal("#fff7ed", { metalness: 0.2, roughness: 0.5 })}
-        </mesh>
-        <mesh position={[0, 0.8, -0.28]}>
-          <boxGeometry args={[0.16, 0.1, 0.42]} />
-          {metal("#1c1917", { metalness: 0.15, roughness: 0.7 })}
-        </mesh>
-        <mesh position={[0, 0.74, -0.52]}>
-          <boxGeometry args={[0.14, 0.08, 0.16]} />
-          {metal("#292524")}
-        </mesh>
-
-        {/* rear fender */}
-        <mesh position={[0, 0.62, -0.7]} rotation={[-0.35, 0, 0]}>
-          <boxGeometry args={[0.18, 0.03, 0.28]} />
-          {metal("#1d4ed8", { metalness: 0.3 })}
-        </mesh>
-
-        {/* pegs */}
-        <mesh position={[0.14, 0.22, -0.12]}>
-          <boxGeometry args={[0.1, 0.02, 0.05]} />
-          {metal("#a8a29e")}
-        </mesh>
-        <mesh position={[-0.14, 0.22, -0.12]}>
-          <boxGeometry args={[0.1, 0.02, 0.05]} />
-          {metal("#a8a29e")}
-        </mesh>
-
-        {/* steering head + forks */}
-        <group position={[0, 0.78, 0.48]} rotation={[0.48, 0, 0]}>
+        {/* steering assembly: forks, front wheel, handlebar (rake, then steer) */}
+        <group position={crown} rotation={[-0.33, 0, 0]}>
           <group rotation={[0, steer, 0]}>
-            <mesh position={[0.08, -0.28 - forkTravel * 0.5, 0]}>
-              <cylinderGeometry args={[0.022, 0.022, 0.72 + forkTravel * 0.1, 10]} />
+            {/* fork legs */}
+            <mesh position={[0.1, -forkLen / 2, 0]}>
+              <cylinderGeometry args={[0.02, 0.02, forkLen, 10]} />
               {metal("#e5e7eb")}
             </mesh>
-            <mesh position={[-0.08, -0.28 - forkTravel * 0.5, 0]}>
-              <cylinderGeometry args={[0.022, 0.022, 0.72 + forkTravel * 0.1, 10]} />
+            <mesh position={[-0.1, -forkLen / 2, 0]}>
+              <cylinderGeometry args={[0.02, 0.02, forkLen, 10]} />
               {metal("#e5e7eb")}
             </mesh>
-            <mesh position={[0.08, -0.02, 0]}>
-              <cylinderGeometry args={[0.03, 0.03, 0.28, 10]} />
-              {metal("#a1a1aa")}
-            </mesh>
-            <mesh position={[-0.08, -0.02, 0]}>
-              <cylinderGeometry args={[0.03, 0.03, 0.28, 10]} />
-              {metal("#a1a1aa")}
-            </mesh>
-            <mesh position={[0, 0.08, 0]}>
-              <boxGeometry args={[0.22, 0.04, 0.05]} />
+            {/* front wheel position ring at the fork ends */}
+            <group position={[0, -forkLen, 0]}>
+              <WheelRing radius={FRONT_R} />
+            </group>
+            {/* handlebar */}
+            <mesh position={[0, 0.14, -0.02]} rotation={[0, 0, Math.PI / 2]}>
+              <cylinderGeometry args={[0.014, 0.014, 0.5, 8]} />
               {metal("#d4d4d8")}
             </mesh>
-            <mesh position={[0, 0.18, -0.02]}>
-              <boxGeometry args={[0.72, 0.03, 0.03]} />
-              {metal("#e5e7eb")}
-            </mesh>
-            <mesh position={[0.36, 0.18, 0]}>
-              <boxGeometry args={[0.04, 0.08, 0.09]} />
-              {metal("#111827")}
-            </mesh>
-            <mesh position={[-0.36, 0.18, 0]}>
-              <boxGeometry args={[0.04, 0.08, 0.09]} />
-              {metal("#111827")}
-            </mesh>
-            <mesh position={[0, 0.22, 0.04]}>
-              <boxGeometry args={[0.16, 0.08, 0.08]} />
-              {metal("#1d4ed8")}
-            </mesh>
-            <group position={[0, -0.62 - forkTravel, 0.12]}>
-              <KnobbyTire radius={FRONT_R} width={0.1} spinRef={frontSpin} />
-            </group>
-            <mesh position={[0, 0.42, 0.18]} rotation={[0.8, 0, 0]}>
-              <boxGeometry args={[0.2, 0.03, 0.22]} />
-              {metal("#fff7ed", { metalness: 0.25 })}
-            </mesh>
           </group>
-        </group>
-
-        {/* rider */}
-        <group position={[0, 0.82, -0.12]} rotation={[0.35 + pitch * 0.2, 0, riderLean]}>
-          <mesh position={[0, 0.16, 0.02]}>
-            <boxGeometry args={[0.22, 0.28, 0.16]} />
-            {metal("#0f172a", { metalness: 0.1, roughness: 0.65 })}
-          </mesh>
-          <mesh position={[0, 0.42, 0.04]}>
-            <sphereGeometry args={[0.11, 16, 16]} />
-            {metal("#e2e8f0", { metalness: 0.4, roughness: 0.35 })}
-          </mesh>
-          <mesh position={[0, 0.44, 0.12]}>
-            <boxGeometry args={[0.14, 0.06, 0.04]} />
-            {metal("#082f49", { roughness: 0.2, metalness: 0.3, transparent: true, opacity: 0.55 })}
-          </mesh>
-          <mesh position={[0.16, 0.08, 0.22]} rotation={[-0.9, 0.2, 0.4]}>
-            <boxGeometry args={[0.07, 0.07, 0.38]} />
-            {metal("#1d4ed8", { metalness: 0.2 })}
-          </mesh>
-          <mesh position={[-0.16, 0.08, 0.22]} rotation={[-0.9, -0.2, -0.4]}>
-            <boxGeometry args={[0.07, 0.07, 0.38]} />
-            {metal("#1d4ed8", { metalness: 0.2 })}
-          </mesh>
-          <mesh position={[0.1, -0.22, 0.02]} rotation={[0.6, 0, 0.15]}>
-            <boxGeometry args={[0.08, 0.32, 0.1]} />
-            {metal("#1e3a5f", { metalness: 0.15 })}
-          </mesh>
-          <mesh position={[-0.1, -0.22, 0.02]} rotation={[0.6, 0, -0.15]}>
-            <boxGeometry args={[0.08, 0.32, 0.1]} />
-            {metal("#1e3a5f", { metalness: 0.15 })}
-          </mesh>
-          <mesh position={[0.12, -0.4, 0.12]} rotation={[0.2, 0, 0]}>
-            <boxGeometry args={[0.09, 0.08, 0.22]} />
-            {metal("#111827")}
-          </mesh>
-          <mesh position={[-0.12, -0.4, 0.12]} rotation={[0.2, 0, 0]}>
-            <boxGeometry args={[0.09, 0.08, 0.22]} />
-            {metal("#111827")}
-          </mesh>
         </group>
       </group>
     </group>
