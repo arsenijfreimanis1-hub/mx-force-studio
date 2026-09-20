@@ -1,6 +1,6 @@
-import type { BikeEvent, LivePacket, SessionInfo, Telemetry } from "./types";
+import type { BikeEvent, LivePacket, SessionInfo, Telemetry, Vec3 } from "./types";
 
-export const STALE_MS = 350;
+export const STALE_MS = 150;
 
 type Listener = (packet: LivePacket | null) => void;
 
@@ -68,17 +68,105 @@ function defaultSession(partial?: Partial<SessionInfo>): SessionInfo {
   };
 }
 
+function keepText(next: string | undefined, prev: string, fallback: string) {
+  if (typeof next === "string" && next.trim()) return next;
+  if (prev.trim()) return prev;
+  return fallback;
+}
+
+function keepSusp(next: [number, number] | undefined, prev: [number, number]): [number, number] {
+  if (!next || next.length < 2) return prev;
+  const a = Number(next[0]);
+  const b = Number(next[1]);
+  if (!(a > 0.05) || !(b > 0.05)) return prev;
+  return [a, b];
+}
+
+/** Switching bikes often sends a partial EventInit; never clobber a good name. */
+export function mergeEvent(prev: BikeEvent | undefined, incoming?: Partial<BikeEvent>): BikeEvent {
+  const base = defaultEvent(prev);
+  if (!incoming) return base;
+  return {
+    riderName: keepText(incoming.riderName, base.riderName, base.riderName),
+    bikeId: keepText(incoming.bikeId, base.bikeId, base.bikeId),
+    bikeName: keepText(incoming.bikeName, base.bikeName, base.bikeName),
+    gears: incoming.gears && incoming.gears > 0 ? incoming.gears : base.gears,
+    maxRpm: incoming.maxRpm && incoming.maxRpm > 500 ? incoming.maxRpm : base.maxRpm,
+    limiter: incoming.limiter && incoming.limiter > 500 ? incoming.limiter : base.limiter,
+    shiftRpm: incoming.shiftRpm && incoming.shiftRpm > 500 ? incoming.shiftRpm : base.shiftRpm,
+    maxFuel: incoming.maxFuel && incoming.maxFuel > 0 ? incoming.maxFuel : base.maxFuel,
+    suspMaxTravel: keepSusp(incoming.suspMaxTravel, base.suspMaxTravel),
+    steerLock: incoming.steerLock && incoming.steerLock > 5 ? incoming.steerLock : base.steerLock,
+    category: keepText(incoming.category, base.category, base.category),
+    trackId: keepText(incoming.trackId, base.trackId, ""),
+    trackName: keepText(incoming.trackName, base.trackName, base.trackName),
+    trackLength:
+      typeof incoming.trackLength === "number" && incoming.trackLength > 0
+        ? incoming.trackLength
+        : base.trackLength,
+  };
+}
+
+function vec(v: Vec3 | undefined, fallback: Vec3): Vec3 {
+  if (!v || typeof v.x !== "number" || typeof v.y !== "number" || typeof v.z !== "number") {
+    return fallback;
+  }
+  return v;
+}
+
+function pair(v: [number, number] | undefined, fallback: [number, number]): [number, number] {
+  if (!v || v.length < 2 || typeof v[0] !== "number" || typeof v[1] !== "number") return fallback;
+  return [v[0], v[1]];
+}
+
+/** Fill holes so a 50cc or a 450 packet still drives the 6DOF deck. */
+export function normalizeTelemetry(raw: Telemetry, prev?: Telemetry): Telemetry {
+  const p = prev;
+  return {
+    rpm: Number.isFinite(raw.rpm) ? raw.rpm : (p?.rpm ?? 0),
+    engineTemp: Number.isFinite(raw.engineTemp) ? raw.engineTemp : (p?.engineTemp ?? 70),
+    waterTemp: Number.isFinite(raw.waterTemp) ? raw.waterTemp : (p?.waterTemp ?? 70),
+    gear: Number.isFinite(raw.gear) ? raw.gear : (p?.gear ?? 0),
+    fuel: Number.isFinite(raw.fuel) ? raw.fuel : (p?.fuel ?? 0),
+    speedMs: Number.isFinite(raw.speedMs) ? raw.speedMs : (p?.speedMs ?? 0),
+    position: vec(raw.position, p?.position ?? { x: 0, y: 0, z: 0 }),
+    velocity: vec(raw.velocity, p?.velocity ?? { x: 0, y: 0, z: 0 }),
+    accelG: vec(raw.accelG, p?.accelG ?? { x: 0, y: 1, z: 0 }),
+    yaw: Number.isFinite(raw.yaw) ? raw.yaw : (p?.yaw ?? 0),
+    pitch: Number.isFinite(raw.pitch) ? raw.pitch : (p?.pitch ?? 0),
+    roll: Number.isFinite(raw.roll) ? raw.roll : (p?.roll ?? 0),
+    yawRate: Number.isFinite(raw.yawRate) ? raw.yawRate : (p?.yawRate ?? 0),
+    pitchRate: Number.isFinite(raw.pitchRate) ? raw.pitchRate : (p?.pitchRate ?? 0),
+    rollRate: Number.isFinite(raw.rollRate) ? raw.rollRate : (p?.rollRate ?? 0),
+    suspLength: pair(raw.suspLength, p?.suspLength ?? [0.2, 0.2]),
+    suspVelocity: pair(raw.suspVelocity, p?.suspVelocity ?? [0, 0]),
+    crashed: Boolean(raw.crashed),
+    steer: Number.isFinite(raw.steer) ? raw.steer : (p?.steer ?? 0),
+    throttle: Number.isFinite(raw.throttle) ? raw.throttle : (p?.throttle ?? 0),
+    frontBrake: Number.isFinite(raw.frontBrake) ? raw.frontBrake : (p?.frontBrake ?? 0),
+    rearBrake: Number.isFinite(raw.rearBrake) ? raw.rearBrake : (p?.rearBrake ?? 0),
+    clutch: Number.isFinite(raw.clutch) ? raw.clutch : (p?.clutch ?? 0),
+    wheelSpeed: pair(raw.wheelSpeed, p?.wheelSpeed ?? [0, 0]),
+    wheelMaterial: pair(raw.wheelMaterial, p?.wheelMaterial ?? [0, 0]),
+    brakePressureKpa: pair(raw.brakePressureKpa, p?.brakePressureKpa ?? [0, 0]),
+    steerTorqueNm: Number.isFinite(raw.steerTorqueNm) ? raw.steerTorqueNm : (p?.steerTorqueNm ?? 0),
+    time: Number.isFinite(raw.time) ? raw.time : (p?.time ?? 0),
+    trackPos: Number.isFinite(raw.trackPos) ? raw.trackPos : (p?.trackPos ?? 0),
+  };
+}
+
 export function ingestLivePacket(body: {
   state?: number;
   event?: Partial<BikeEvent>;
   session?: Partial<SessionInfo>;
   telemetry: Telemetry;
 }): LivePacket {
+  const prev = g.__mxbLivePacket;
   const packet: LivePacket = {
     state: body.state ?? 2,
-    event: defaultEvent(body.event),
-    session: defaultSession(body.session),
-    telemetry: body.telemetry,
+    event: mergeEvent(prev?.event, body.event),
+    session: defaultSession({ ...prev?.session, ...body.session }),
+    telemetry: normalizeTelemetry(body.telemetry, prev?.telemetry),
     receivedAt: Date.now(),
   };
   g.__mxbLivePacket = packet;

@@ -60,6 +60,7 @@ export const DEFAULT_SANDBOX: SandboxInputs = {
   throttle: 0,
   frontBrake: 0,
   rearBrake: 0,
+  clutch: 0,
   steer: 0,
   lean: 0,
   pitch: 0,

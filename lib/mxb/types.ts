@@ -136,6 +136,7 @@ export type SandboxInputs = {
   throttle: number;
   frontBrake: number;
   rearBrake: number;
+  clutch: number;
   steer: number;
   lean: number;
   pitch: number;

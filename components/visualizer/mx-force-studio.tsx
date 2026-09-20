@@ -3,6 +3,9 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import {
+  Eye,
+  EyeOff,
+  Gamepad2,
   Gauge,
   Loader2,
   Pause,
@@ -17,14 +20,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { DEFAULT_EVENT, DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
+import { DEFAULT_EVENT, DEFAULT_SANDBOX } from "@/lib/mxb/defaults";
 import { SCENARIOS, telemetryForScenario } from "@/lib/mxb/demo";
 import { FORCE_META, buildForceModel, formatG, formatNewtons, speedKph } from "@/lib/mxb/forces";
+import { gamepadActive, readFirstGamepad, sandboxFromGamepad } from "@/lib/mxb/gamepad";
 import {
   createMotionFilter,
   DEFAULT_FRAME_TRAVEL,
   identityPose,
-  stepMotion,
   type FrameTravel,
   type Pose6,
 } from "@/lib/mxb/motion";
@@ -66,6 +69,8 @@ const FORCE_ORDER: ForceId[] = [
   "steer",
   "gyro",
 ];
+
+const HUD_MS = 50;
 
 function gearLabel(gear: number) {
   if (gear <= 0) return "N";
@@ -121,11 +126,14 @@ export function MxForceStudio() {
   const [playing, setPlaying] = useState(true);
   const [sandbox, setSandbox] = useState<SandboxInputs>(DEFAULT_SANDBOX);
   const [hidden, setHidden] = useState<Set<ForceId>>(new Set(["aero", "gyro"]));
+  const [hideForces, setHideForces] = useState(false);
   const [livePacket, setLivePacket] = useState<LivePacket | null>(null);
   const [liveOk, setLiveOk] = useState(false);
   const [connectRequested, setConnectRequested] = useState(false);
   const [staleMs, setStaleMs] = useState<number | null>(null);
-  const [clock, setClock] = useState(0);
+  const [hudTel, setHudTel] = useState<Telemetry>(() =>
+    telemetryForScenario("launch", 0, DEFAULT_SANDBOX),
+  );
   const [inspect, setInspect] = useState(true);
   const [travel, setTravel] = useState<FrameTravel>(DEFAULT_FRAME_TRAVEL);
   const clockRef = useRef(0);
@@ -133,12 +141,20 @@ export function MxForceStudio() {
   const motionRef = useRef(createMotionFilter());
   const poseRef = useRef(identityPose());
   const travelRef = useRef(DEFAULT_FRAME_TRAVEL);
-  const lastStepRef = useRef(0);
   const modeRef = useRef(mode);
   const connectRef = useRef(connectRequested);
-  const lastHudRef = useRef(0);
+  const lastDemoHudRef = useRef(0);
+  const lastLiveHudRef = useRef(0);
   const scenarioRef = useRef(scenario);
   const sandboxRef = useRef(sandbox);
+  const playingRef = useRef(playing);
+  const liveRef = useRef(false);
+  const telemetryRef = useRef<Telemetry>(hudTel);
+  const suspMaxRef = useRef<[number, number]>([...DEFAULT_EVENT.suspMaxTravel]);
+  const eventRef = useRef<BikeEvent>(DEFAULT_EVENT);
+  const [hudEvent, setHudEvent] = useState<BikeEvent>(DEFAULT_EVENT);
+  const [padOn, setPadOn] = useState(false);
+  const wantSandboxRef = useRef(false);
 
   useEffect(() => {
     modeRef.current = mode;
@@ -146,20 +162,31 @@ export function MxForceStudio() {
     travelRef.current = travel;
     scenarioRef.current = scenario;
     sandboxRef.current = sandbox;
+    playingRef.current = playing;
+    liveRef.current = mode === "live" && connectRequested;
   });
 
-  const stepPose = (next: Telemetry) => {
-    const now = performance.now();
-    const dt = Math.min(0.05, Math.max(0.001, (now - lastStepRef.current) / 1000));
-    lastStepRef.current = now;
-    const pose = stepMotion(motionRef.current, next, dt, travelRef.current);
-    poseRef.current = pose;
-    return pose;
-  };
+  useEffect(() => {
+    if (mode !== "live") liveRef.current = false;
+  }, [mode]);
 
   useEffect(() => {
     motionRef.current = createMotionFilter();
-    lastStepRef.current = performance.now();
+    poseRef.current = identityPose();
+    if (mode !== "live") {
+      const tel = telemetryForScenario(
+        mode === "sandbox" ? "sandbox" : scenario,
+        clockRef.current,
+        sandboxRef.current,
+      );
+      telemetryRef.current = tel;
+      eventRef.current = DEFAULT_EVENT;
+      suspMaxRef.current = [...DEFAULT_EVENT.suspMaxTravel];
+      setHudTel(tel);
+      setHudEvent(DEFAULT_EVENT);
+    } else {
+      poseRef.current = identityPose();
+    }
   }, [mode, scenario]);
 
   useEffect(() => {
@@ -168,44 +195,86 @@ export function MxForceStudio() {
     const tick = (now: number) => {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      if (playing && modeRef.current !== "live") {
+      let gamepadDirty = false;
+      const inLive = modeRef.current === "live";
+
+      if (!inLive) {
+        const gp = readFirstGamepad();
+        if (gp && gamepadActive(gp)) {
+          sandboxRef.current = sandboxFromGamepad(gp, sandboxRef.current, dt);
+          gamepadDirty = true;
+          if (modeRef.current !== "sandbox") {
+            modeRef.current = "sandbox";
+            scenarioRef.current = "sandbox";
+            wantSandboxRef.current = true;
+          }
+        }
+      }
+
+      if (!inLive && playingRef.current) {
         clockRef.current += dt;
-        const tel = telemetryForScenario(
+        telemetryRef.current = telemetryForScenario(
           modeRef.current === "sandbox" ? "sandbox" : scenarioRef.current,
           clockRef.current,
           sandboxRef.current,
         );
-        const nowMs = performance.now();
-        const stepDt = Math.min(0.05, Math.max(0.001, (nowMs - lastStepRef.current) / 1000));
-        lastStepRef.current = nowMs;
-        poseRef.current = stepMotion(motionRef.current, tel, stepDt, travelRef.current);
-        setClock(clockRef.current);
+      }
+
+      if (now - lastDemoHudRef.current >= HUD_MS) {
+        lastDemoHudRef.current = now;
+        setHudTel(telemetryRef.current);
+        setHudEvent(eventRef.current);
+        if (gamepadDirty) {
+          setSandbox({ ...sandboxRef.current });
+          setPadOn(true);
+        }
+        if (wantSandboxRef.current) {
+          wantSandboxRef.current = false;
+          setMode("sandbox");
+          setScenario("sandbox");
+          setPlaying(true);
+        }
       }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [playing]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     let lastSse = 0;
 
-    const applyHud = (body: {
+    const applyLive = (body: {
       live: boolean;
       packet: LivePacket | null;
       staleMs: number | null;
     }) => {
       if (cancelled) return;
-      if (body.packet?.telemetry && modeRef.current === "live" && connectRef.current) {
-        stepPose(body.packet.telemetry);
+      const wantLive = modeRef.current === "live" && connectRef.current;
+      if (wantLive && body.packet?.telemetry) {
+        liveRef.current = Boolean(body.live);
+        telemetryRef.current = body.packet.telemetry;
+        if (body.packet.event) {
+          eventRef.current = body.packet.event;
+          if (body.packet.event.suspMaxTravel) {
+            suspMaxRef.current = [...body.packet.event.suspMaxTravel];
+          }
+        }
+      } else if (!wantLive) {
+        liveRef.current = false;
+      } else {
+        liveRef.current = false;
       }
+
       const now = performance.now();
-      if (now - lastHudRef.current < 40) return;
-      lastHudRef.current = now;
+      if (now - lastLiveHudRef.current < HUD_MS) return;
+      lastLiveHudRef.current = now;
       setLiveOk(body.live);
       setLivePacket(body.packet);
       setStaleMs(body.staleMs);
+      setHudTel(telemetryRef.current);
+      setHudEvent(eventRef.current);
     };
 
     const poll = async () => {
@@ -216,7 +285,7 @@ export function MxForceStudio() {
           packet: LivePacket | null;
           staleMs: number | null;
         };
-        applyHud(body);
+        applyLive(body);
       } catch {
         if (!cancelled) setLiveOk(false);
       }
@@ -227,11 +296,13 @@ export function MxForceStudio() {
     es.onmessage = (event) => {
       lastSse = performance.now();
       try {
-        applyHud(JSON.parse(event.data) as {
-          live: boolean;
-          packet: LivePacket | null;
-          staleMs: number | null;
-        });
+        applyLive(
+          JSON.parse(event.data) as {
+            live: boolean;
+            packet: LivePacket | null;
+            staleMs: number | null;
+          },
+        );
       } catch {
         // ignore malformed chunks
       }
@@ -249,24 +320,14 @@ export function MxForceStudio() {
     };
   }, []);
 
-  const demoTelemetry = useMemo(
-    () => telemetryForScenario(mode === "sandbox" ? "sandbox" : scenario, clock, sandbox),
-    [mode, scenario, clock, sandbox],
-  );
-
   const usingLive = Boolean(mode === "live" && connectRequested && liveOk && livePacket);
   const liveState: "idle" | "waiting" | "connected" = !connectRequested
     ? "idle"
     : liveOk && livePacket
       ? "connected"
       : "waiting";
-  const telemetry: Telemetry =
-    usingLive && livePacket
-      ? livePacket.telemetry
-      : mode === "live"
-        ? restTelemetry({ rpm: 0, wheelMaterial: [0, 0] })
-        : demoTelemetry;
-  const event: BikeEvent = usingLive && livePacket ? livePacket.event : DEFAULT_EVENT;
+  const telemetry = hudTel;
+  const event = usingLive ? hudEvent : DEFAULT_EVENT;
   const model = useMemo(() => buildForceModel(telemetry, event), [telemetry, event]);
 
   const toggleForce = (id: ForceId) => {
@@ -281,8 +342,14 @@ export function MxForceStudio() {
   const patchSandbox = (partial: Partial<SandboxInputs>) => {
     setMode("sandbox");
     setScenario("sandbox");
-    setSandbox((prev) => ({ ...prev, ...partial }));
+    setSandbox((prev) => {
+      const next = { ...prev, ...partial };
+      sandboxRef.current = next;
+      return next;
+    });
   };
+
+  const bikeLabel = usingLive ? event.bikeName || "Live bike" : event.bikeName;
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
@@ -318,7 +385,13 @@ export function MxForceStudio() {
             Live
           </Button>
         </div>
-        <Badge variant={usingLive ? "default" : "outline"} className="gap-1">
+        {padOn ? (
+          <Badge variant="outline" className="hidden gap-1 sm:flex">
+            <Gamepad2 className="size-3" />
+            Pad
+          </Badge>
+        ) : null}
+        <Badge variant={usingLive ? "default" : "outline"} className="gap-1 max-w-[14rem]">
           {usingLive ? (
             <Radio className="size-3" />
           ) : liveState === "waiting" ? (
@@ -326,23 +399,32 @@ export function MxForceStudio() {
           ) : (
             <Unplug className="size-3" />
           )}
-          {usingLive ? "Live" : liveState === "waiting" ? "Waiting" : event.bikeName}
+          <span className="truncate">
+            {usingLive ? bikeLabel : liveState === "waiting" ? "Waiting" : bikeLabel}
+          </span>
         </Badge>
       </header>
 
       <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_16.5rem]">
         <section className="relative min-h-[52vh] border-b border-border lg:border-r lg:border-b-0">
           <BikeCanvas
-            telemetry={telemetry}
+            telemetryRef={telemetryRef}
+            suspMaxRef={suspMaxRef}
             model={model}
             hidden={hidden}
+            hideForces={hideForces}
             inspect={inspect}
             poseRef={poseRef}
+            motionRef={motionRef}
+            travelRef={travelRef}
+            playingRef={playingRef}
+            liveRef={liveRef}
             travel={travel}
           />
 
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-2">
             <div className="flex max-w-full items-center gap-x-3 overflow-x-auto rounded-md border border-white/10 bg-black/55 px-2.5 py-1.5 font-mono text-[11px] text-white backdrop-blur-sm">
+              <span className="max-w-[10rem] truncate text-amber-200">{bikeLabel}</span>
               <span>{speedKph(telemetry.speedMs).toFixed(0)} km/h</span>
               <span>{Math.round(telemetry.rpm)}</span>
               <span>{gearLabel(telemetry.gear)}</span>
@@ -356,13 +438,17 @@ export function MxForceStudio() {
               </span>
               <span className="text-white/35">·</span>
               <span>
-                <PoseReadout poseRef={poseRef} /> m
+                <PoseReadout poseRef={poseRef} />
               </span>
               {model.airborne ? <span className="text-amber-300">air</span> : null}
             </div>
           </div>
 
           <div className="absolute top-11 right-2 z-20 flex gap-1">
+            <Button size="xs" variant={hideForces ? "default" : "secondary"} onClick={() => setHideForces((v) => !v)}>
+              {hideForces ? <Eye /> : <EyeOff />}
+              {hideForces ? "Show arrows" : "Hide arrows"}
+            </Button>
             <Button size="xs" variant="secondary" onClick={() => setInspect((v) => !v)}>
               {inspect ? "Orbit" : "Lock"}
             </Button>
@@ -391,6 +477,7 @@ export function MxForceStudio() {
                       onClick={() => {
                         setConnectRequested(true);
                         motionRef.current = createMotionFilter();
+                        poseRef.current = identityPose();
                         void pollRef.current();
                       }}
                     >
@@ -414,7 +501,7 @@ export function MxForceStudio() {
                   {liveState === "connected" ? (
                     <>
                       <p className="text-xs leading-4 text-emerald-300">
-                        Live · {fmtAge(staleMs ?? 0)}
+                        Live · {event.bikeName} · {fmtAge(staleMs ?? 0)}
                       </p>
                       <Button size="xs" variant="outline" onClick={() => setConnectRequested(false)}>
                         Disconnect
@@ -446,6 +533,11 @@ export function MxForceStudio() {
 
               {mode === "sandbox" ? (
                 <div className="grid gap-2">
+                  <p className="text-[11px] text-muted-foreground">
+                    {padOn
+                      ? "Xbox / pad driving sandbox — RT throttle, LT brake, stick lean"
+                      : "Xbox pad: RT throttle, LT front brake, LB rear, left stick steer/lean"}
+                  </p>
                   <NumberSlider
                     label="Throttle"
                     value={sandbox.throttle}
@@ -469,6 +561,14 @@ export function MxForceStudio() {
                     max={1}
                     display={`${Math.round(sandbox.rearBrake * 100)}%`}
                     onChange={(rearBrake) => patchSandbox({ rearBrake })}
+                  />
+                  <NumberSlider
+                    label="Clutch"
+                    value={sandbox.clutch}
+                    min={0}
+                    max={1}
+                    display={`${Math.round(sandbox.clutch * 100)}%`}
+                    onChange={(clutch) => patchSandbox({ clutch })}
                   />
                   <NumberSlider
                     label="Steer"
@@ -600,6 +700,11 @@ function fmtM(m: number) {
   return `${m >= 0 ? "+" : ""}${m.toFixed(2)}`;
 }
 
+function fmtDeg(rad: number) {
+  const d = (rad * 180) / Math.PI;
+  return `${d >= 0 ? "+" : ""}${d.toFixed(0)}°`;
+}
+
 function PoseReadout({ poseRef }: { poseRef: MutableRefObject<Pose6> }) {
   const el = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -607,14 +712,14 @@ function PoseReadout({ poseRef }: { poseRef: MutableRefObject<Pose6> }) {
     const tick = () => {
       const pose = poseRef.current;
       if (el.current) {
-        el.current.textContent = `X ${fmtM(pose.x)}  Y ${fmtM(pose.y)}  Z ${fmtM(pose.z)}`;
+        el.current.textContent = `X ${fmtM(pose.x)}  Y ${fmtM(pose.y)}  Z ${fmtM(pose.z)} m  R ${fmtDeg(pose.roll)}  P ${fmtDeg(pose.pitch)}  Yw ${fmtDeg(pose.yaw)}`;
       }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [poseRef]);
-  return <span ref={el}>X +0.00  Y +0.00  Z +0.00</span>;
+  return <span ref={el}>X +0.00  Y +0.00  Z +0.00 m  R +0°  P +0°  Yw +0°</span>;
 }
 
 function InputsOverlay({ telemetry }: { telemetry: Telemetry }) {

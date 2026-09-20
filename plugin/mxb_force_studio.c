@@ -104,7 +104,20 @@ static SPluginsBikeEvent_t g_event;
 static SPluginsBikeSession_t g_session;
 static int g_have_event = 0;
 static int g_have_session = 0;
-static char g_json[2048];
+static int g_sent_full = 0;
+static char g_json[4096];
+static char g_tel[2048];
+
+static void copy_min(void *dst, size_t dst_sz, const void *src, int src_sz)
+{
+	memset(dst, 0, dst_sz);
+	if (!src || src_sz <= 0) return;
+	{
+		size_t n = (size_t)src_sz;
+		if (n > dst_sz) n = dst_sz;
+		memcpy(dst, src, n);
+	}
+}
 
 static void json_escape(const char *src, char *dst, size_t dst_len)
 {
@@ -138,6 +151,7 @@ __declspec(dllexport) int Startup(char *_szSavePath)
 	memset(&g_session, 0, sizeof(g_session));
 	g_have_event = 0;
 	g_have_session = 0;
+	g_sent_full = 0;
 
 	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
 		return 2;
@@ -172,8 +186,8 @@ __declspec(dllexport) int Startup(char *_szSavePath)
 		g_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
 	}
 
-	/* Telemetry period: 1 ≈ 50 Hz (was 2 ≈ 20 Hz). Keep RunTelemetry cheap. */
-	return 1;
+	/* Telemetry period: 0 = every physics tick (~100 Hz). Keep RunTelemetry cheap. */
+	return 0;
 }
 
 __declspec(dllexport) void Shutdown(void)
@@ -190,59 +204,25 @@ __declspec(dllexport) void Shutdown(void)
 
 __declspec(dllexport) void EventInit(void *_pData, int _iDataSize)
 {
-	(void)_iDataSize;
 	if (!_pData) return;
-	memcpy(&g_event, _pData, sizeof(SPluginsBikeEvent_t));
+	copy_min(&g_event, sizeof(g_event), _pData, _iDataSize);
 	g_have_event = 1;
+	g_sent_full = 0;
 }
 
 __declspec(dllexport) void RunInit(void *_pData, int _iDataSize)
 {
-	(void)_iDataSize;
 	if (!_pData) return;
-	memcpy(&g_session, _pData, sizeof(SPluginsBikeSession_t));
+	copy_min(&g_session, sizeof(g_session), _pData, _iDataSize);
 	g_have_session = 1;
 }
 
-__declspec(dllexport) void RunTelemetry(void *_pData, int _iDataSize, float _fTime, float _fPos)
+static int telemetry_json(char *buf, size_t buf_sz, const SPluginsBikeData_t *d, float time, float pos)
 {
-	SPluginsBikeData_t *d;
-	char bike[128], rider[128], track[128], category[128], setup[128], bike_id[128];
-	int n;
-
-	(void)_iDataSize;
-	if (!_pData || g_sock == INVALID_SOCKET) return;
-	d = (SPluginsBikeData_t *)_pData;
-
-	json_escape(g_have_event ? g_event.m_szBikeName : "250 4-stroke", bike, sizeof(bike));
-	json_escape(g_have_event ? g_event.m_szBikeID : "250f", bike_id, sizeof(bike_id));
-	json_escape(g_have_event ? g_event.m_szRiderName : "You", rider, sizeof(rider));
-	json_escape(g_have_event ? g_event.m_szTrackName : "", track, sizeof(track));
-	json_escape(g_have_event ? g_event.m_szCategory : "MX2", category, sizeof(category));
-	json_escape(g_have_session ? g_session.m_szSetupFileName : "", setup, sizeof(setup));
-
-	n = snprintf(
-		g_json,
-		sizeof(g_json),
-		"{\"state\":2,\"event\":{\"riderName\":\"%s\",\"bikeId\":\"%s\",\"bikeName\":\"%s\",\"gears\":%d,\"maxRpm\":%d,\"limiter\":%d,\"shiftRpm\":%d,\"maxFuel\":%.3f,\"suspMaxTravel\":[%.4f,%.4f],\"steerLock\":%.2f,\"category\":\"%s\",\"trackId\":\"\",\"trackName\":\"%s\",\"trackLength\":%.2f},\"session\":{\"session\":%d,\"conditions\":%d,\"airTemperature\":%.2f,\"setupFileName\":\"%s\"},\"telemetry\":{\"rpm\":%d,\"engineTemp\":%.2f,\"waterTemp\":%.2f,\"gear\":%d,\"fuel\":%.3f,\"speedMs\":%.4f,\"position\":{\"x\":%.3f,\"y\":%.3f,\"z\":%.3f},\"velocity\":{\"x\":%.4f,\"y\":%.4f,\"z\":%.4f},\"accelG\":{\"x\":%.4f,\"y\":%.4f,\"z\":%.4f},\"yaw\":%.3f,\"pitch\":%.3f,\"roll\":%.3f,\"yawRate\":%.3f,\"pitchRate\":%.3f,\"rollRate\":%.3f,\"suspLength\":[%.4f,%.4f],\"suspVelocity\":[%.4f,%.4f],\"crashed\":%s,\"steer\":%.3f,\"throttle\":%.4f,\"frontBrake\":%.4f,\"rearBrake\":%.4f,\"clutch\":%.4f,\"wheelSpeed\":[%.4f,%.4f],\"wheelMaterial\":[%d,%d],\"brakePressureKpa\":[%.2f,%.2f],\"steerTorqueNm\":%.3f,\"time\":%.4f,\"trackPos\":%.5f}}",
-		rider,
-		bike_id,
-		bike,
-		g_have_event ? g_event.m_iNumberOfGears : 5,
-		g_have_event ? g_event.m_iMaxRPM : 14000,
-		g_have_event ? g_event.m_iLimiter : 14400,
-		g_have_event ? g_event.m_iShiftRPM : 12800,
-		g_have_event ? g_event.m_fMaxFuel : 6.1f,
-		g_have_event ? g_event.m_afSuspMaxTravel[0] : 0.31f,
-		g_have_event ? g_event.m_afSuspMaxTravel[1] : 0.312f,
-		g_have_event ? g_event.m_fSteerLock : 48.0f,
-		category,
-		track,
-		g_have_event ? g_event.m_fTrackLength : 0.0f,
-		g_have_session ? g_session.m_iSession : 1,
-		g_have_session ? g_session.m_iConditions : 0,
-		g_have_session ? g_session.m_fAirTemperature : 21.0f,
-		setup,
+	return snprintf(
+		buf,
+		buf_sz,
+		"{\"rpm\":%d,\"engineTemp\":%.2f,\"waterTemp\":%.2f,\"gear\":%d,\"fuel\":%.3f,\"speedMs\":%.4f,\"position\":{\"x\":%.3f,\"y\":%.3f,\"z\":%.3f},\"velocity\":{\"x\":%.4f,\"y\":%.4f,\"z\":%.4f},\"accelG\":{\"x\":%.4f,\"y\":%.4f,\"z\":%.4f},\"yaw\":%.3f,\"pitch\":%.3f,\"roll\":%.3f,\"yawRate\":%.3f,\"pitchRate\":%.3f,\"rollRate\":%.3f,\"suspLength\":[%.4f,%.4f],\"suspVelocity\":[%.4f,%.4f],\"crashed\":%s,\"steer\":%.3f,\"throttle\":%.4f,\"frontBrake\":%.4f,\"rearBrake\":%.4f,\"clutch\":%.4f,\"wheelSpeed\":[%.4f,%.4f],\"wheelMaterial\":[%d,%d],\"brakePressureKpa\":[%.2f,%.2f],\"steerTorqueNm\":%.3f,\"time\":%.4f,\"trackPos\":%.5f}",
 		d->m_iRPM,
 		d->m_fEngineTemperature,
 		d->m_fWaterTemperature,
@@ -266,10 +246,63 @@ __declspec(dllexport) void RunTelemetry(void *_pData, int _iDataSize, float _fTi
 		d->m_aiWheelMaterial[0], d->m_aiWheelMaterial[1],
 		d->m_afBrakePressure[0], d->m_afBrakePressure[1],
 		d->m_fSteerTorque,
-		_fTime,
-		_fPos
+		time,
+		pos
 	);
+}
 
+__declspec(dllexport) void RunTelemetry(void *_pData, int _iDataSize, float _fTime, float _fPos)
+{
+	SPluginsBikeData_t data;
+	char bike[128], rider[128], track[128], category[128], setup[128], bike_id[128];
+	int tn, n;
+
+	if (!_pData || g_sock == INVALID_SOCKET) return;
+	copy_min(&data, sizeof(data), _pData, _iDataSize);
+
+	tn = telemetry_json(g_tel, sizeof(g_tel), &data, _fTime, _fPos);
+	if (tn <= 0 || tn >= (int)sizeof(g_tel)) return;
+
+	if (!g_sent_full) {
+		json_escape(g_have_event ? g_event.m_szBikeName : "250 4-stroke", bike, sizeof(bike));
+		json_escape(g_have_event ? g_event.m_szBikeID : "250f", bike_id, sizeof(bike_id));
+		json_escape(g_have_event ? g_event.m_szRiderName : "You", rider, sizeof(rider));
+		json_escape(g_have_event ? g_event.m_szTrackName : "", track, sizeof(track));
+		json_escape(g_have_event ? g_event.m_szCategory : "MX2", category, sizeof(category));
+		json_escape(g_have_session ? g_session.m_szSetupFileName : "", setup, sizeof(setup));
+
+		n = snprintf(
+			g_json,
+			sizeof(g_json),
+			"{\"state\":2,\"event\":{\"riderName\":\"%s\",\"bikeId\":\"%s\",\"bikeName\":\"%s\",\"gears\":%d,\"maxRpm\":%d,\"limiter\":%d,\"shiftRpm\":%d,\"maxFuel\":%.3f,\"suspMaxTravel\":[%.4f,%.4f],\"steerLock\":%.2f,\"category\":\"%s\",\"trackId\":\"\",\"trackName\":\"%s\",\"trackLength\":%.2f},\"session\":{\"session\":%d,\"conditions\":%d,\"airTemperature\":%.2f,\"setupFileName\":\"%s\"},\"telemetry\":%s}",
+			rider,
+			bike_id,
+			bike,
+			g_have_event ? g_event.m_iNumberOfGears : 5,
+			g_have_event ? g_event.m_iMaxRPM : 14000,
+			g_have_event ? g_event.m_iLimiter : 14400,
+			g_have_event ? g_event.m_iShiftRPM : 12800,
+			g_have_event ? g_event.m_fMaxFuel : 6.1f,
+			g_have_event ? g_event.m_afSuspMaxTravel[0] : 0.31f,
+			g_have_event ? g_event.m_afSuspMaxTravel[1] : 0.312f,
+			g_have_event ? g_event.m_fSteerLock : 48.0f,
+			category,
+			track,
+			g_have_event ? g_event.m_fTrackLength : 0.0f,
+			g_have_session ? g_session.m_iSession : 1,
+			g_have_session ? g_session.m_iConditions : 0,
+			g_have_session ? g_session.m_fAirTemperature : 21.0f,
+			setup,
+			g_tel
+		);
+		if (n > 0 && n < (int)sizeof(g_json)) {
+			sendto(g_sock, g_json, n, 0, (struct sockaddr *)&g_addr, sizeof(g_addr));
+			g_sent_full = 1;
+		}
+		return;
+	}
+
+	n = snprintf(g_json, sizeof(g_json), "{\"state\":2,\"telemetry\":%s}", g_tel);
 	if (n > 0 && n < (int)sizeof(g_json)) {
 		sendto(g_sock, g_json, n, 0, (struct sockaddr *)&g_addr, sizeof(g_addr));
 	}
