@@ -422,6 +422,7 @@ export function MxForceStudio() {
             forcesRef={forcesRef}
             hiddenRef={hiddenRef}
             driving={driving}
+            showPadLabels={!graphOpen}
           />
 
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-2">

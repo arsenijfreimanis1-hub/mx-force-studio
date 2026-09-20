@@ -122,7 +122,7 @@ export function TelemetryGraph({
   }, []);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-1.5 rounded-md border border-white/10 bg-black/70 p-2 text-white backdrop-blur-sm">
+    <div className="flex h-full min-h-0 flex-col gap-1.5 rounded-md border border-white/15 bg-zinc-950 p-2 text-white shadow-lg">
       <div className="flex flex-wrap items-center gap-1">
         <span className="mr-1 text-[10px] font-medium tracking-wide text-white/55 uppercase">
           Game data {live ? "· live" : "· last packet"}

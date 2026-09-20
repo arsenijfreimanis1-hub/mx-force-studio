@@ -31,6 +31,7 @@ export function BikeCanvas({
   forcesRef,
   hiddenRef,
   driving,
+  showPadLabels = true,
 }: {
   telemetryRef: MutableRefObject<Telemetry>;
   hideForces: boolean;
@@ -46,6 +47,7 @@ export function BikeCanvas({
   forcesRef: MutableRefObject<ForceModel>;
   hiddenRef: MutableRefObject<Set<ForceId>>;
   driving: boolean;
+  showPadLabels?: boolean;
 }) {
   return (
     <Canvas
@@ -78,7 +80,7 @@ export function BikeCanvas({
           fadeStrength={1.2}
           position={[0, 0.002, 0]}
         />
-        <WorldMotionCues />
+        <WorldMotionCues showLabels={showPadLabels} />
         <MotionPedestal poseRef={poseRef} />
         <ChassisRig
           poseRef={poseRef}
