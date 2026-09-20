@@ -21,7 +21,7 @@ import { buildForceModel } from "@/lib/mxb/forces";
 import type { BikeEvent, ForceModel, SandboxInputs, Telemetry } from "@/lib/mxb/types";
 
 /** Visual follow of the washout pose. Longer than the IMU hash, still under jump-drop budget. */
-export const VISUAL_POSE_TAU = 0.1;
+export const VISUAL_POSE_TAU = 0.04;
 
 export function ChassisRig({
   poseRef,

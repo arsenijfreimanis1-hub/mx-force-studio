@@ -36,13 +36,17 @@ export function attitudeFromRot(rot: number[]): AttitudeDeg | null {
   return { yaw, pitch, roll };
 }
 
+/** Live lean/pitch come from plugin Euler. `m_aafRot` also carries heading, which we were reading as a stuck left lean. */
 export function resolveAttitude(tel: {
   yaw: number;
   pitch: number;
   roll: number;
   rot?: number[];
 }): AttitudeDeg {
-  return attitudeFromRot(tel.rot ?? []) ?? { yaw: tel.yaw, pitch: tel.pitch, roll: tel.roll };
+  if (Number.isFinite(tel.roll) || Number.isFinite(tel.pitch) || Number.isFinite(tel.yaw)) {
+    return { yaw: tel.yaw, pitch: tel.pitch, roll: tel.roll };
+  }
+  return attitudeFromRot(tel.rot ?? []) ?? { yaw: 0, pitch: 0, roll: 0 };
 }
 
 export function rzRoll(degAngle: number): number[] {

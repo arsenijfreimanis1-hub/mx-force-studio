@@ -46,7 +46,7 @@ export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
   limitRoll: (40 * Math.PI) / 180,
   limitPitch: (28 * Math.PI) / 180,
   limitYaw: (15 * Math.PI) / 180,
-  smoothTau: 0.12,
+  smoothTau: 0.08,
   response: 1,
 };
 
@@ -69,25 +69,22 @@ const INTEGRATOR_HZ = 120;
  */
 const TILT_RATE_LIMIT = (55 * Math.PI) / 180;
 const TILT_TAU = 0.22;
-/** Follow in-game Euler; long enough to kill 100 Hz IMU hash. */
-const ATTITUDE_TAU = 0.12;
+/** Follow in-game Euler tightly so throttle / brake / lean match the sim. */
+const ATTITUDE_TAU = 0.05;
 /** Grounded whoops stay on the shocks; air / landing can move faster. */
-const HEAVE_TAU_GROUND = 0.14;
-const HEAVE_TAU_AIR = 0.08;
-/**
- * PiBoSo chassis Euler / RaceVehicleData lean: negative = left.
- * Three.js +Z from behind is a left lean, so we negate once here.
- */
-const LEAN_FOLLOW = -1;
-const PITCH_FOLLOW = 0.9;
+const HEAVE_TAU_GROUND = 0.1;
+const HEAVE_TAU_AIR = 0.06;
+/** Deck roll = plugin m_fRoll. Negative game roll = left on the chase cam. */
+const LEAN_FOLLOW = 1;
+const PITCH_FOLLOW = 1;
 const REST_SUSP_F = 0.205;
 const REST_SUSP_R = 0.208;
 const SAG_TAU_QUIET = 3.5;
 const SAG_TAU_BUSY = 8;
 /** Residual lateral tilt only — lean-follow owns the berm. */
 const TILT_ROLL_BLEND = 0.04;
-/** Brake / accel pitch tilt (gravity alignment). */
-const TILT_PITCH_BLEND = 0.28;
+/** Brake / accel pitch so gas lifts the front and the brakes drop it. */
+const TILT_PITCH_BLEND = 0.42;
 const HEAD_ACCEL_CLAMP = 14;
 
 /** 6DOF pose of the motion base (radians). */
@@ -451,14 +448,16 @@ export function stepMotion(
   filter.pitchHp = follow(filter.pitchHp, 0, step, 0.12);
   filter.vpitch = 0;
 
-  const tiltPitchTarget = Math.atan(gForce.z) * TILT_PITCH_BLEND * response;
+  const inputPitch =
+    (cues.throttle * 0.14 - cues.frontBrake * 0.2 - cues.rearBrake * 0.06) * response;
+  const tiltPitchTarget = Math.atan(gForce.z) * TILT_PITCH_BLEND * response + inputPitch;
   const tiltRollTarget = Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
   filter.tiltPitch = rateLimit(filter.tiltPitch, tiltPitchTarget, step, TILT_RATE_LIMIT);
   filter.tiltRoll = rateLimit(filter.tiltRoll, tiltRollTarget, step, TILT_RATE_LIMIT);
   filter.tiltPitch = follow(filter.tiltPitch, tiltPitchTarget, step, TILT_TAU);
   filter.tiltRoll = follow(filter.tiltRoll, tiltRollTarget, step, TILT_TAU);
 
-  const attitudeTau = Math.max(ATTITUDE_TAU, smoothTau);
+  const attitudeTau = Math.min(ATTITUDE_TAU, Math.max(0.04, smoothTau));
   filter.followRoll = follow(filter.followRoll, deg(filter.sRoll) * LEAN_FOLLOW, step, attitudeTau);
   filter.followPitch = follow(filter.followPitch, deg(filter.sPitch) * PITCH_FOLLOW, step, attitudeTau);
 

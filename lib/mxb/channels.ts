@@ -9,7 +9,7 @@
  *   roll          deg, negative = left (same family as RaceVehicleData m_fLean)
  *   pitch         deg, positive = nose up
  *   yaw / yawRate heading + deg/s
- *   rot[9]        row-major 3×3, preferred over Euler when valid
+ *   rot[9]        row-major 3×3 (heading lives here; lean uses Euler)
  *   suspLength    m, longer = more extended (0 front, 1 rear)
  *   suspVelocity  m/s, + extending
  *   velocity.y    m/s world climb (jump crest / free fall)

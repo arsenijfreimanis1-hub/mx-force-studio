@@ -64,7 +64,7 @@ function Tube({
   );
 }
 
-function RiderDummy({
+function SeatBean({
   telemetryRef,
   liveRef,
   padActiveRef,
@@ -73,62 +73,55 @@ function RiderDummy({
   liveRef: MutableRefObject<boolean>;
   padActiveRef: MutableRefObject<boolean>;
 }) {
-  const group = useRef<THREE.Group>(null);
-  const hips = useRef<THREE.Mesh>(null);
-  const leftLeg = useRef<THREE.Mesh>(null);
-  const rightLeg = useRef<THREE.Mesh>(null);
+  const mesh = useRef<THREE.Mesh>(null);
   const last = useRef(idleRider());
+  const mat = useMemo(
+    () => new THREE.MeshStandardMaterial({ color: "#1e293b", roughness: 0.7 }),
+    [],
+  );
 
   useFrame((_, dt) => {
-    const node = group.current;
+    const node = mesh.current;
     if (!node) return;
     const active = liveRef.current || padActiveRef.current;
     const want = active ? riderFromTelemetry(telemetryRef.current) : idleRider();
-    const a = active ? 1 - Math.exp(-Math.min(0.05, dt) / 0.1) : 1;
+    const a = active ? 1 - Math.exp(-Math.min(0.05, dt) / 0.07) : 1;
     const pose = last.current;
     pose.stand += (want.stand - pose.stand) * a;
     pose.lean += (want.lean - pose.lean) * a;
     pose.foreAft += (want.foreAft - pose.foreAft) * a;
-    node.position.set(0, 0.92 + pose.stand * 0.14, -0.02 + pose.foreAft);
-    node.rotation.set(pose.stand * -0.18, 0, pose.lean);
-    if (hips.current) hips.current.scale.set(1, 1 + pose.stand * 0.12, 1);
-    const squat = 0.55 - pose.stand * 0.28;
-    if (leftLeg.current) leftLeg.current.rotation.x = squat;
-    if (rightLeg.current) rightLeg.current.rotation.x = squat;
+    node.position.set(0, 0.86 + pose.stand * 0.12, 0.02 + pose.foreAft);
+    node.rotation.set(pose.stand * -0.12, 0, pose.lean);
+    const s = 1 + pose.stand * 0.08;
+    node.scale.set(s, 1 + pose.stand * 0.15, s);
   });
 
-  const kit = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#1e293b", roughness: 0.7 }),
-    [],
-  );
-  const lid = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#334155", roughness: 0.45, metalness: 0.15 }),
-    [],
-  );
-  const limb = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: "#0f172a", roughness: 0.75 }),
-    [],
-  );
-
   return (
-    <group ref={group} position={[0, 0.92, -0.02]}>
-      <mesh ref={hips} position={[0, 0.12, 0]} material={kit}>
-        <capsuleGeometry args={[0.07, 0.2, 3, 6]} />
-      </mesh>
-      <mesh position={[0, 0.32, 0.02]} material={lid}>
-        <sphereGeometry args={[0.072, 8, 6]} />
-      </mesh>
-      <mesh position={[0.1, 0.02, 0.02]} rotation={[0.15, 0, 0.2]} material={limb}>
-        <capsuleGeometry args={[0.032, 0.16, 3, 5]} />
-      </mesh>
-      <mesh position={[-0.1, 0.02, 0.02]} rotation={[0.15, 0, -0.2]} material={limb}>
-        <capsuleGeometry args={[0.032, 0.16, 3, 5]} />
-      </mesh>
-      <mesh ref={leftLeg} position={[0.06, -0.14, 0.03]} rotation={[0.55, 0, 0]} material={limb}>
-        <capsuleGeometry args={[0.034, 0.18, 3, 5]} />
-      </mesh>
-      <mesh ref={rightLeg} position={[-0.06, -0.14, 0.03]} rotation={[0.55, 0, 0]} material={limb}>
-        <capsuleGeometry args={[0.034, 0.18, 3, 5]} />
+    <mesh ref={mesh} position={[0, 0.86, 0.02]} material={mat}>
+      <sphereGeometry args={[0.11, 10, 8]} />
+    </mesh>
+  );
+}
+
+function SteerBars({
+  telemetryRef,
+  bar,
+}: {
+  telemetryRef: MutableRefObject<Telemetry>;
+  bar: THREE.MeshStandardMaterial;
+}) {
+  const group = useRef<THREE.Group>(null);
+  useFrame((_, dt) => {
+    const node = group.current;
+    if (!node) return;
+    const steer = (telemetryRef.current.steer * Math.PI) / 180;
+    const a = 1 - Math.exp(-Math.min(0.05, dt) / 0.05);
+    node.rotation.y += (steer - node.rotation.y) * a;
+  });
+  return (
+    <group ref={group} position={[0, 0.74, 0.52]}>
+      <mesh rotation={[0, 0, Math.PI / 2]} material={bar}>
+        <cylinderGeometry args={[0.02, 0.02, 0.52, 8]} />
       </mesh>
     </group>
   );
@@ -188,11 +181,8 @@ export const MotocrossBike = memo(function MotocrossBike({
       <mesh position={CROWN} rotation={[-0.33, 0, 0]} material={clampMat}>
         <cylinderGeometry args={[0.042, 0.042, 0.18, 8]} />
       </mesh>
-      <mesh position={[0, 0.74, 0.52]} rotation={[0, 0, Math.PI / 2]} material={bar}>
-        <cylinderGeometry args={[0.02, 0.02, 0.52, 8]} />
-      </mesh>
-
-      <RiderDummy telemetryRef={telemetryRef} liveRef={liveRef} padActiveRef={padActiveRef} />
+      <SteerBars telemetryRef={telemetryRef} bar={bar} />
+      <SeatBean telemetryRef={telemetryRef} liveRef={liveRef} padActiveRef={padActiveRef} />
     </group>
   );
 });

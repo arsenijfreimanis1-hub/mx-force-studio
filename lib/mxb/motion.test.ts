@@ -110,8 +110,8 @@ test("lateral G shoves the frame sideways 1 m per G", () => {
 
 test("coordinated lean rolls the platform with the bike", () => {
   const pose = run(sample({ roll: -32, accelG: { x: 0.08, y: 1.05, z: 0.1 } }), 0.6);
-  assert.ok(pose.roll > 0.45, `roll ${pose.roll}`);
-  assert.ok(pose.roll <= DEFAULT_FRAME_TRAVEL.limitRoll + 1e-6, `clamp ${pose.roll}`);
+  assert.ok(pose.roll < -0.45, `roll ${pose.roll}`);
+  assert.ok(pose.roll >= -DEFAULT_FRAME_TRAVEL.limitRoll - 1e-6, `clamp ${pose.roll}`);
   assert.ok(Math.abs(pose.x) < 0.15, `sway ${pose.x}`);
 });
 
@@ -241,15 +241,22 @@ test("jump drop still reaches −0.5 m inside 0.25 s with live EMA", () => {
 
 test("PiBoSo negative roll is a left lean on the deck", () => {
   const pose = run(sample({ roll: -28, accelG: { x: 0, y: 1, z: 0 } }), 0.8);
-  assert.ok(pose.roll > 0.35, `roll ${pose.roll}`);
+  assert.ok(pose.roll < -0.35, `roll ${pose.roll}`);
 });
 
-test("MaxTM chassis matrix lean wins over a stale Euler roll", () => {
+test("plugin Euler lean wins over a heading-looking matrix", () => {
   const pose = run(
-    sample({ roll: 28, rot: rzRoll(-28), accelG: { x: 0, y: 1, z: 0 } }),
+    sample({ roll: -28, rot: rzRoll(32), accelG: { x: 0, y: 1, z: 0 } }),
     0.8,
   );
-  assert.ok(pose.roll > 0.35, `matrix lean ${pose.roll}`);
+  assert.ok(pose.roll < -0.35, `euler lean ${pose.roll}`);
+});
+
+test("throttle lifts the front, front brake drops it", () => {
+  const gas = run(sample({ throttle: 1, accelG: { x: 0, y: 1, z: 0.8 }, pitch: 10 }), 0.8);
+  const brake = run(sample({ frontBrake: 1, accelG: { x: 0, y: 1.1, z: -1 }, pitch: -10 }), 0.8);
+  assert.ok(gas.pitch > 0.12, `gas pitch ${gas.pitch}`);
+  assert.ok(brake.pitch < -0.12, `brake pitch ${brake.pitch}`);
 });
 
 test("compressed shocks lift the deck on a 1 G whoop", () => {

@@ -135,7 +135,7 @@ try {
   Write-Host "================================================================" -ForegroundColor Green
   Write-Host "  APP READY   http://127.0.0.1:43187" -ForegroundColor Green
   Write-Host "  NOW launch MX Bikes on this same PC, go on track," -ForegroundColor Green
-  Write-Host "  switch Force Studio to Live, click Connect." -ForegroundColor Green
+  Write-Host "  then click Connect in Force Studio." -ForegroundColor Green
   Write-Host "  If the game is already open, restart it so the plugin loads." -ForegroundColor Green
   Write-Host "================================================================" -ForegroundColor Green
   Write-Host ""

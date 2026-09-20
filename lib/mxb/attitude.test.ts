@@ -22,3 +22,9 @@ test("a zero matrix falls back to Euler", () => {
   assert.equal(att.pitch, 4);
   assert.equal(att.yaw, 10);
 });
+
+test("live Euler is used even when a valid matrix disagrees", () => {
+  const att = resolveAttitude({ yaw: 0, pitch: 2, roll: -12, rot: rzRoll(40) });
+  assert.equal(att.roll, -12);
+  assert.equal(att.pitch, 2);
+});

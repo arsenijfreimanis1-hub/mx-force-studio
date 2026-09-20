@@ -52,7 +52,7 @@ test("airborne rider stands", () => {
 
 test("in-game left lean (negative roll) hangs the dummy left", () => {
   const r = riderFromTelemetry(sample({ roll: -30, speedMs: 12 }));
-  assert.ok(r.lean > 0.1, `lean ${r.lean}`);
+  assert.ok(r.lean < -0.1, `lean ${r.lean}`);
 });
 
 test("front brake sits the dummy back", () => {
