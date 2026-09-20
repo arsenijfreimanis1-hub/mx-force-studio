@@ -82,8 +82,12 @@ const INTEGRATOR_HZ = 120;
 const TILT_RATE_LIMIT = (55 * Math.PI) / 180;
 const TILT_TAU = 0.22;
 /** Follow plugin Euler. Rest uses a longer tau so parked IMU noise dies. */
-const ATTITUDE_TAU = 0.11;
-const ATTITUDE_TAU_REST = 0.22;
+const ATTITUDE_TAU = 0.14;
+const ATTITUDE_TAU_REST = 0.28;
+/** Linear m/s a strapped rider can take without being thrown. */
+export const HUMAN_LIN_MS = 1.15;
+/** Angular rad/s. ~77°/s — a berm lean, not a twitch. */
+export const HUMAN_ANG_RS = 1.35;
 /** Grounded whoops stay on the shocks. Air tracks the ballistic arc. */
 const HEAVE_TAU_GROUND = 0.1;
 const HEAVE_TAU_AIR = 0.035;
@@ -553,7 +557,7 @@ export function stepMotion(
 
   if (hasWorld) filter.prevWorldY = worldY;
 
-  filter.shown = clearPoseFromFloor({
+  const rawShown = clearPoseFromFloor({
     x: filter.x,
     y: filter.y,
     z: filter.z,
@@ -561,6 +565,19 @@ export function stepMotion(
     pitch: clamp(filter.followPitch + filter.tiltPitch, -pitchLimit, pitchLimit),
     roll: clamp(filter.followRoll + filter.tiltRoll, -rollLimit, rollLimit),
   });
+  filter.shown = limitShownPose(filter.shown, rawShown, step);
 
   return filter.shown;
+}
+
+/** Cap deck velocity so a human on the frame is not thrown by a twitch. */
+export function limitShownPose(prev: Pose6, next: Pose6, dt: number): Pose6 {
+  return {
+    x: rateLimit(prev.x, next.x, dt, HUMAN_LIN_MS),
+    y: rateLimit(prev.y, next.y, dt, HUMAN_LIN_MS),
+    z: rateLimit(prev.z, next.z, dt, HUMAN_LIN_MS),
+    yaw: rateLimit(prev.yaw, next.yaw, dt, HUMAN_ANG_RS),
+    pitch: rateLimit(prev.pitch, next.pitch, dt, HUMAN_ANG_RS),
+    roll: rateLimit(prev.roll, next.roll, dt, HUMAN_ANG_RS),
+  };
 }

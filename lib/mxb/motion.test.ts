@@ -8,7 +8,10 @@ import {
   FLOOR_CLEAR_Y,
   FRAME_HALF_SPAN,
   FRAME_LOW_Y,
+  HUMAN_ANG_RS,
+  HUMAN_LIN_MS,
   identityPose,
+  limitShownPose,
   PLATFORM_HOME_Y,
   specificForceG,
   stepMotion,
@@ -180,7 +183,7 @@ test("landing compresses the deck and does not hop up", () => {
   }
   let maxLand = -Infinity;
   let minLand = Infinity;
-  let firstLand = 0;
+  let settledLand = 0;
   for (let i = 0; i < 36; i++) {
     pose = stepMotion(
       filter,
@@ -193,11 +196,13 @@ test("landing compresses the deck and does not hop up", () => {
       }),
       dt,
     );
-    if (i === 0) firstLand = pose.y;
-    maxLand = Math.max(maxLand, pose.y);
-    minLand = Math.min(minLand, pose.y);
+    if (i === 8) settledLand = pose.y;
+    if (i >= 8) {
+      maxLand = Math.max(maxLand, pose.y);
+      minLand = Math.min(minLand, pose.y);
+    }
   }
-  assert.ok(firstLand <= 0.02, `touchdown leftover ${firstLand}`);
+  assert.ok(settledLand <= 0.02, `touchdown leftover ${settledLand}`);
   assert.ok(maxLand < 0.12, `landing hop ${maxLand}`);
   assert.ok(minLand < -0.05, `compress ${minLand}`);
 });
@@ -353,7 +358,10 @@ test("compressed shocks lift the deck on a 1 G whoop", () => {
 test("noisy roll rate does not shake a steady lean", () => {
   const filter = createMotionFilter();
   const dt = 1 / 100;
-  let pose = stepMotion(filter, sample({ roll: -24, rollRate: 0 }), dt);
+  let pose = identityPose();
+  for (let i = 0; i < 50; i++) {
+    pose = stepMotion(filter, sample({ roll: -24, rollRate: 0, accelG: { x: 0, y: 1, z: 0 } }), dt);
+  }
   let min = pose.roll;
   let max = pose.roll;
   for (let i = 0; i < 180; i++) {
@@ -404,6 +412,37 @@ test("a crash lays the bike over instead of snapping upright", () => {
   const pose = run(sample({ crashed: true, roll: 86, pitch: -20, speedMs: 3 }), 0.45);
   assert.ok(Math.abs(pose.roll) > 0.5, `crash roll ${pose.roll}`);
   assert.ok(pose.y < -0.05, `crash y ${pose.y}`);
+});
+
+test("one-step pose change is capped like a rider is on the frame", () => {
+  const filter = createMotionFilter();
+  const dt = 1 / 60;
+  const pose = stepMotion(
+    filter,
+    sample({
+      roll: -40,
+      pitch: 18,
+      accelG: { x: 0, y: 1, z: 2 },
+      throttle: 1,
+      speedMs: 20,
+      wheelMaterial: [3, 3],
+    }),
+    dt,
+  );
+  assert.ok(Math.hypot(pose.x, pose.y, pose.z) <= HUMAN_LIN_MS * dt + 1e-6, `lin ${JSON.stringify(pose)}`);
+  assert.ok(Math.abs(pose.roll) <= HUMAN_ANG_RS * dt + 1e-6, `roll ${pose.roll}`);
+  assert.ok(Math.abs(pose.pitch) <= HUMAN_ANG_RS * dt + 1e-6, `pitch ${pose.pitch}`);
+});
+
+test("limitShownPose never jumps more than the human rate", () => {
+  const next = limitShownPose(
+    identityPose(),
+    { x: 2, y: -2, z: 2, yaw: 1, pitch: -1, roll: 1 },
+    1 / 60,
+  );
+  assert.ok(Math.abs(next.x) <= HUMAN_LIN_MS / 60 + 1e-9);
+  assert.ok(Math.abs(next.y) <= HUMAN_LIN_MS / 60 + 1e-9);
+  assert.ok(Math.abs(next.roll) <= HUMAN_ANG_RS / 60 + 1e-9);
 });
 
 test("accel unit lock does not flicker across the 4.2 G edge", () => {

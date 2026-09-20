@@ -24,6 +24,7 @@ export function BikeCanvas({
   motionRef,
   travelRef,
   liveRef,
+  connectRef,
   padActiveRef,
   sandboxRef,
   eventRef,
@@ -38,6 +39,7 @@ export function BikeCanvas({
   motionRef: MutableRefObject<MotionFilter>;
   travelRef: MutableRefObject<FrameTravel>;
   liveRef: MutableRefObject<boolean>;
+  connectRef: MutableRefObject<boolean>;
   padActiveRef: MutableRefObject<boolean>;
   sandboxRef: MutableRefObject<SandboxInputs>;
   eventRef: MutableRefObject<BikeEvent>;
@@ -84,6 +86,7 @@ export function BikeCanvas({
           motionRef={motionRef}
           travelRef={travelRef}
           liveRef={liveRef}
+          connectRef={connectRef}
           padActiveRef={padActiveRef}
           sandboxRef={sandboxRef}
           eventRef={eventRef}

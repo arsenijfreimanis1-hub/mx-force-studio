@@ -21,7 +21,7 @@ import { buildForceModel } from "@/lib/mxb/forces";
 import type { BikeEvent, ForceModel, SandboxInputs, Telemetry } from "@/lib/mxb/types";
 
 /** Visual follow of the washout pose. One tau — switching taus was extra jitter. */
-export const VISUAL_POSE_TAU = 0.08;
+export const VISUAL_POSE_TAU = 0.12;
 
 export function ChassisRig({
   poseRef,
@@ -29,6 +29,7 @@ export function ChassisRig({
   motionRef,
   travelRef,
   liveRef,
+  connectRef,
   padActiveRef,
   sandboxRef,
   eventRef,
@@ -40,6 +41,7 @@ export function ChassisRig({
   motionRef: MutableRefObject<MotionFilter>;
   travelRef: MutableRefObject<FrameTravel>;
   liveRef: MutableRefObject<boolean>;
+  connectRef?: MutableRefObject<boolean>;
   padActiveRef: MutableRefObject<boolean>;
   sandboxRef: MutableRefObject<SandboxInputs>;
   eventRef: MutableRefObject<BikeEvent>;
@@ -65,7 +67,9 @@ export function ChassisRig({
       : 1 / 60;
     lastMs.current = now;
 
-    if (!liveRef.current) {
+    const connecting = connectRef?.current === true;
+    // Same Xbox pad MX Bikes uses. Never invent throttle/brake while Live is on.
+    if (!connecting && !liveRef.current) {
       const gp = readFirstGamepad();
       if (gp && gamepadActive(gp)) {
         sandboxRef.current = sandboxFromGamepad(gp, sandboxRef.current, dt);

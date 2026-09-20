@@ -20,6 +20,7 @@ import { gamepadActive, readFirstGamepad } from "@/lib/mxb/gamepad";
 import { detectCrash } from "@/lib/mxb/crash";
 import { setupLabel } from "@/lib/mxb/inputs";
 import { displayBikeName, holdLive, isPlaceholderBikeName, stabilizeBikeEvent } from "@/lib/mxb/live-store";
+import { sanitizeTelemetry } from "@/lib/mxb/sanitize";
 import { fmtLapMs, fmtOnTrackS, sessionKind, suspUsedPct, trackPct } from "@/lib/mxb/session";
 import {
   createMotionFilter,
@@ -137,11 +138,12 @@ export function MxForceStudio() {
   useEffect(() => {
     const id = window.setInterval(() => {
       let pad = padActiveRef.current;
-      if (!liveRef.current) {
+      if (!liveRef.current && !connectRef.current) {
         const gp = readFirstGamepad();
         pad = Boolean(gp && gamepadActive(gp)) || pad;
       } else {
         pad = false;
+        padActiveRef.current = false;
       }
       if (pad !== padOnRef.current) {
         padOnRef.current = pad;
@@ -187,7 +189,9 @@ export function MxForceStudio() {
           adaptRef.current = loadProfile(bikeId, eventRef.current.bikeName);
         }
         adaptRef.current = lockParkedUnits(adaptRef.current, body.packet.telemetry);
-        telemetryRef.current = applyProfileToTelemetry(body.packet.telemetry, adaptRef.current);
+        telemetryRef.current = sanitizeTelemetry(
+          applyProfileToTelemetry(body.packet.telemetry, adaptRef.current),
+        );
       } else {
         liveRef.current = false;
         const reallyGone = !wantLive || (body.staleMs != null && body.staleMs > 1500);
@@ -313,8 +317,13 @@ export function MxForceStudio() {
               bikeLatchRef.current = { id: "", name: "" };
             } else {
               setConnectRequested(true);
+              telemetryRef.current = restTelemetry({ rpm: 0 });
+              sandboxRef.current = { ...DEFAULT_SANDBOX };
+              padActiveRef.current = false;
               motionRef.current = createMotionFilter();
               poseRef.current = identityPose();
+              setHudTel(restTelemetry({ rpm: 0 }));
+              setPadOn(false);
               void pollRef.current();
             }
           }}
@@ -357,6 +366,7 @@ export function MxForceStudio() {
             motionRef={motionRef}
             travelRef={travelRef}
             liveRef={liveRef}
+            connectRef={connectRef}
             padActiveRef={padActiveRef}
             sandboxRef={sandboxRef}
             eventRef={eventRef}
@@ -432,8 +442,13 @@ export function MxForceStudio() {
                     className="w-full bg-sky-500 text-white hover:bg-sky-400"
                     onClick={() => {
                       setConnectRequested(true);
+                      telemetryRef.current = restTelemetry({ rpm: 0 });
+                      sandboxRef.current = { ...DEFAULT_SANDBOX };
+                      padActiveRef.current = false;
                       motionRef.current = createMotionFilter();
                       poseRef.current = identityPose();
+                      setHudTel(restTelemetry({ rpm: 0 }));
+                      setPadOn(false);
                       void pollRef.current();
                     }}
                   >

@@ -1,3 +1,4 @@
+import { sanitizeTelemetry } from "./sanitize.ts";
 import type { BikeEvent, LivePacket, SessionInfo, Telemetry, Vec3 } from "./types";
 
 export const STALE_MS = 750;
@@ -221,7 +222,7 @@ function pair(v: [number, number] | undefined, fallback: [number, number]): [num
 /** Fill holes so a 50cc or a 450 packet still drives the 6DOF deck. */
 export function normalizeTelemetry(raw: Telemetry, prev?: Telemetry): Telemetry {
   const p = prev;
-  return {
+  const filled: Telemetry = {
     rpm: Number.isFinite(raw.rpm) ? raw.rpm : (p?.rpm ?? 0),
     engineTemp: Number.isFinite(raw.engineTemp) ? raw.engineTemp : (p?.engineTemp ?? 70),
     waterTemp: Number.isFinite(raw.waterTemp) ? raw.waterTemp : (p?.waterTemp ?? 70),
@@ -262,6 +263,7 @@ export function normalizeTelemetry(raw: Telemetry, prev?: Telemetry): Telemetry 
       ? raw.splitBestDiffMs
       : (p?.splitBestDiffMs ?? 0),
   };
+  return sanitizeTelemetry(filled, p);
 }
 
 export function ingestLivePacket(body: {
