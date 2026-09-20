@@ -79,7 +79,7 @@ function RiderDummy({
     pose.stand += (want.stand - pose.stand) * a;
     pose.lean += (want.lean - pose.lean) * a;
     pose.foreAft += (want.foreAft - pose.foreAft) * a;
-    node.position.set(0, 0.78 + pose.stand * 0.16, 0.04 + pose.foreAft);
+    node.position.set(0, 0.92 + pose.stand * 0.14, -0.02 + pose.foreAft);
     node.rotation.set(pose.stand * -0.18, 0, pose.lean);
     if (hips.current) hips.current.scale.set(1, 1 + pose.stand * 0.12, 1);
     const squat = 0.55 - pose.stand * 0.28;
@@ -101,24 +101,24 @@ function RiderDummy({
   );
 
   return (
-    <group ref={group} position={[0, 0.78, 0.04]}>
-      <mesh ref={hips} position={[0, 0.14, 0]} material={kit}>
-        <capsuleGeometry args={[0.085, 0.24, 3, 6]} />
+    <group ref={group} position={[0, 0.92, -0.02]}>
+      <mesh ref={hips} position={[0, 0.12, 0]} material={kit}>
+        <capsuleGeometry args={[0.07, 0.2, 3, 6]} />
       </mesh>
-      <mesh position={[0, 0.38, 0.02]} material={lid}>
-        <sphereGeometry args={[0.088, 8, 6]} />
+      <mesh position={[0, 0.32, 0.02]} material={lid}>
+        <sphereGeometry args={[0.072, 8, 6]} />
       </mesh>
-      <mesh position={[0.11, 0.02, 0.02]} rotation={[0.15, 0, 0.2]} material={limb}>
-        <capsuleGeometry args={[0.038, 0.2, 3, 5]} />
+      <mesh position={[0.1, 0.02, 0.02]} rotation={[0.15, 0, 0.2]} material={limb}>
+        <capsuleGeometry args={[0.032, 0.16, 3, 5]} />
       </mesh>
-      <mesh position={[-0.11, 0.02, 0.02]} rotation={[0.15, 0, -0.2]} material={limb}>
-        <capsuleGeometry args={[0.038, 0.2, 3, 5]} />
+      <mesh position={[-0.1, 0.02, 0.02]} rotation={[0.15, 0, -0.2]} material={limb}>
+        <capsuleGeometry args={[0.032, 0.16, 3, 5]} />
       </mesh>
-      <mesh ref={leftLeg} position={[0.07, -0.16, 0.04]} rotation={[0.55, 0, 0]} material={limb}>
-        <capsuleGeometry args={[0.04, 0.22, 3, 5]} />
+      <mesh ref={leftLeg} position={[0.06, -0.14, 0.03]} rotation={[0.55, 0, 0]} material={limb}>
+        <capsuleGeometry args={[0.034, 0.18, 3, 5]} />
       </mesh>
-      <mesh ref={rightLeg} position={[-0.07, -0.16, 0.04]} rotation={[0.55, 0, 0]} material={limb}>
-        <capsuleGeometry args={[0.04, 0.22, 3, 5]} />
+      <mesh ref={rightLeg} position={[-0.06, -0.14, 0.03]} rotation={[0.55, 0, 0]} material={limb}>
+        <capsuleGeometry args={[0.034, 0.18, 3, 5]} />
       </mesh>
     </group>
   );
