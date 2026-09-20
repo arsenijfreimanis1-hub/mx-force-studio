@@ -64,6 +64,12 @@ function gearLabel(gear: number) {
   return String(gear);
 }
 
+function fmtAge(ms: number) {
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)} s`;
+  return `${Math.round(ms / 60000)} min`;
+}
+
 function NumberSlider({
   label,
   value,
@@ -110,6 +116,7 @@ export function MxForceStudio() {
   const [livePacket, setLivePacket] = useState<LivePacket | null>(null);
   const [liveOk, setLiveOk] = useState(false);
   const [connectRequested, setConnectRequested] = useState(false);
+  const [staleMs, setStaleMs] = useState<number | null>(null);
   const [clock, setClock] = useState(0);
   const [inspect, setInspect] = useState(true);
   const clockRef = useRef(0);
@@ -138,10 +145,12 @@ export function MxForceStudio() {
         const body = (await response.json()) as {
           live: boolean;
           packet: LivePacket | null;
+          staleMs: number | null;
         };
         if (!cancelled) {
           setLiveOk(body.live);
           setLivePacket(body.packet);
+          setStaleMs(body.staleMs);
         }
       } catch {
         if (!cancelled) setLiveOk(false);
@@ -323,6 +332,11 @@ export function MxForceStudio() {
                             <p className="text-[11px] leading-4 text-amber-200/80">
                               Launch the game and go on track (listening on UDP 47387).
                             </p>
+                            <p className="mt-0.5 font-mono text-[11px] text-amber-200/60">
+                              {staleMs != null && staleMs <= 5000
+                                ? `signal lost · last packet ${fmtAge(staleMs)} ago`
+                                : "no live telemetry on 47387 — check the bridge + plugin, and that you're on track"}
+                            </p>
                           </div>
                         </div>
                         <Button
@@ -348,6 +362,9 @@ export function MxForceStudio() {
                             <p className="text-[11px] leading-4 text-emerald-200/80">
                               The bike stays in the garage while the arrows update from your
                               session.
+                            </p>
+                            <p className="mt-0.5 font-mono text-[11px] text-emerald-200/60">
+                              receiving · last packet {fmtAge(staleMs ?? 0)} ago
                             </p>
                           </div>
                         </div>
