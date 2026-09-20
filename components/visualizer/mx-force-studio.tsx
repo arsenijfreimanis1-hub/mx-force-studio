@@ -120,6 +120,7 @@ export function MxForceStudio() {
   const [clock, setClock] = useState(0);
   const [inspect, setInspect] = useState(true);
   const clockRef = useRef(0);
+  const pollRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     let frame = 0;
@@ -156,6 +157,7 @@ export function MxForceStudio() {
         if (!cancelled) setLiveOk(false);
       }
     };
+    pollRef.current = poll;
     poll();
     const id = window.setInterval(poll, 80);
     return () => {
@@ -246,7 +248,7 @@ export function MxForceStudio() {
             {model.airborne ? <HudChip label="Contact" value="Airborne" warn /> : null}
           </div>
 
-          <div className="absolute right-3 bottom-3 flex gap-2 md:right-4 md:bottom-4">
+          <div className="absolute top-[4.75rem] right-3 z-20 flex gap-2 md:top-20 md:right-4">
             <Button size="sm" variant="secondary" onClick={() => setInspect((v) => !v)}>
               {inspect ? "Inspect on" : "Orbit lock"}
             </Button>
@@ -260,6 +262,8 @@ export function MxForceStudio() {
               {playing ? "Pause" : "Play"}
             </Button>
           </div>
+
+          <InputsOverlay telemetry={telemetry} />
         </section>
 
         <aside className="flex min-h-0 flex-col bg-card">
@@ -308,7 +312,10 @@ export function MxForceStudio() {
                         <Button
                           size="sm"
                           className="w-full bg-sky-500 text-white hover:bg-sky-400"
-                          onClick={() => setConnectRequested(true)}
+                          onClick={() => {
+                            setConnectRequested(true);
+                            void pollRef.current();
+                          }}
                         >
                           <Radio />
                           Connect to MX Bikes
@@ -566,6 +573,70 @@ export function MxForceStudio() {
             </div>
           </ScrollArea>
         </aside>
+      </div>
+    </div>
+  );
+}
+
+function InputsOverlay({ telemetry }: { telemetry: Telemetry }) {
+  const steerMax = 40;
+  const steerT = Math.min(1, Math.max(-1, telemetry.steer / steerMax));
+  const steerLeft = steerT > 0;
+  const steerWidth = Math.abs(steerT) * 50;
+
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-3 pl-14 md:p-4 md:pl-16">
+      <div className="grid grid-cols-3 gap-x-3 gap-y-2 rounded-lg border border-white/10 bg-black/60 px-3 py-2 backdrop-blur-sm sm:grid-cols-6">
+        <InputBar label="Throttle" value={telemetry.throttle} fillClass="bg-emerald-400" />
+        <InputBar label="Front brake" value={telemetry.frontBrake} fillClass="bg-rose-500" />
+        <InputBar label="Rear brake" value={telemetry.rearBrake} fillClass="bg-pink-400" />
+        <InputBar label="Clutch" value={telemetry.clutch} fillClass="bg-slate-300" />
+        <div className="grid gap-1">
+          <div className="flex items-center justify-between text-[10px] tracking-wide text-white/55 uppercase">
+            <span>Steer</span>
+            <span className="font-mono text-white">
+              {telemetry.steer.toFixed(0)}°{telemetry.steer < 0 ? " R" : telemetry.steer > 0 ? " L" : ""}
+            </span>
+          </div>
+          <div className="relative h-1.5 overflow-hidden rounded-full bg-white/15">
+            <div className="absolute inset-y-0 left-1/2 w-px bg-white/50" />
+            <div
+              className="absolute inset-y-0 bg-violet-400"
+              style={
+                steerLeft
+                  ? { left: `${50 - steerWidth}%`, width: `${steerWidth}%` }
+                  : { left: "50%", width: `${steerWidth}%` }
+              }
+            />
+          </div>
+        </div>
+        <div className="grid gap-1">
+          <p className="text-[10px] tracking-wide text-white/55 uppercase">Gear</p>
+          <p className="font-mono text-sm leading-none text-white">{gearLabel(telemetry.gear)}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InputBar({
+  label,
+  value,
+  fillClass,
+}: {
+  label: string;
+  value: number;
+  fillClass: string;
+}) {
+  const pct = Math.round(Math.min(1, Math.max(0, value)) * 100);
+  return (
+    <div className="grid gap-1">
+      <div className="flex items-center justify-between text-[10px] tracking-wide text-white/55 uppercase">
+        <span>{label}</span>
+        <span className="font-mono text-white">{pct}%</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-white/15">
+        <div className={`h-full ${fillClass}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
