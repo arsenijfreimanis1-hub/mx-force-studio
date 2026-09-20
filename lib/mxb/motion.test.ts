@@ -109,7 +109,7 @@ test("lateral G shoves the frame sideways 1 m per G", () => {
 });
 
 test("coordinated lean rolls the platform with the bike", () => {
-  const pose = run(sample({ roll: 32, accelG: { x: -0.08, y: 1.05, z: 0.1 } }), 0.6);
+  const pose = run(sample({ roll: -32, accelG: { x: 0.08, y: 1.05, z: 0.1 } }), 0.6);
   assert.ok(pose.roll > 0.45, `roll ${pose.roll}`);
   assert.ok(pose.roll <= DEFAULT_FRAME_TRAVEL.limitRoll + 1e-6, `clamp ${pose.roll}`);
   assert.ok(Math.abs(pose.x) < 0.15, `sway ${pose.x}`);
@@ -239,28 +239,33 @@ test("jump drop still reaches −0.5 m inside 0.25 s with live EMA", () => {
   assert.ok(pose.y < -0.5, `onset y ${pose.y}`);
 });
 
-test("positive MX Bikes roll is a left lean on the deck", () => {
-  const pose = run(sample({ roll: 28, accelG: { x: 0, y: 1, z: 0 } }), 0.8);
+test("PiBoSo negative roll is a left lean on the deck", () => {
+  const pose = run(sample({ roll: -28, accelG: { x: 0, y: 1, z: 0 } }), 0.8);
   assert.ok(pose.roll > 0.35, `roll ${pose.roll}`);
 });
 
 test("MaxTM chassis matrix lean wins over a stale Euler roll", () => {
   const pose = run(
-    sample({ roll: -28, rot: rzRoll(28), accelG: { x: 0, y: 1, z: 0 } }),
+    sample({ roll: 28, rot: rzRoll(-28), accelG: { x: 0, y: 1, z: 0 } }),
     0.8,
   );
   assert.ok(pose.roll > 0.35, `matrix lean ${pose.roll}`);
 });
 
+test("compressed shocks lift the deck on a 1 G whoop", () => {
+  const pose = run(sample({ suspLength: [0.12, 0.12], speedMs: 15, accelG: { x: 0, y: 1, z: 0 } }), 1.1);
+  assert.ok(pose.y > 0.08, `y ${pose.y}`);
+});
+
 test("noisy roll rate does not shake a steady lean", () => {
   const filter = createMotionFilter();
   const dt = 1 / 100;
-  let pose = stepMotion(filter, sample({ roll: 24, rollRate: 0 }), dt);
+  let pose = stepMotion(filter, sample({ roll: -24, rollRate: 0 }), dt);
   let min = pose.roll;
   let max = pose.roll;
   for (let i = 0; i < 180; i++) {
     const rate = i % 2 === 0 ? 160 : -160;
-    pose = stepMotion(filter, sample({ roll: 24, rollRate: rate, accelG: { x: 0, y: 1, z: 0 } }), dt);
+    pose = stepMotion(filter, sample({ roll: -24, rollRate: rate, accelG: { x: 0, y: 1, z: 0 } }), dt);
     min = Math.min(min, pose.roll);
     max = Math.max(max, pose.roll);
   }

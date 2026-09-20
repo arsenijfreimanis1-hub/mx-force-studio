@@ -9,7 +9,8 @@
     "lint": "eslint",
     "bridge": "node bridge/udp-bridge.mjs",
     "bridge:proxy": "python3 bridge/mxb_proxy_bridge.py",
-    "plugin:build": "bash plugin/build.sh"
+    "plugin:build": "bash plugin/build.sh",
+    "test": "node --experimental-strip-types --test lib/mxb/*.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

@@ -17,6 +17,7 @@ export type Telemetry = {
   accelG: Vec3;
   yaw: number;
   pitch: number;
+  /** Degrees. PiBoSo chassis Euler: negative = left. */
   roll: number;
   yawRate: number;
   pitchRate: number;

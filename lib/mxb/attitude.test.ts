@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { attitudeFromRot, resolveAttitude, rxPitch, rzRoll } from "./attitude.ts";
 
-test("MaxTM rotation matrix +32° is a left lean", () => {
+test("MaxTM +Z rotation extracts a matching Euler roll", () => {
   const att = attitudeFromRot(rzRoll(32));
   assert.ok(att);
   assert.ok(Math.abs(att.roll - 32) < 0.05, `roll ${att.roll}`);

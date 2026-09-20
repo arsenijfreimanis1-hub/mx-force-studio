@@ -1,4 +1,5 @@
 import { resolveAttitude } from "./attitude.ts";
+import { chassisCues, heaveFromCues } from "./channels.ts";
 import type { Telemetry, Vec3 } from "./types";
 
 /** Bottom-middle of the main cradle, bike-local meters. */
@@ -70,14 +71,19 @@ const TILT_RATE_LIMIT = (55 * Math.PI) / 180;
 const TILT_TAU = 0.22;
 /** Follow in-game Euler; long enough to kill 100 Hz IMU hash. */
 const ATTITUDE_TAU = 0.12;
-/** Jump / landing heave must snap; 2nd-order √g is ~1.3 s to settle. */
-const HEAVE_TAU = 0.07;
+/** Grounded whoops stay on the shocks; air / landing can move faster. */
+const HEAVE_TAU_GROUND = 0.14;
+const HEAVE_TAU_AIR = 0.08;
 /**
- * Coordinated MX lean is the chassis roll. Follow 1:1 (then travel clamp)
- * so a left rut in MX Bikes is a left rut on the deck.
+ * PiBoSo chassis Euler / RaceVehicleData lean: negative = left.
+ * Three.js +Z from behind is a left lean, so we negate once here.
  */
-const LEAN_FOLLOW = 1;
+const LEAN_FOLLOW = -1;
 const PITCH_FOLLOW = 0.9;
+const REST_SUSP_F = 0.205;
+const REST_SUSP_R = 0.208;
+const SAG_TAU_QUIET = 3.5;
+const SAG_TAU_BUSY = 8;
 /** Residual lateral tilt only — lean-follow owns the berm. */
 const TILT_ROLL_BLEND = 0.04;
 /** Brake / accel pitch tilt (gravity alignment). */
@@ -125,6 +131,8 @@ export type MotionFilter = {
   sYawRate: number;
   sPitchRate: number;
   sRollRate: number;
+  sagF: number;
+  sagR: number;
   /** null until parked / high-mag sample locks G vs m/s² for the session. */
   unitsMs2: boolean | null;
   primed: boolean;
@@ -159,6 +167,8 @@ export function createMotionFilter(): MotionFilter {
     sYawRate: 0,
     sPitchRate: 0,
     sRollRate: 0,
+    sagF: REST_SUSP_F,
+    sagR: REST_SUSP_R,
     unitsMs2: null,
     primed: false,
     shown: identityPose(),
@@ -377,12 +387,17 @@ export function stepMotion(
     filter.sYawRate = 0;
     filter.sPitchRate = 0;
     filter.sRollRate = 0;
+    filter.sagF = REST_SUSP_F;
+    filter.sagR = REST_SUSP_R;
     filter.shown = identityPose();
     return filter.shown;
   }
 
+  const airborne = telemetry.wheelMaterial[0] === 0 && telemetry.wheelMaterial[1] === 0;
+  const gTau = airborne ? 0.07 : smoothTau;
+
   filter.sAx = follow(filter.sAx, rawG.x, step, smoothTau);
-  filter.sAy = follow(filter.sAy, rawG.y, step, smoothTau);
+  filter.sAy = follow(filter.sAy, rawG.y, step, gTau);
   filter.sAz = follow(filter.sAz, rawG.z, step, smoothTau);
   filter.sRoll = follow(filter.sRoll, attitude.roll, step, smoothTau);
   filter.sPitch = follow(filter.sPitch, attitude.pitch, step, smoothTau);
@@ -390,20 +405,31 @@ export function stepMotion(
   filter.sPitchRate = follow(filter.sPitchRate, telemetry.pitchRate, step, smoothTau);
   filter.sRollRate = follow(filter.sRollRate, telemetry.rollRate, step, smoothTau);
 
-  /**
-   * Track the in-game chassis, not a differentiated head IMU. Rate-to-accel
-   * spikes at 100 Hz were the main visual jitter on live MX Bikes packets.
-   */
-  const gForce = { x: filter.sAx, y: rawG.y, z: filter.sAz };
+  if (!airborne) {
+    const shaft = Math.abs(telemetry.suspVelocity[0]) + Math.abs(telemetry.suspVelocity[1]);
+    const sagTau = shaft < 0.9 ? SAG_TAU_QUIET : SAG_TAU_BUSY;
+    filter.sagF = follow(filter.sagF, telemetry.suspLength[0], step, sagTau);
+    filter.sagR = follow(filter.sagR, telemetry.suspLength[1], step, sagTau);
+  }
+
+  const cues = chassisCues(
+    {
+      ...telemetry,
+      accelG: { x: filter.sAx, y: filter.sAy, z: filter.sAz },
+      roll: filter.sRoll,
+      pitch: filter.sPitch,
+      yawRate: filter.sYawRate,
+    },
+    filter.sagF,
+    filter.sagR,
+  );
+  const gForce = { x: cues.swayG, y: cues.vertG, z: cues.surgeG };
   const scale = GRAVITY * response;
 
-  /**
-   * Vestibular heave at the seat: parked ay=1 → 0. Jump ay≈0 → the
-   * seat DROPS (weightless). Landing ay>1 → the platform PUNCHES UP.
-   */
   const aSway = gForce.x * scale;
   const aSurge = gForce.z * scale;
-  const heaveTarget = clamp((gForce.y - 1) * response, -1, 1) * limY;
+  const heaveTarget = heaveFromCues(cues, response) * limY;
+  const heaveTau = airborne || rawG.y > 1.45 ? HEAVE_TAU_AIR : HEAVE_TAU_GROUND;
 
   const sway = stepAxis(filter.x, filter.vx, aSway, step, limX, WASH_OMEGA);
   filter.x = sway.pos;
@@ -413,9 +439,9 @@ export function stepMotion(
   filter.z = surge.pos;
   filter.vz = surge.vel;
 
-  filter.y = clamp(follow(filter.y, heaveTarget, step, HEAVE_TAU), -limY, limY);
+  filter.y = clamp(follow(filter.y, heaveTarget, step, heaveTau), -limY, limY);
 
-  const yawAccel = deg(filter.sYawRate) * 1.4 * response;
+  const yawAccel = (deg(filter.sYawRate) * 1.4 + deg(cues.steerDeg) * 0.12) * response;
   const yaw = stepAxis(filter.yaw, filter.vyaw, yawAccel, step, limYaw, WASH_OMEGA_ANG);
   filter.yaw = yaw.pos;
   filter.vyaw = yaw.vel;
