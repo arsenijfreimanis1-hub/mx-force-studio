@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { detectCrash, isStopped } from "./crash.ts";
+import { detectCrash, isAirborne, isStopped } from "./crash.ts";
 import type { Telemetry } from "./types.ts";
 
 function sample(partial: Partial<Telemetry> = {}): Telemetry {
@@ -56,4 +56,16 @@ test("a still bike with IMU noise is stopped", () => {
 
 test("a berm lean is not treated as stopped", () => {
   assert.equal(isStopped(sample({ roll: -28, speedMs: 0 })), false);
+});
+
+test("parked m/s² accel and a 10° Euler bias are still stopped", () => {
+  assert.equal(
+    isStopped(sample({ accelG: { x: 0.2, y: 9.7, z: -0.15 }, roll: 10, pitch: -4 })),
+    true,
+  );
+});
+
+test("parked wheels reporting air are not a jump", () => {
+  assert.equal(isAirborne(sample({ wheelMaterial: [0, 0], speedMs: 0 })), false);
+  assert.equal(isAirborne(sample({ wheelMaterial: [0, 0], velocity: { x: 0, y: 6, z: 12 } })), true);
 });

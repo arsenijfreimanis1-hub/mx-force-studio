@@ -211,7 +211,8 @@ export function MxForceStudio() {
         telemetryRef.current = applyProfileToTelemetry(body.packet.telemetry, adaptRef.current);
       } else {
         liveRef.current = false;
-        if (!wantLive || !body.live) {
+        const reallyGone = !wantLive || (body.staleMs != null && body.staleMs > 1500);
+        if (reallyGone) {
           telemetryRef.current = restTelemetry({ rpm: 0 });
           resetMotionFilter(motionRef.current);
           poseRef.current = identityPose();
@@ -423,7 +424,7 @@ export function MxForceStudio() {
               <span>
                 <PoseReadout poseRef={poseRef} />
               </span>
-              {learnedName ? <span className="text-sky-300">Learned · {learnedName}</span> : null}
+              {learnedName ? <span className="text-sky-300">Learned</span> : null}
             </div>
           </div>
 

@@ -109,7 +109,8 @@ export function ChassisRig({
       node.quaternion.copy(targetQuat);
       visualPrimed.current = true;
     } else {
-      const a = 1 - Math.exp(-dt / VISUAL_POSE_TAU);
+      const parkedVisual = !liveRef.current || telemetryRef.current.speedMs < 0.8;
+      const a = 1 - Math.exp(-dt / (parkedVisual ? 0.12 : VISUAL_POSE_TAU));
       node.position.lerp(targetPos, a);
       node.quaternion.slerp(targetQuat, a);
     }

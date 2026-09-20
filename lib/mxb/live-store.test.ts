@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { displayBikeName, isLive, isPlaceholderBikeName, mergeEvent, normalizeTelemetry, STALE_MS } from "./live-store.ts";
+import {
+  displayBikeName,
+  isLive,
+  isPlaceholderBikeName,
+  mergeEvent,
+  normalizeTelemetry,
+  stabilizeBikeEvent,
+  STALE_MS,
+} from "./live-store.ts";
 import { DEFAULT_EVENT } from "./bike.ts";
 import type { LivePacket, Telemetry } from "./types.ts";
 
@@ -80,12 +88,30 @@ test("a real name switch is kept for any selected bike", () => {
   assert.equal(next.bikeName, "450 4-stroke");
 });
 
-test("live window is 150 ms", () => {
-  assert.equal(STALE_MS, 150);
+test("live window is 280 ms", () => {
+  assert.equal(STALE_MS, 280);
   const fresh = { receivedAt: Date.now() - 80, state: 2 } as LivePacket;
   const stale = { receivedAt: Date.now() - 400, state: 2 } as LivePacket;
   assert.equal(isLive(fresh), true);
   assert.equal(isLive(stale), false);
+});
+
+test("stock CRF450 EventInit does not clobber a latched bike", () => {
+  const yz = mergeEvent(undefined, { bikeName: "YZ250F", bikeId: "yz250f" });
+  let latch = { id: "yz250f", name: "YZ250F", pendingId: "", pendingName: "", hits: 0 };
+  const crf = mergeEvent(yz, { bikeName: "CRF450R", bikeId: "crf450" });
+  let out = stabilizeBikeEvent(crf, latch, true);
+  assert.equal(out.event.bikeName, "YZ250F");
+  latch = out.latch;
+  out = stabilizeBikeEvent(crf, latch, true);
+  assert.equal(out.event.bikeName, "CRF450R");
+});
+
+test("telemetry-only packets keep the latched bike", () => {
+  const latch = { id: "yz250f", name: "YZ250F", pendingId: "", pendingName: "", hits: 0 };
+  const empty = mergeEvent(undefined, { bikeName: "", bikeId: "" });
+  const out = stabilizeBikeEvent(empty, latch, false);
+  assert.equal(out.event.bikeName, "YZ250F");
 });
 
 test("leaving the track is not live even if the packet is fresh", () => {

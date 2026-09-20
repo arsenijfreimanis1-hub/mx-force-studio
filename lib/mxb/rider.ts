@@ -1,4 +1,4 @@
-import { detectCrash } from "./crash.ts";
+import { detectCrash, isAirborne, isStopped } from "./crash.ts";
 import { idleBodyStick, type BodyStick } from "./gamepad.ts";
 import { LEAN_FOLLOW } from "./motion.ts";
 import type { Telemetry } from "./types";
@@ -26,7 +26,7 @@ export function riderFromTelemetry(tel: Telemetry, stick: BodyStick = idleBodySt
       foreAft: 0.03,
     };
   }
-  const airborne = tel.wheelMaterial[0] === 0 && tel.wheelMaterial[1] === 0;
+  const airborne = isAirborne(tel);
   const suspV = (tel.suspVelocity[0] + tel.suspVelocity[1]) * 0.5;
   const jumping = airborne || tel.accelG.y < 0.42;
   let stand = 0;
@@ -34,7 +34,11 @@ export function riderFromTelemetry(tel: Telemetry, stick: BodyStick = idleBodySt
   else if (tel.speedMs > 10 && Math.abs(suspV) > 0.55) stand = 0.55;
   if (tel.speedMs < 2.2 || tel.frontBrake > 0.55) stand = 0;
 
-  const lean = clamp((tel.roll * Math.PI) / 180 * LEAN_FOLLOW + stick.lean, -0.7, 0.7);
+  const lean = clamp(
+    (isStopped(tel) ? 0 : (tel.roll * Math.PI) / 180 * LEAN_FOLLOW) + stick.lean,
+    -0.7,
+    0.7,
+  );
   const foreAft = clamp(
     tel.throttle * 0.06 - tel.frontBrake * 0.1 - tel.rearBrake * 0.04 - tel.pitch * 0.004 + stick.foreAft,
     -0.12,

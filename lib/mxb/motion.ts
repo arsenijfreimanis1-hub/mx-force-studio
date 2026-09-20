@@ -8,7 +8,7 @@ import {
   type CartesianState,
 } from "./cartesian.ts";
 import { chassisCues, heaveFromCues } from "./channels.ts";
-import { detectCrash, isStopped } from "./crash.ts";
+import { detectCrash, isAirborne, isStopped } from "./crash.ts";
 import type { Telemetry, Vec3 } from "./types";
 
 export { worldToChassis } from "./cartesian.ts";
@@ -382,7 +382,7 @@ export function stepMotion(
   }
 
   const crashed = detectCrash(telemetry);
-  const airborne = telemetry.wheelMaterial[0] === 0 && telemetry.wheelMaterial[1] === 0;
+  const airborne = isAirborne(telemetry);
   const stopped = !crashed && isStopped(telemetry);
   const cartMode = crashed ? "crash" : airborne ? "air" : stopped ? "stop" : "ground";
   const useCart = cartesianUseful(telemetry.position, telemetry.speedMs, airborne);
@@ -510,10 +510,10 @@ export function stepMotion(
   }
 
   if (stopped || crashed) {
-    filter.x = follow(filter.x, 0, step, 0.18);
-    filter.vx = follow(filter.vx, 0, step, 0.12);
-    filter.z = follow(filter.z, 0, step, 0.18);
-    filter.vz = follow(filter.vz, 0, step, 0.12);
+    filter.x = follow(filter.x, 0, step, 0.14);
+    filter.vx = follow(filter.vx, 0, step, 0.1);
+    filter.z = follow(filter.z, 0, step, 0.14);
+    filter.vz = follow(filter.vz, 0, step, 0.1);
   }
 
   filter.y = clamp(follow(filter.y, heaveTarget, step, heaveTau), -limY, limY);
@@ -531,15 +531,15 @@ export function stepMotion(
   const inputPitch = stopped
     ? 0
     : (cues.throttle * 0.18 - cues.frontBrake * 0.26 - cues.rearBrake * 0.08) * response;
-  const tiltPitchTarget = Math.atan(gForce.z) * TILT_PITCH_BLEND * response + inputPitch;
-  const tiltRollTarget = Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
+  const tiltPitchTarget = stopped ? 0 : Math.atan(gForce.z) * TILT_PITCH_BLEND * response + inputPitch;
+  const tiltRollTarget = stopped ? 0 : Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
   filter.tiltPitch = rateLimit(filter.tiltPitch, tiltPitchTarget, step, TILT_RATE_LIMIT);
   filter.tiltRoll = rateLimit(filter.tiltRoll, tiltRollTarget, step, TILT_RATE_LIMIT);
   filter.tiltPitch = follow(filter.tiltPitch, tiltPitchTarget, step, TILT_TAU);
   filter.tiltRoll = follow(filter.tiltRoll, tiltRollTarget, step, TILT_TAU);
 
-  const rollCmd = stopped && Math.abs(attitude.roll) < 2.8 ? 0 : attitude.roll;
-  const pitchCmd = stopped && Math.abs(attitude.pitch) < 2.8 ? 0 : attitude.pitch;
+  const rollCmd = stopped ? 0 : attitude.roll;
+  const pitchCmd = stopped ? 0 : attitude.pitch;
   const attitudeTau = stopped ? ATTITUDE_TAU_REST : ATTITUDE_TAU;
   filter.followRoll = follow(filter.followRoll, deg(rollCmd) * LEAN_FOLLOW, step, attitudeTau);
   filter.followPitch = follow(filter.followPitch, deg(pitchCmd) * PITCH_FOLLOW, step, attitudeTau);

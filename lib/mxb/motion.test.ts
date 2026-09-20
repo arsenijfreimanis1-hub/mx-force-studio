@@ -365,6 +365,25 @@ test("noisy roll rate does not shake a steady lean", () => {
   assert.ok(max - min < 0.08, `roll wander ${max - min}`);
 });
 
+test("standing still on track does not lean or walk the deck", () => {
+  const pose = run(
+    sample({
+      speedMs: 0,
+      position: { x: 82, y: 4.1, z: -140 },
+      velocity: { x: 0.02, y: 0, z: 0.03 },
+      accelG: { x: 0.12, y: 9.7, z: -0.1 },
+      roll: 9,
+      pitch: -3,
+      yaw: 40,
+    }),
+    1.4,
+  );
+  assert.ok(Math.abs(pose.x) < 0.04, `x ${pose.x}`);
+  assert.ok(Math.abs(pose.z) < 0.04, `z ${pose.z}`);
+  assert.ok(Math.abs(pose.roll) < 0.04, `roll ${pose.roll}`);
+  assert.ok(Math.abs(pose.pitch) < 0.05, `pitch ${pose.pitch}`);
+});
+
 test("stopped IMU noise does not jitter the deck", () => {
   const pose = run(
     sample({

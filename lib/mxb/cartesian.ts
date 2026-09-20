@@ -72,12 +72,15 @@ export function isFiniteVec(v: Vec3 | undefined): v is Vec3 {
   return Boolean(v) && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
 }
 
-/** True when the plugin is sending a real world point, not a zero placeholder. */
+/**
+ * Drive the deck from world XYZ only when the bike is actually moving.
+ * A parked point like (80, 4, −20) is real, but using it as travel makes
+ * centimeter physics noise twitch the garage.
+ */
 export function cartesianUseful(world: Vec3, speedMs: number, airborne: boolean): boolean {
   if (!isFiniteVec(world)) return false;
   if (airborne) return true;
-  if (speedMs > 0.4) return true;
-  return Math.hypot(world.x, world.y, world.z) > 0.4;
+  return speedMs > 0.8;
 }
 
 /**

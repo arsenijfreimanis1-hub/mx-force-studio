@@ -1,12 +1,21 @@
 import type { BikeEvent, LivePacket, SessionInfo, Telemetry, Vec3 } from "./types";
 
-export const STALE_MS = 150;
+export const STALE_MS = 280;
 
 type Listener = (packet: LivePacket | null) => void;
+
+type BikeLatch = {
+  id: string;
+  name: string;
+  pendingId: string;
+  pendingName: string;
+  hits: number;
+};
 
 type GlobalStore = typeof globalThis & {
   __mxbLivePacket?: LivePacket | null;
   __mxbLiveListeners?: Set<Listener>;
+  __mxbBikeLatch?: BikeLatch;
 };
 
 const g = globalThis as GlobalStore;
@@ -116,6 +125,59 @@ function keepBikeName(next: string | undefined, prev: string, nextId = "", prevI
   return "";
 }
 
+function emptyLatch(): BikeLatch {
+  return { id: "", name: "", pendingId: "", pendingName: "", hits: 0 };
+}
+
+function withLatchedBike(event: BikeEvent, latch: BikeLatch): BikeEvent {
+  if (!latch.name) return event;
+  return {
+    ...event,
+    bikeId: latch.id || event.bikeId,
+    bikeName: latch.name,
+  };
+}
+
+/**
+ * EventInit sometimes flips between the stock CRF450R and the bike on the
+ * gate. Keep the first real name until a new pair repeats on two full packets.
+ */
+export function stabilizeBikeEvent(
+  merged: BikeEvent,
+  latch: BikeLatch,
+  incomingEvent: boolean,
+  reset = false,
+): { event: BikeEvent; latch: BikeLatch } {
+  if (reset) return { event: merged, latch: emptyLatch() };
+  const id = merged.bikeId.trim();
+  const name = merged.bikeName.trim();
+  const real = Boolean(name) && !isPlaceholderBikeName(name, id);
+
+  if (!incomingEvent) {
+    return { event: withLatchedBike(merged, latch), latch };
+  }
+  if (!real) {
+    return { event: withLatchedBike(merged, latch), latch };
+  }
+  if (!latch.name) {
+    return { event: merged, latch: { id, name, pendingId: "", pendingName: "", hits: 0 } };
+  }
+  if (latch.id === id && latch.name === name) {
+    return { event: merged, latch: { ...latch, pendingId: "", pendingName: "", hits: 0 } };
+  }
+  if (latch.pendingId === id && latch.pendingName === name) {
+    const hits = latch.hits + 1;
+    if (hits >= 2) {
+      return { event: merged, latch: { id, name, pendingId: "", pendingName: "", hits: 0 } };
+    }
+    return { event: withLatchedBike(merged, latch), latch: { ...latch, hits } };
+  }
+  return {
+    event: withLatchedBike(merged, latch),
+    latch: { ...latch, pendingId: id, pendingName: name, hits: 1 },
+  };
+}
+
 /** Switching bikes often sends a partial EventInit; never clobber a good name. */
 export function mergeEvent(prev: BikeEvent | undefined, incoming?: Partial<BikeEvent>): BikeEvent {
   const base = defaultEvent(prev);
@@ -211,9 +273,18 @@ export function ingestLivePacket(body: {
 }): LivePacket {
   const prev = g.__mxbLivePacket;
   const state = body.state ?? 2;
+  const leavingTrack = state < 1;
+  const merged = mergeEvent(prev?.event, body.event);
+  const latched = stabilizeBikeEvent(
+    merged,
+    g.__mxbBikeLatch ?? emptyLatch(),
+    Boolean(body.event),
+    leavingTrack,
+  );
+  g.__mxbBikeLatch = latched.latch;
   const packet: LivePacket = {
     state,
-    event: mergeEvent(prev?.event, body.event),
+    event: latched.event,
     session: defaultSession({ ...prev?.session, ...body.session }),
     telemetry: normalizeTelemetry((body.telemetry ?? prev?.telemetry ?? ({} as Telemetry)) as Telemetry, prev?.telemetry),
     receivedAt: Date.now(),
