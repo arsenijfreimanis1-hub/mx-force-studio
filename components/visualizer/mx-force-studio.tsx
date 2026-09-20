@@ -356,7 +356,7 @@ export function MxForceStudio() {
               </span>
               <span className="text-white/35">·</span>
               <span>
-                <PoseReadout poseRef={poseRef} />
+                <PoseReadout poseRef={poseRef} /> m
               </span>
               {model.airborne ? <span className="text-amber-300">air</span> : null}
             </div>
@@ -596,9 +596,8 @@ export function MxForceStudio() {
   );
 }
 
-function fmtCm(m: number) {
-  const cm = Math.round(m * 100);
-  return `${cm >= 0 ? "+" : ""}${cm}`;
+function fmtM(m: number) {
+  return `${m >= 0 ? "+" : ""}${m.toFixed(2)}`;
 }
 
 function PoseReadout({ poseRef }: { poseRef: MutableRefObject<Pose6> }) {
@@ -608,14 +607,14 @@ function PoseReadout({ poseRef }: { poseRef: MutableRefObject<Pose6> }) {
     const tick = () => {
       const pose = poseRef.current;
       if (el.current) {
-        el.current.textContent = `${fmtCm(pose.x)} ${fmtCm(pose.y)} ${fmtCm(pose.z)}`;
+        el.current.textContent = `X ${fmtM(pose.x)}  Y ${fmtM(pose.y)}  Z ${fmtM(pose.z)}`;
       }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }, [poseRef]);
-  return <span ref={el}>+0 +0 +0</span>;
+  return <span ref={el}>X +0.00  Y +0.00  Z +0.00</span>;
 }
 
 function InputsOverlay({ telemetry }: { telemetry: Telemetry }) {

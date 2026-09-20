@@ -21,6 +21,20 @@ export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
   response: 1,
 };
 
+/** Standard gravity (m/s²). Must match `GRAVITY` in bike.ts. */
+const GRAVITY = 9.80665;
+
+/**
+ * Classical translational washout:
+ *   ẍ + 2 ζω ẋ + ω² x = a
+ * ω² = g so a constant 1 G specific force settles at 1 m, then the travel
+ * limits clamp. Critically damped so the 1 m/G mapping does not ring.
+ */
+export const WASH_OMEGA = Math.sqrt(GRAVITY);
+export const WASH_ZETA = 1;
+const INTEGRATOR_HZ = 120;
+const HEIGHT_EPS = 0.08;
+
 /** 6DOF pose. Rider will reuse this later. Yaw is stored but the garage heading stays fixed. */
 export type Pose6 = {
   x: number;
@@ -36,24 +50,29 @@ export function identityPose(): Pose6 {
 }
 
 export type MotionFilter = {
-  lpX: number;
-  lpY: number;
-  lpZ: number;
-  lpVx: number;
-  lpVy: number;
-  lpVz: number;
+  x: number;
+  vx: number;
+  y: number;
+  vy: number;
+  z: number;
+  vz: number;
+  /** World Y of the last contact sample. Frozen in the air. */
+  groundY: number;
+  hadContact: boolean;
   primed: boolean;
   shown: Pose6;
 };
 
 export function createMotionFilter(): MotionFilter {
   return {
-    lpX: 0,
-    lpY: 0,
-    lpZ: 0,
-    lpVx: 0,
-    lpVy: 0,
-    lpVz: 0,
+    x: 0,
+    vx: 0,
+    y: 0,
+    vy: 0,
+    z: 0,
+    vz: 0,
+    groundY: 0,
+    hadContact: false,
     primed: false,
     shown: identityPose(),
   };
@@ -65,12 +84,6 @@ function clamp(n: number, min: number, max: number) {
 
 function deg(n: number) {
   return (n * Math.PI) / 180;
-}
-
-function follow(current: number, target: number, dt: number, tau: number) {
-  if (tau <= 1e-4) return target;
-  const a = 1 - Math.exp(-dt / tau);
-  return current + (target - current) * a;
 }
 
 /**
@@ -87,12 +100,39 @@ export function worldToChassis(wx: number, wz: number, yawDeg: number) {
   };
 }
 
-const WASH_TAU = 0.9;
-const SMOOTH_TAU = 0.028;
-const POS_GAIN = 0.42;
-const ACCEL_GAIN = 0.24;
-const VEL_GAIN = 0.03;
-const RATE_GAIN = 0.008;
+/** Closed-form critically damped step to `a / ω²` meters. */
+export function washoutStepResponse(accelMs2: number, t: number) {
+  const ss = accelMs2 / (WASH_OMEGA * WASH_OMEGA);
+  const wt = WASH_OMEGA * t;
+  return ss * (1 - Math.exp(-wt) * (1 + wt));
+}
+
+function stepAxis(
+  pos: number,
+  vel: number,
+  accelMs2: number,
+  dt: number,
+  limit: number,
+): { pos: number; vel: number } {
+  const w = WASH_OMEGA;
+  const z = WASH_ZETA;
+  let x = pos;
+  let v = vel;
+  const steps = Math.max(1, Math.ceil(dt * INTEGRATOR_HZ));
+  const h = dt / steps;
+  for (let i = 0; i < steps; i++) {
+    v += (accelMs2 - 2 * z * w * v - w * w * x) * h;
+    x += v * h;
+  }
+  if (x > limit) {
+    x = limit;
+    if (v > 0) v = 0;
+  } else if (x < -limit) {
+    x = -limit;
+    if (v < 0) v = 0;
+  }
+  return { pos: x, vel: v };
+}
 
 export function stepMotion(
   filter: MotionFilter,
@@ -105,75 +145,65 @@ export function stepMotion(
   const limX = Math.max(0, travel.limitX);
   const limY = Math.max(0, travel.limitY);
   const limZ = Math.max(0, travel.limitZ);
+  const airborne = telemetry.wheelMaterial[0] <= 0 && telemetry.wheelMaterial[1] <= 0;
 
   if (!filter.primed) {
-    filter.lpX = telemetry.position.x;
-    filter.lpY = telemetry.position.y;
-    filter.lpZ = telemetry.position.z;
-    filter.lpVx = telemetry.velocity.x;
-    filter.lpVy = telemetry.velocity.y;
-    filter.lpVz = telemetry.velocity.z;
     filter.primed = true;
+    if (!airborne) {
+      filter.groundY = telemetry.position.y;
+      filter.hadContact = true;
+    }
   }
 
-  filter.lpX = follow(filter.lpX, telemetry.position.x, step, WASH_TAU);
-  filter.lpY = follow(filter.lpY, telemetry.position.y, step, WASH_TAU);
-  filter.lpZ = follow(filter.lpZ, telemetry.position.z, step, WASH_TAU);
-  filter.lpVx = follow(filter.lpVx, telemetry.velocity.x, step, WASH_TAU);
-  filter.lpVy = follow(filter.lpVy, telemetry.velocity.y, step, WASH_TAU);
-  filter.lpVz = follow(filter.lpVz, telemetry.velocity.z, step, WASH_TAU);
-
-  const hpY = telemetry.position.y - filter.lpY;
-  const hpVel = worldToChassis(
-    telemetry.velocity.x - filter.lpVx,
-    telemetry.velocity.z - filter.lpVz,
-    telemetry.yaw,
-  );
-
-  const suspVel = (telemetry.suspVelocity[0] + telemetry.suspVelocity[1]) * 0.5;
-  const airborne = telemetry.wheelMaterial[0] <= 0 && telemetry.wheelMaterial[1] <= 0;
-  const airLift = airborne ? 0.45 * Math.max(0, 1 - telemetry.accelG.y) : 0;
-
-  const targetX =
-    (hpVel.right * VEL_GAIN +
-      telemetry.accelG.x * ACCEL_GAIN +
-      telemetry.rollRate * RATE_GAIN) *
-    response;
-  const targetY =
-    (hpY * POS_GAIN +
-      (1 - telemetry.accelG.y) * ACCEL_GAIN +
-      (telemetry.velocity.y - filter.lpVy) * VEL_GAIN +
-      -suspVel * 0.05 +
-      airLift) *
-    response;
-  const targetZ =
-    (hpVel.fwd * VEL_GAIN +
-      telemetry.accelG.z * ACCEL_GAIN +
-      telemetry.pitchRate * RATE_GAIN) *
-    response;
-
-  const target: Pose6 = {
-    x: clamp(targetX, -limX, limX),
-    y: clamp(targetY, -limY, limY),
-    z: clamp(targetZ, -limZ, limZ),
-    yaw: 0,
-    pitch: deg(telemetry.pitch),
-    roll: deg(telemetry.roll),
-  };
-
   if (telemetry.crashed) {
-    target.x = 0;
-    target.y = 0;
-    target.z = 0;
+    filter.x = 0;
+    filter.vx = 0;
+    filter.y = 0;
+    filter.vy = 0;
+    filter.z = 0;
+    filter.vz = 0;
+    filter.shown = identityPose();
+    return filter.shown;
+  }
+
+  const scale = GRAVITY * response;
+  const aSway = telemetry.accelG.x * scale;
+  const aSurge = telemetry.accelG.z * scale;
+  const aHeave = (1 - telemetry.accelG.y) * scale;
+
+  const sway = stepAxis(filter.x, filter.vx, aSway, step, limX);
+  filter.x = sway.pos;
+  filter.vx = sway.vel;
+
+  const surge = stepAxis(filter.z, filter.vz, aSurge, step, limZ);
+  filter.z = surge.pos;
+  filter.vz = surge.vel;
+
+  if (!airborne) {
+    filter.groundY = telemetry.position.y;
+    filter.hadContact = true;
+    const heave = stepAxis(filter.y, filter.vy, aHeave, step, limY);
+    filter.y = heave.pos;
+    filter.vy = heave.vel;
+  } else {
+    const offGround = (filter.hadContact ? telemetry.position.y - filter.groundY : telemetry.position.y) * response;
+    if (Math.abs(offGround) > HEIGHT_EPS) {
+      filter.y = clamp(offGround, -limY, limY);
+      filter.vy = 0;
+    } else {
+      const heave = stepAxis(filter.y, filter.vy, aHeave, step, limY);
+      filter.y = heave.pos;
+      filter.vy = heave.vel;
+    }
   }
 
   filter.shown = {
-    x: follow(filter.shown.x, target.x, step, SMOOTH_TAU),
-    y: follow(filter.shown.y, target.y, step, SMOOTH_TAU),
-    z: follow(filter.shown.z, target.z, step, SMOOTH_TAU),
+    x: filter.x,
+    y: filter.y,
+    z: filter.z,
     yaw: 0,
-    pitch: target.pitch,
-    roll: target.roll,
+    pitch: deg(telemetry.pitch),
+    roll: deg(telemetry.roll),
   };
 
   return filter.shown;

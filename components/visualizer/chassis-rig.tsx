@@ -20,7 +20,12 @@ export function ChassisRig({
     if (!node) return;
     const pose = poseRef.current;
     node.position.set(pose.x, pose.y, pose.z);
+    node.updateMatrix();
   });
 
-  return <group ref={group}>{children}</group>;
+  return (
+    <group ref={group} position={[0, 0, 0]}>
+      {children}
+    </group>
+  );
 }

@@ -1,3 +1,4 @@
+import { GRAVITY } from "./bike";
 import { DEFAULT_EVENT, restTelemetry } from "./defaults";
 import type { SandboxInputs, ScenarioId, Telemetry } from "./types";
 
@@ -190,24 +191,36 @@ export function telemetryForScenario(id: ScenarioId, time: number, sandbox: Sand
         wheelSpeed: [speed, speed],
       });
     }
-    case "jump":
+    case "jump": {
+      const speed = 21;
+      const peakM = 2;
+      const v0 = Math.sqrt(2 * GRAVITY * peakM);
+      const airTime = (2 * v0) / GRAVITY;
+      const groundTime = 0.32;
+      const cycle = airTime + groundTime;
+      const phase = t % cycle;
+      const airborne = phase < airTime;
+      const y = airborne ? Math.max(0, v0 * phase - 0.5 * GRAVITY * phase * phase) : 0.02;
+      const vy = airborne ? v0 - GRAVITY * phase : 0;
+      const land = airborne ? 0 : (phase - airTime) / groundTime;
       return restTelemetry({
         time: t,
         rpm: 11800,
         gear: 4,
-        speedMs: 21,
-        position: { x: wave * 0.2, y: 2.1 + wave * 0.25, z: t * 21 },
-        velocity: { x: 0, y: wave * 2.2, z: 21 },
-        accelG: { x: 0.04 * wave, y: 0.06, z: 0.04 },
-        pitch: 8 + wave * 4,
-        roll: wave * 3,
-        suspLength: [0.305, 0.31],
-        suspVelocity: [0, 0],
+        speedMs: speed,
+        position: { x: wave * 0.08, y, z: t * speed },
+        velocity: { x: 0, y: vy, z: speed },
+        accelG: { x: 0.03 * wave, y: airborne ? 0.02 : lerp(3.1, 1.05, land), z: 0.04 },
+        pitch: airborne ? 6 + wave * 3 : lerp(-8, -2, land),
+        roll: wave * 2,
+        suspLength: airborne ? [0.31, 0.312] : [lerp(0.07, 0.16, land), lerp(0.06, 0.15, land)],
+        suspVelocity: airborne ? [0, 0] : [lerp(1.4, 0.1, land), lerp(1.5, 0.1, land)],
         throttle: 0.25,
-        wheelSpeed: [18, 19],
-        wheelMaterial: [0, 0],
+        wheelSpeed: [speed * 0.9, speed * 0.92],
+        wheelMaterial: airborne ? [0, 0] : [3, 3],
         steer: wave * 6,
       });
+    }
     case "landing": {
       const hit = 0.55 + 0.45 * smooth(t * 0.35);
       return restTelemetry({
