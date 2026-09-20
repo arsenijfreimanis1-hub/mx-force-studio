@@ -1,7 +1,7 @@
 "use client";
 
-import { memo, useMemo, useRef } from "react";
-import { useFrame } from "@react-three/fiber";
+import { memo, useLayoutEffect, useMemo, useRef } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { MutableRefObject } from "react";
 import { idleRider, riderFromTelemetry } from "@/lib/mxb/rider";
@@ -9,11 +9,12 @@ import type { Telemetry } from "@/lib/mxb/types";
 
 type Vec = [number, number, number];
 
-const UP = new THREE.Vector3(0, 1, 0);
+const Y_UP = new THREE.Vector3(0, 1, 0);
 
 /** Seat / cradle height above the motion-base origin. */
 export const FRAME_CENTER_Y = 0.55;
 
+const HALF = 0.09;
 const CROWN: Vec = [0, 0.62, 0.55];
 const SWING_PIVOT: Vec = [0, 0.28, -0.14];
 const LOWER_FRONT: Vec = [0, 0.28, 0.18];
@@ -24,14 +25,8 @@ const STUB_R: Vec = [-0.1, 0.52, 0.58];
 const STUB_END_L: Vec = [0.1, 0.42, 0.62];
 const STUB_END_R: Vec = [-0.1, 0.42, 0.62];
 
-function tubePose(from: Vec, to: Vec) {
-  const start = new THREE.Vector3(...from);
-  const end = new THREE.Vector3(...to);
-  const dir = end.clone().sub(start);
-  const length = dir.length();
-  const mid = start.clone().add(end).multiplyScalar(0.5);
-  const quat = new THREE.Quaternion().setFromUnitVectors(UP, dir.normalize());
-  return { position: mid, quaternion: quat, length };
+function offsetX(point: Vec, x: number): Vec {
+  return [x, point[1], point[2]];
 }
 
 function Tube({
@@ -45,10 +40,25 @@ function Tube({
   radius?: number;
   material: THREE.MeshStandardMaterial;
 }) {
-  const { position, quaternion, length } = useMemo(() => tubePose(from, to), [from, to]);
+  const mesh = useRef<THREE.Mesh>(null);
+  const invalidate = useThree((s) => s.invalidate);
+  const length = Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2]);
+
+  const align = () => {
+    const node = mesh.current;
+    if (!node || length < 1e-6) return;
+    node.position.set((from[0] + to[0]) * 0.5, (from[1] + to[1]) * 0.5, (from[2] + to[2]) * 0.5);
+    const dir = new THREE.Vector3(to[0] - from[0], to[1] - from[1], to[2] - from[2]).multiplyScalar(1 / length);
+    node.quaternion.setFromUnitVectors(Y_UP, dir);
+  };
+
+  useLayoutEffect(() => {
+    align();
+    invalidate();
+  });
 
   return (
-    <mesh position={position} quaternion={quaternion} material={material}>
+    <mesh ref={mesh} material={material}>
       <cylinderGeometry args={[radius, radius, length, 8]} />
     </mesh>
   );
@@ -161,10 +171,16 @@ export const MotocrossBike = memo(function MotocrossBike({
 
   return (
     <group position={[0, FRAME_CENTER_Y, 0]}>
-      <Tube from={CROWN} to={SHOCK_TOP} radius={0.038} material={chrome} />
-      <Tube from={CROWN} to={LOWER_FRONT} radius={0.038} material={chrome} />
-      <Tube from={LOWER_FRONT} to={SWING_PIVOT} radius={0.034} material={rail} />
-      <Tube from={SHOCK_TOP} to={SWING_PIVOT} radius={0.032} material={rail} />
+      {([-HALF, HALF] as const).map((x) => (
+        <group key={x}>
+          <Tube from={offsetX(CROWN, x)} to={offsetX(SHOCK_TOP, x)} radius={0.032} material={chrome} />
+          <Tube from={offsetX(CROWN, x)} to={offsetX(LOWER_FRONT, x)} radius={0.032} material={chrome} />
+          <Tube from={offsetX(LOWER_FRONT, x)} to={offsetX(SWING_PIVOT, x)} radius={0.03} material={rail} />
+          <Tube from={offsetX(SHOCK_TOP, x)} to={offsetX(SWING_PIVOT, x)} radius={0.028} material={rail} />
+        </group>
+      ))}
+      <Tube from={offsetX(CROWN, -HALF)} to={offsetX(CROWN, HALF)} radius={0.03} material={clampMat} />
+      <Tube from={offsetX(SWING_PIVOT, -HALF)} to={offsetX(SWING_PIVOT, HALF)} radius={0.028} material={rail} />
       <Tube from={SHOCK_TOP} to={SHOCK_LOWER} radius={0.04} material={shock} />
       <Tube from={STUB_L} to={STUB_END_L} radius={0.026} material={stub} />
       <Tube from={STUB_R} to={STUB_END_R} radius={0.026} material={stub} />
