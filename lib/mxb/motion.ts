@@ -7,7 +7,13 @@ export const FRAME_BOTTOM: Vec3 = { x: 0, y: 0.09, z: 0.02 };
  * Stewart-platform mid-stroke. ±1 m heave then still clears the garage floor.
  * Rider-head washout (Barbagli / MORIS) is computed about this deck height.
  */
-export const PLATFORM_HOME_Y = 1.55;
+export const PLATFORM_HOME_Y = 1.75;
+
+/** Lowest remaining frame tube vs the rig origin (after FRAME_CENTER_Y pin). */
+export const FRAME_LOW_Y = 0.28 + 0.55;
+/** Half-length used to keep rolled/pitched tubes off the pad. */
+export const FRAME_HALF_SPAN = 0.72;
+export const FLOOR_CLEAR_Y = 0.12;
 
 /** Rider vestibular point above the cradle, bike-local meters (seat → inner ear). */
 export const RIDER_HEAD: Vec3 = { x: 0, y: 0.95, z: 0.04 };
@@ -25,6 +31,8 @@ export type FrameTravel = {
   limitPitch: number;
   /** Half-range in radians. Default ≈ 15°. */
   limitYaw: number;
+  /** Extra live smoothing seconds for noisy IMU channels. */
+  smoothTau: number;
   /** 1 = default cue strength. */
   response: number;
 };
@@ -36,6 +44,7 @@ export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
   limitRoll: (40 * Math.PI) / 180,
   limitPitch: (28 * Math.PI) / 180,
   limitYaw: (15 * Math.PI) / 180,
+  smoothTau: 0.05,
   response: 1,
 };
 
@@ -58,7 +67,7 @@ const INTEGRATOR_HZ = 120;
  */
 const TILT_RATE_LIMIT = (55 * Math.PI) / 180;
 const TILT_TAU = 0.22;
-const ATTITUDE_TAU = 0.04;
+const ATTITUDE_TAU = 0.055;
 /** Jump / landing heave must snap; 2nd-order √g is ~1.3 s to settle. */
 const HEAVE_TAU = 0.07;
 /**
@@ -106,6 +115,14 @@ export type MotionFilter = {
   wx: number;
   wy: number;
   wz: number;
+  sAx: number;
+  sAy: number;
+  sAz: number;
+  sRoll: number;
+  sPitch: number;
+  sYawRate: number;
+  sPitchRate: number;
+  sRollRate: number;
   primed: boolean;
   shown: Pose6;
 };
@@ -130,6 +147,14 @@ export function createMotionFilter(): MotionFilter {
     wx: 0,
     wy: 0,
     wz: 0,
+    sAx: 0,
+    sAy: 1,
+    sAz: 0,
+    sRoll: 0,
+    sPitch: 0,
+    sYawRate: 0,
+    sPitchRate: 0,
+    sRollRate: 0,
     primed: false,
     shown: identityPose(),
   };
@@ -214,6 +239,16 @@ function rateLimit(current: number, target: number, dt: number, limit: number) {
   return current + clamp(target - current, -maxDelta, maxDelta);
 }
 
+/** Lift heave so a leaned/pitched frame stays above the garage floor. */
+export function clearPoseFromFloor(pose: Pose6, homeY = PLATFORM_HOME_Y): Pose6 {
+  const drop =
+    FRAME_HALF_SPAN * Math.abs(Math.sin(pose.roll)) +
+    FRAME_HALF_SPAN * 0.65 * Math.abs(Math.sin(pose.pitch));
+  const lowest = homeY + pose.y + FRAME_LOW_Y - drop;
+  if (lowest >= FLOOR_CLEAR_Y) return pose;
+  return { ...pose, y: pose.y + (FLOOR_CLEAR_Y - lowest) };
+}
+
 /**
  * Specific force at the rider's head (Barbagli washout location).
  * a_head = a_seat + α×r + ω×(ω×r), then converted back to G.
@@ -271,8 +306,19 @@ export function stepMotion(
   const limPitch = Math.max(0, travel.limitPitch);
   const limYaw = Math.max(0, travel.limitYaw);
 
+  const smoothTau = Math.max(0.008, travel.smoothTau);
+  const rawG = specificForceG(telemetry.accelG);
+
   if (!filter.primed) {
     filter.primed = true;
+    filter.sAx = rawG.x;
+    filter.sAy = rawG.y;
+    filter.sAz = rawG.z;
+    filter.sRoll = telemetry.roll;
+    filter.sPitch = telemetry.pitch;
+    filter.sYawRate = telemetry.yawRate;
+    filter.sPitchRate = telemetry.pitchRate;
+    filter.sRollRate = telemetry.rollRate;
     filter.followRoll = deg(telemetry.roll) * LEAN_FOLLOW;
     filter.followPitch = deg(telemetry.pitch) * PITCH_FOLLOW;
     filter.wx = deg(telemetry.pitchRate);
@@ -299,16 +345,43 @@ export function stepMotion(
     filter.wx = 0;
     filter.wy = 0;
     filter.wz = 0;
+    filter.sAx = 0;
+    filter.sAy = 1;
+    filter.sAz = 0;
+    filter.sRoll = 0;
+    filter.sPitch = 0;
+    filter.sYawRate = 0;
+    filter.sPitchRate = 0;
+    filter.sRollRate = 0;
     filter.shown = identityPose();
     return filter.shown;
   }
 
-  const seatG = specificForceG(telemetry.accelG);
-  const head = riderHeadSpecificForceG(seatG, telemetry, { x: filter.wx, y: filter.wy, z: filter.wz }, step);
+  filter.sAx = follow(filter.sAx, rawG.x, step, smoothTau);
+  filter.sAy = follow(filter.sAy, rawG.y, step, smoothTau);
+  filter.sAz = follow(filter.sAz, rawG.z, step, smoothTau);
+  filter.sRoll = follow(filter.sRoll, telemetry.roll, step, smoothTau);
+  filter.sPitch = follow(filter.sPitch, telemetry.pitch, step, smoothTau);
+  filter.sYawRate = follow(filter.sYawRate, telemetry.yawRate, step, smoothTau);
+  filter.sPitchRate = follow(filter.sPitchRate, telemetry.pitchRate, step, smoothTau);
+  filter.sRollRate = follow(filter.sRollRate, telemetry.rollRate, step, smoothTau);
+
+  /** Heave stays on raw ay so jump drop is not washed by the IMU EMA. */
+  const seatG = { x: filter.sAx, y: rawG.y, z: filter.sAz };
+  const smoothedTel = {
+    ...telemetry,
+    accelG: seatG,
+    roll: filter.sRoll,
+    pitch: filter.sPitch,
+    yawRate: filter.sYawRate,
+    pitchRate: filter.sPitchRate,
+    rollRate: filter.sRollRate,
+  };
+  const head = riderHeadSpecificForceG(seatG, smoothedTel, { x: filter.wx, y: filter.wy, z: filter.wz }, step);
   filter.wx = head.w.x;
   filter.wy = head.w.y;
   filter.wz = head.w.z;
-  const gForce = head.g;
+  const gForce = { ...head.g, y: rawG.y };
   const scale = GRAVITY * response;
 
   /**
@@ -331,13 +404,13 @@ export function stepMotion(
 
   filter.y = clamp(follow(filter.y, heaveTarget, step, HEAVE_TAU), -limY, limY);
 
-  const yawAccel = deg(telemetry.yawRate) * 2.6 * response;
+  const yawAccel = deg(filter.sYawRate) * 2.6 * response;
   const yaw = stepAxis(filter.yaw, filter.vyaw, yawAccel, step, limYaw, WASH_OMEGA_ANG);
   filter.yaw = yaw.pos;
   filter.vyaw = yaw.vel;
 
-  const rollRateAccel = deg(telemetry.rollRate) * 0.42 * response;
-  const pitchRateAccel = deg(telemetry.pitchRate) * 0.42 * response;
+  const rollRateAccel = deg(filter.sRollRate) * 0.42 * response;
+  const pitchRateAccel = deg(filter.sPitchRate) * 0.42 * response;
   const rollHp = stepAxis(filter.rollHp, filter.vroll, rollRateAccel, step, limRoll * 0.4, WASH_OMEGA_ANG);
   filter.rollHp = rollHp.pos;
   filter.vroll = rollHp.vel;
@@ -352,17 +425,18 @@ export function stepMotion(
   filter.tiltPitch = follow(filter.tiltPitch, tiltPitchTarget, step, TILT_TAU);
   filter.tiltRoll = follow(filter.tiltRoll, tiltRollTarget, step, TILT_TAU);
 
-  filter.followRoll = follow(filter.followRoll, deg(telemetry.roll) * LEAN_FOLLOW, step, ATTITUDE_TAU);
-  filter.followPitch = follow(filter.followPitch, deg(telemetry.pitch) * PITCH_FOLLOW, step, ATTITUDE_TAU);
+  const attitudeTau = Math.max(ATTITUDE_TAU, smoothTau);
+  filter.followRoll = follow(filter.followRoll, deg(filter.sRoll) * LEAN_FOLLOW, step, attitudeTau);
+  filter.followPitch = follow(filter.followPitch, deg(filter.sPitch) * PITCH_FOLLOW, step, attitudeTau);
 
-  filter.shown = {
+  filter.shown = clearPoseFromFloor({
     x: filter.x,
     y: filter.y,
     z: filter.z,
     yaw: clamp(filter.yaw, -limYaw, limYaw),
     pitch: clamp(filter.followPitch + filter.tiltPitch + filter.pitchHp, -limPitch, limPitch),
     roll: clamp(filter.followRoll + filter.tiltRoll + filter.rollHp, -limRoll, limRoll),
-  };
+  });
 
   return filter.shown;
 }

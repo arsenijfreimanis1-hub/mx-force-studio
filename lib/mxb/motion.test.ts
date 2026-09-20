@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   createMotionFilter,
+  clearPoseFromFloor,
   DEFAULT_FRAME_TRAVEL,
+  FLOOR_CLEAR_Y,
+  FRAME_HALF_SPAN,
+  FRAME_LOW_Y,
+  PLATFORM_HOME_Y,
   specificForceG,
   stepMotion,
   washoutStepResponse,
@@ -185,4 +190,49 @@ test("yaw rate yaws the deck then washes out", () => {
   const straight = sample({ yawRate: 0 });
   for (let i = 0; i < 180; i++) pose = stepMotion(filter, straight, 1 / 60);
   assert.ok(Math.abs(pose.yaw) < 0.05, `home ${pose.yaw}`);
+});
+
+test("40° roll at −1 m heave stays above the garage pad", () => {
+  const pose = clearPoseFromFloor({
+    x: 0,
+    y: -1,
+    z: 0,
+    yaw: 0,
+    pitch: 0,
+    roll: (40 * Math.PI) / 180,
+  });
+  const drop = FRAME_HALF_SPAN * Math.abs(Math.sin(pose.roll));
+  const lowest = PLATFORM_HOME_Y + pose.y + FRAME_LOW_Y - drop;
+  assert.ok(lowest >= FLOOR_CLEAR_Y - 1e-9, `lowest ${lowest}`);
+});
+
+test("floor clamp lifts a low home so tubes clear 0.12 m", () => {
+  const pose = clearPoseFromFloor(
+    {
+      x: 0,
+      y: -1,
+      z: 0,
+      yaw: 0,
+      pitch: 0,
+      roll: (40 * Math.PI) / 180,
+    },
+    0.4,
+  );
+  const drop = FRAME_HALF_SPAN * Math.abs(Math.sin(pose.roll));
+  const lowest = 0.4 + pose.y + FRAME_LOW_Y - drop;
+  assert.ok(lowest >= FLOOR_CLEAR_Y - 1e-6, `lowest ${lowest}`);
+  assert.ok(pose.y > -1, `lifted y ${pose.y}`);
+});
+
+test("jump drop still reaches −0.5 m inside 0.25 s with live EMA", () => {
+  const pose = run(
+    sample({
+      accelG: { x: 0, y: 0.04, z: 0 },
+      pitch: 8,
+      wheelMaterial: [0, 0],
+    }),
+    0.25,
+    { ...DEFAULT_FRAME_TRAVEL, smoothTau: 0.05 },
+  );
+  assert.ok(pose.y < -0.5, `onset y ${pose.y}`);
 });
