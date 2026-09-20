@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { BikeEvent, LivePacket, SessionInfo, Telemetry } from "@/lib/mxb/types";
 
-const STALE_MS = 1500;
+const STALE_MS = 600;
 
 type GlobalStore = typeof globalThis & {
   __mxbLivePacket?: LivePacket | null;
