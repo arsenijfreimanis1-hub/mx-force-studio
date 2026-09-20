@@ -1,15 +1,14 @@
 import type { BikeEvent, LivePacket, SessionInfo, Telemetry, Vec3 } from "./types";
 
-export const STALE_MS = 280;
+export const STALE_MS = 750;
+/** Keep driving the deck this long after the last packet so a UDP gap does not snap the bike. */
+export const LIVE_HOLD_MS = 1500;
 
 type Listener = (packet: LivePacket | null) => void;
 
 type BikeLatch = {
   id: string;
   name: string;
-  pendingId: string;
-  pendingName: string;
-  hits: number;
 };
 
 type GlobalStore = typeof globalThis & {
@@ -59,6 +58,18 @@ export function isPlaceholderBikeName(name: string | undefined, bikeId = "") {
   if (PLACEHOLDER_BIKE_NAMES.has(n)) return true;
   if (id && PLACEHOLDER_BIKE_NAMES.has(id)) return true;
   return false;
+}
+
+/** MX Bikes stock EventInit is almost always a CRF450 — not the bike on the gate. */
+export function isStockBikeName(name: string | undefined, bikeId = "") {
+  const s = `${name ?? ""} ${bikeId}`.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return s.includes("crf450");
+}
+
+export function holdLive(staleMs: number | null, liveFlag: boolean, hasTelemetry: boolean): boolean {
+  if (!hasTelemetry) return false;
+  if (liveFlag) return true;
+  return staleMs != null && staleMs < LIVE_HOLD_MS;
 }
 
 export function displayBikeName(event: BikeEvent | null | undefined) {
@@ -126,7 +137,7 @@ function keepBikeName(next: string | undefined, prev: string, nextId = "", prevI
 }
 
 function emptyLatch(): BikeLatch {
-  return { id: "", name: "", pendingId: "", pendingName: "", hits: 0 };
+  return { id: "", name: "" };
 }
 
 function withLatchedBike(event: BikeEvent, latch: BikeLatch): BikeEvent {
@@ -139,8 +150,9 @@ function withLatchedBike(event: BikeEvent, latch: BikeLatch): BikeEvent {
 }
 
 /**
- * EventInit sometimes flips between the stock CRF450R and the bike on the
- * gate. Keep the first real name until a new pair repeats on two full packets.
+ * Lock the gate bike for the session.
+ * Stock CRF450 EventInit must never replace a real name. A stock latch may
+ * upgrade once to a non-stock name. After that the name does not change.
  */
 export function stabilizeBikeEvent(
   merged: BikeEvent,
@@ -153,29 +165,16 @@ export function stabilizeBikeEvent(
   const name = merged.bikeName.trim();
   const real = Boolean(name) && !isPlaceholderBikeName(name, id);
 
-  if (!incomingEvent) {
-    return { event: withLatchedBike(merged, latch), latch };
-  }
-  if (!real) {
+  if (!incomingEvent || !real) {
     return { event: withLatchedBike(merged, latch), latch };
   }
   if (!latch.name) {
-    return { event: merged, latch: { id, name, pendingId: "", pendingName: "", hits: 0 } };
+    return { event: merged, latch: { id, name } };
   }
-  if (latch.id === id && latch.name === name) {
-    return { event: merged, latch: { ...latch, pendingId: "", pendingName: "", hits: 0 } };
+  if (isStockBikeName(latch.name, latch.id) && !isStockBikeName(name, id)) {
+    return { event: merged, latch: { id, name } };
   }
-  if (latch.pendingId === id && latch.pendingName === name) {
-    const hits = latch.hits + 1;
-    if (hits >= 2) {
-      return { event: merged, latch: { id, name, pendingId: "", pendingName: "", hits: 0 } };
-    }
-    return { event: withLatchedBike(merged, latch), latch: { ...latch, hits } };
-  }
-  return {
-    event: withLatchedBike(merged, latch),
-    latch: { ...latch, pendingId: id, pendingName: name, hits: 1 },
-  };
+  return { event: withLatchedBike(merged, latch), latch };
 }
 
 /** Switching bikes often sends a partial EventInit; never clobber a good name. */
@@ -273,13 +272,13 @@ export function ingestLivePacket(body: {
 }): LivePacket {
   const prev = g.__mxbLivePacket;
   const state = body.state ?? 2;
-  const leavingTrack = state < 1;
+  const staleSession = Boolean(prev && Date.now() - prev.receivedAt > 8000);
   const merged = mergeEvent(prev?.event, body.event);
   const latched = stabilizeBikeEvent(
     merged,
-    g.__mxbBikeLatch ?? emptyLatch(),
+    staleSession ? emptyLatch() : (g.__mxbBikeLatch ?? emptyLatch()),
     Boolean(body.event),
-    leavingTrack,
+    false,
   );
   g.__mxbBikeLatch = latched.latch;
   const packet: LivePacket = {

@@ -82,7 +82,7 @@ const INTEGRATOR_HZ = 120;
 const TILT_RATE_LIMIT = (55 * Math.PI) / 180;
 const TILT_TAU = 0.22;
 /** Follow plugin Euler. Rest uses a longer tau so parked IMU noise dies. */
-const ATTITUDE_TAU = 0.07;
+const ATTITUDE_TAU = 0.11;
 const ATTITUDE_TAU_REST = 0.22;
 /** Grounded whoops stay on the shocks. Air tracks the ballistic arc. */
 const HEAVE_TAU_GROUND = 0.1;
@@ -159,6 +159,8 @@ export type MotionFilter = {
   prevWorldY: number;
   /** Drifting Cartesian origin for live world XYZ. */
   cart: CartesianState;
+  /** Hysteresis so cart does not flicker on/off around walking speed. */
+  cartOn: boolean;
   /** null until parked / high-mag sample locks G vs m/s² for the session. */
   unitsMs2: boolean | null;
   primed: boolean;
@@ -204,6 +206,7 @@ export function createMotionFilter(): MotionFilter {
     groundPrimed: false,
     prevWorldY: 0,
     cart: createCartesianState(),
+    cartOn: false,
     unitsMs2: null,
     primed: false,
     shown: identityPose(),
@@ -385,8 +388,9 @@ export function stepMotion(
   const airborne = isAirborne(telemetry);
   const stopped = !crashed && isStopped(telemetry);
   const cartMode = crashed ? "crash" : airborne ? "air" : stopped ? "stop" : "ground";
-  const useCart = cartesianUseful(telemetry.position, telemetry.speedMs, airborne);
-  if (!useCart) filter.cart.primed = false;
+  if (airborne || telemetry.speedMs > 1.2) filter.cartOn = true;
+  else if (!airborne && telemetry.speedMs < 0.35) filter.cartOn = false;
+  const useCart = filter.cartOn && cartesianUseful(telemetry.position, telemetry.speedMs, airborne);
   const cart = useCart
     ? stepCartesian(filter.cart, telemetry.position, telemetry.velocity, attitude.yaw, step, cartMode)
     : { x: 0, y: 0, z: 0 };
@@ -495,8 +499,8 @@ export function stepMotion(
   if (useCart && !stopped && !crashed) {
     const tx = clamp(cart.x / CART_XZ_M, -1, 1) * limX * response;
     const tz = clamp(cart.z / CART_XZ_M, -1, 1) * limZ * response;
-    filter.x = follow(filter.x, tx, step, 0.07);
-    filter.z = follow(filter.z, tz, step, 0.07);
+    filter.x = follow(filter.x, tx, step, 0.12);
+    filter.z = follow(filter.z, tz, step, 0.12);
     filter.vx = follow(filter.vx, 0, step, 0.1);
     filter.vz = follow(filter.vz, 0, step, 0.1);
   } else {

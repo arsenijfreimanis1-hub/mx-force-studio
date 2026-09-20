@@ -9,11 +9,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Slider } from "@/components/ui/slider";
 import {
   applyProfileToTelemetry,
-  applyProfileToTravel,
   defaultProfile,
   loadProfile,
-  observeTelemetry,
-  saveProfile,
+  lockParkedUnits,
   type BikeProfile,
 } from "@/lib/mxb/adapt";
 import { DEFAULT_EVENT, DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
@@ -21,7 +19,7 @@ import { formatG, speedKph } from "@/lib/mxb/forces";
 import { gamepadActive, readFirstGamepad } from "@/lib/mxb/gamepad";
 import { detectCrash } from "@/lib/mxb/crash";
 import { setupLabel } from "@/lib/mxb/inputs";
-import { displayBikeName, isPlaceholderBikeName } from "@/lib/mxb/live-store";
+import { displayBikeName, holdLive, isPlaceholderBikeName, stabilizeBikeEvent } from "@/lib/mxb/live-store";
 import { fmtLapMs, fmtOnTrackS, sessionKind, suspUsedPct, trackPct } from "@/lib/mxb/session";
 import {
   createMotionFilter,
@@ -47,7 +45,6 @@ const BikeCanvas = dynamic(
 );
 
 const HUD_MS = 50;
-const ADAPT_MS = 1000;
 
 function gearLabel(gear: number) {
   if (gear <= 0) return "N";
@@ -109,7 +106,6 @@ export function MxForceStudio() {
   const [hudEvent, setHudEvent] = useState<BikeEvent>(DEFAULT_EVENT);
   const [padOn, setPadOn] = useState(false);
   const [driving, setDriving] = useState(false);
-  const [learnedName, setLearnedName] = useState<string | null>(null);
 
   const pollRef = useRef<() => Promise<void>>(async () => {});
   const motionRef = useRef(createMotionFilter());
@@ -117,7 +113,7 @@ export function MxForceStudio() {
   const travelRef = useRef(DEFAULT_FRAME_TRAVEL);
   const connectRef = useRef(connectRequested);
   const lastHudRef = useRef(0);
-  const lastAdaptRef = useRef(0);
+  const bikeLatchRef = useRef({ id: "", name: "" });
   const liveRef = useRef(false);
   const telemetryRef = useRef<Telemetry>(hudTel);
   const eventRef = useRef<BikeEvent>(DEFAULT_EVENT);
@@ -134,7 +130,7 @@ export function MxForceStudio() {
   useEffect(() => {
     connectRef.current = connectRequested;
     userTravelRef.current = travel;
-    travelRef.current = applyProfileToTravel(travel, adaptRef.current);
+    travelRef.current = travel;
     if (!connectRequested) liveRef.current = false;
   });
 
@@ -162,13 +158,6 @@ export function MxForceStudio() {
       lastHudRef.current = now;
       setHudTel(telemetryRef.current);
       setHudEvent(eventRef.current);
-      setLearnedName(
-        liveRef.current &&
-          adaptRef.current.learned &&
-          !isPlaceholderBikeName(adaptRef.current.bikeName, adaptRef.current.bikeId)
-          ? adaptRef.current.bikeName
-          : null,
-      );
     }, 50);
     return () => window.clearInterval(id);
   }, []);
@@ -184,30 +173,20 @@ export function MxForceStudio() {
     }) => {
       if (cancelled) return;
       const wantLive = connectRef.current;
-      if (wantLive && body.live && body.packet?.telemetry) {
+      const streamLive = wantLive && holdLive(body.staleMs, body.live, Boolean(body.packet?.telemetry));
+      if (streamLive && body.packet?.telemetry) {
         liveRef.current = true;
         if (body.packet.event) {
-          eventRef.current = body.packet.event;
+          const locked = stabilizeBikeEvent(body.packet.event, bikeLatchRef.current, true);
+          bikeLatchRef.current = locked.latch;
+          eventRef.current = locked.event;
         }
         const bikeId = eventRef.current.bikeId;
-        const realBike = Boolean(bikeId) && !isPlaceholderBikeName(eventRef.current.bikeName, bikeId);
-        if (realBike) {
-          if (adaptRef.current.bikeId !== bikeId) {
-            adaptRef.current = loadProfile(bikeId, eventRef.current.bikeName);
-          } else if (eventRef.current.bikeName) {
-            adaptRef.current.bikeName = eventRef.current.bikeName;
-          }
-
-          const now = performance.now();
-          if (now - lastAdaptRef.current >= ADAPT_MS) {
-            const dt = lastAdaptRef.current ? Math.min(2, (now - lastAdaptRef.current) / 1000) : 1;
-            lastAdaptRef.current = now;
-            adaptRef.current = observeTelemetry(adaptRef.current, body.packet.telemetry, dt);
-            saveProfile(adaptRef.current);
-            travelRef.current = applyProfileToTravel(userTravelRef.current, adaptRef.current);
-          }
+        const realBike = Boolean(eventRef.current.bikeName) && !isPlaceholderBikeName(eventRef.current.bikeName, bikeId);
+        if (realBike && (adaptRef.current.bikeId === "live" || !adaptRef.current.bikeId)) {
+          adaptRef.current = loadProfile(bikeId, eventRef.current.bikeName);
         }
-
+        adaptRef.current = lockParkedUnits(adaptRef.current, body.packet.telemetry);
         telemetryRef.current = applyProfileToTelemetry(body.packet.telemetry, adaptRef.current);
       } else {
         liveRef.current = false;
@@ -216,7 +195,10 @@ export function MxForceStudio() {
           telemetryRef.current = restTelemetry({ rpm: 0 });
           resetMotionFilter(motionRef.current);
           poseRef.current = identityPose();
-          if (!wantLive) eventRef.current = DEFAULT_EVENT;
+          if (!wantLive) {
+            eventRef.current = DEFAULT_EVENT;
+            bikeLatchRef.current = { id: "", name: "" };
+          }
         }
       }
 
@@ -224,18 +206,11 @@ export function MxForceStudio() {
       const liveEdge = liveNow !== lastPublishedLiveRef.current;
       lastPublishedLiveRef.current = liveNow;
       if (liveEdge) {
-        setLiveOk(body.live);
+        setLiveOk(liveNow);
         setLivePacket(body.packet);
         setStaleMs(body.staleMs);
         setHudTel(telemetryRef.current);
         setHudEvent(eventRef.current);
-        setLearnedName(
-          liveNow &&
-            adaptRef.current.learned &&
-            !isPlaceholderBikeName(adaptRef.current.bikeName, adaptRef.current.bikeId)
-            ? adaptRef.current.bikeName
-            : null,
-        );
         drivingRef.current = liveNow || padOnRef.current;
         setDriving(drivingRef.current);
         lastHudRef.current = performance.now();
@@ -245,18 +220,11 @@ export function MxForceStudio() {
       const now = performance.now();
       if (now - lastHudRef.current < HUD_MS) return;
       lastHudRef.current = now;
-      setLiveOk(body.live);
+      setLiveOk(liveNow);
       setLivePacket(body.packet);
       setStaleMs(body.staleMs);
       setHudTel(telemetryRef.current);
       setHudEvent(eventRef.current);
-      setLearnedName(
-        liveNow &&
-          adaptRef.current.learned &&
-          !isPlaceholderBikeName(adaptRef.current.bikeName, adaptRef.current.bikeId)
-          ? adaptRef.current.bikeName
-          : null,
-      );
     };
 
     const poll = async () => {
@@ -342,7 +310,7 @@ export function MxForceStudio() {
               poseRef.current = identityPose();
               setHudTel(restTelemetry());
               setHudEvent(DEFAULT_EVENT);
-              setLearnedName(null);
+              bikeLatchRef.current = { id: "", name: "" };
             } else {
               setConnectRequested(true);
               motionRef.current = createMotionFilter();
@@ -424,7 +392,6 @@ export function MxForceStudio() {
               <span>
                 <PoseReadout poseRef={poseRef} />
               </span>
-              {learnedName ? <span className="text-sky-300">Learned</span> : null}
             </div>
           </div>
 
@@ -523,7 +490,7 @@ export function MxForceStudio() {
                       poseRef.current = identityPose();
                       setHudTel(restTelemetry());
                       setHudEvent(DEFAULT_EVENT);
-                      setLearnedName(null);
+                      bikeLatchRef.current = { id: "", name: "" };
                     }}
                   >
                     Disconnect

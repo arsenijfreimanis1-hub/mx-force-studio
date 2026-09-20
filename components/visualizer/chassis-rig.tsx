@@ -20,8 +20,8 @@ import {
 import { buildForceModel } from "@/lib/mxb/forces";
 import type { BikeEvent, ForceModel, SandboxInputs, Telemetry } from "@/lib/mxb/types";
 
-/** Visual follow of the washout pose. Longer than the IMU hash, still under jump-drop budget. */
-export const VISUAL_POSE_TAU = 0.04;
+/** Visual follow of the washout pose. One tau — switching taus was extra jitter. */
+export const VISUAL_POSE_TAU = 0.08;
 
 export function ChassisRig({
   poseRef,
@@ -51,6 +51,7 @@ export function ChassisRig({
   const clockRef = useRef(0);
   const visualPrimed = useRef(false);
   const parked = useRef(true);
+  const lastDriveMs = useRef(0);
   const targetQuat = useMemo(() => new THREE.Quaternion(), []);
   const targetPos = useMemo(() => new THREE.Vector3(), []);
   const euler = useMemo(() => new THREE.Euler(0, 0, 0, "YXZ"), []);
@@ -82,6 +83,7 @@ export function ChassisRig({
     const wasPrimed = motionRef.current.primed;
     if (driving) {
       parked.current = false;
+      lastDriveMs.current = now;
       poseRef.current = stepMotion(
         motionRef.current,
         telemetryRef.current,
@@ -89,13 +91,18 @@ export function ChassisRig({
         travelRef.current,
       );
       forcesRef.current = buildForceModel(telemetryRef.current, eventRef.current);
-    } else if (!parked.current || wasPrimed) {
+    } else if (
+      lastDriveMs.current > 0 &&
+      now - lastDriveMs.current > 1500 &&
+      (!parked.current || wasPrimed)
+    ) {
       resetMotionFilter(motionRef.current);
       poseRef.current = identityPose();
       telemetryRef.current = restTelemetry({ rpm: 0 });
       sandboxRef.current = { ...DEFAULT_SANDBOX };
       clockRef.current = 0;
       parked.current = true;
+      lastDriveMs.current = 0;
       forcesRef.current = buildForceModel(telemetryRef.current, eventRef.current);
     }
 
@@ -109,8 +116,7 @@ export function ChassisRig({
       node.quaternion.copy(targetQuat);
       visualPrimed.current = true;
     } else {
-      const parkedVisual = !liveRef.current || telemetryRef.current.speedMs < 0.8;
-      const a = 1 - Math.exp(-dt / (parkedVisual ? 0.12 : VISUAL_POSE_TAU));
+      const a = 1 - Math.exp(-dt / VISUAL_POSE_TAU);
       node.position.lerp(targetPos, a);
       node.quaternion.slerp(targetQuat, a);
     }
