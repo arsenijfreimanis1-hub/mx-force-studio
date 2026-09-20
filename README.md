@@ -14,7 +14,11 @@ That is the app. It puts **MX Force Studio** on your Desktop and in the Start Me
 
 There is no `.exe`. Windows will run the `.bat` if you double-click it. If Explorer hides extensions, look for **MX Force Studio**.
 
+First run downloads **Node.js** automatically (portable, no admin) if it is not already installed, then installs packages and builds. That can take a couple of minutes and needs internet.
+
 If you cloned with Origin/WSL, open the folder from Windows first, for example `\\wsl$\Ubuntu\home\<you>\mx-hub`, then double-click the file there. A shortcut created from WSL may not show on a Windows Desktop until you run the `.bat` from Explorer.
+
+**Do not** save only the `.bat` from the browser. You need the whole `mx-hub` folder (`package.json`, `windows\`, `plugin\`, …). Extract **MX_Force_Studio_Windows.zip** if you have it, then double-click `MX Force Studio.bat` inside `MX-Force-Studio`. If you already saved a lone `.bat`, run it anyway — it will try to git-clone the app into `%LOCALAPPDATA%\MXForceStudio\app`.
 
 ## Run it on Windows (one icon, no terminal)
 
