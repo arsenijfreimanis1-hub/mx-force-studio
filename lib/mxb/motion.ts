@@ -39,6 +39,9 @@ export type MotionFilter = {
   lpX: number;
   lpY: number;
   lpZ: number;
+  lpVx: number;
+  lpVy: number;
+  lpVz: number;
   primed: boolean;
   shown: Pose6;
 };
@@ -48,6 +51,9 @@ export function createMotionFilter(): MotionFilter {
     lpX: 0,
     lpY: 0,
     lpZ: 0,
+    lpVx: 0,
+    lpVy: 0,
+    lpVz: 0,
     primed: false,
     shown: identityPose(),
   };
@@ -104,37 +110,45 @@ export function stepMotion(
     filter.lpX = telemetry.position.x;
     filter.lpY = telemetry.position.y;
     filter.lpZ = telemetry.position.z;
+    filter.lpVx = telemetry.velocity.x;
+    filter.lpVy = telemetry.velocity.y;
+    filter.lpVz = telemetry.velocity.z;
     filter.primed = true;
   }
 
   filter.lpX = follow(filter.lpX, telemetry.position.x, step, WASH_TAU);
   filter.lpY = follow(filter.lpY, telemetry.position.y, step, WASH_TAU);
   filter.lpZ = follow(filter.lpZ, telemetry.position.z, step, WASH_TAU);
+  filter.lpVx = follow(filter.lpVx, telemetry.velocity.x, step, WASH_TAU);
+  filter.lpVy = follow(filter.lpVy, telemetry.velocity.y, step, WASH_TAU);
+  filter.lpVz = follow(filter.lpVz, telemetry.velocity.z, step, WASH_TAU);
 
-  const hpX = telemetry.position.x - filter.lpX;
   const hpY = telemetry.position.y - filter.lpY;
-  const hpZ = telemetry.position.z - filter.lpZ;
-  const localPos = worldToChassis(hpX, hpZ, telemetry.yaw);
-  const localVel = worldToChassis(telemetry.velocity.x, telemetry.velocity.z, telemetry.yaw);
+  const hpVel = worldToChassis(
+    telemetry.velocity.x - filter.lpVx,
+    telemetry.velocity.z - filter.lpVz,
+    telemetry.yaw,
+  );
 
   const suspVel = (telemetry.suspVelocity[0] + telemetry.suspVelocity[1]) * 0.5;
+  const airborne = telemetry.wheelMaterial[0] <= 0 && telemetry.wheelMaterial[1] <= 0;
+  const airLift = airborne ? 0.45 * Math.max(0, 1 - telemetry.accelG.y) : 0;
 
   const targetX =
-    (localPos.right * POS_GAIN +
+    (hpVel.right * VEL_GAIN +
       telemetry.accelG.x * ACCEL_GAIN +
-      localVel.right * VEL_GAIN +
       telemetry.rollRate * RATE_GAIN) *
     response;
   const targetY =
     (hpY * POS_GAIN +
       (1 - telemetry.accelG.y) * ACCEL_GAIN +
-      telemetry.velocity.y * VEL_GAIN +
-      -suspVel * 0.05) *
+      (telemetry.velocity.y - filter.lpVy) * VEL_GAIN +
+      -suspVel * 0.05 +
+      airLift) *
     response;
   const targetZ =
-    (localPos.fwd * POS_GAIN +
+    (hpVel.fwd * VEL_GAIN +
       telemetry.accelG.z * ACCEL_GAIN +
-      localVel.fwd * VEL_GAIN +
       telemetry.pitchRate * RATE_GAIN) *
     response;
 

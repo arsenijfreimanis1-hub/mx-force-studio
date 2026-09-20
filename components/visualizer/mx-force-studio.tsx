@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import {
   Gauge,
   Loader2,
@@ -26,6 +26,7 @@ import {
   identityPose,
   stepMotion,
   type FrameTravel,
+  type Pose6,
 } from "@/lib/mxb/motion";
 import type {
   BikeEvent,
@@ -127,7 +128,6 @@ export function MxForceStudio() {
   const [clock, setClock] = useState(0);
   const [inspect, setInspect] = useState(true);
   const [travel, setTravel] = useState<FrameTravel>(DEFAULT_FRAME_TRAVEL);
-  const [poseHud, setPoseHud] = useState(identityPose());
   const clockRef = useRef(0);
   const pollRef = useRef<() => Promise<void>>(async () => {});
   const motionRef = useRef(createMotionFilter());
@@ -175,8 +175,10 @@ export function MxForceStudio() {
           clockRef.current,
           sandboxRef.current,
         );
-        const pose = stepPose(tel);
-        setPoseHud(pose);
+        const nowMs = performance.now();
+        const stepDt = Math.min(0.05, Math.max(0.001, (nowMs - lastStepRef.current) / 1000));
+        lastStepRef.current = nowMs;
+        poseRef.current = stepMotion(motionRef.current, tel, stepDt, travelRef.current);
         setClock(clockRef.current);
       }
       frame = requestAnimationFrame(tick);
@@ -204,7 +206,6 @@ export function MxForceStudio() {
       setLiveOk(body.live);
       setLivePacket(body.packet);
       setStaleMs(body.staleMs);
-      setPoseHud(poseRef.current);
     };
 
     const poll = async () => {
@@ -355,7 +356,7 @@ export function MxForceStudio() {
               </span>
               <span className="text-white/35">·</span>
               <span>
-                {fmtCm(poseHud.x)} {fmtCm(poseHud.y)} {fmtCm(poseHud.z)}
+                <PoseReadout poseRef={poseRef} />
               </span>
               {model.airborne ? <span className="text-amber-300">air</span> : null}
             </div>
@@ -600,6 +601,23 @@ function fmtCm(m: number) {
   return `${cm >= 0 ? "+" : ""}${cm}`;
 }
 
+function PoseReadout({ poseRef }: { poseRef: MutableRefObject<Pose6> }) {
+  const el = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    let frame = 0;
+    const tick = () => {
+      const pose = poseRef.current;
+      if (el.current) {
+        el.current.textContent = `${fmtCm(pose.x)} ${fmtCm(pose.y)} ${fmtCm(pose.z)}`;
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [poseRef]);
+  return <span ref={el}>+0 +0 +0</span>;
+}
+
 function InputsOverlay({ telemetry }: { telemetry: Telemetry }) {
   const steerMax = 40;
   const steerT = Math.min(1, Math.max(-1, telemetry.steer / steerMax));
@@ -607,7 +625,7 @@ function InputsOverlay({ telemetry }: { telemetry: Telemetry }) {
   const steerWidth = Math.abs(steerT) * 50;
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2">
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 pl-14">
       <div className="grid grid-cols-5 gap-x-2 rounded-md border border-white/10 bg-black/55 px-2.5 py-1.5 backdrop-blur-sm">
         <InputBar label="Thr" value={telemetry.throttle} fillClass="bg-emerald-400" />
         <InputBar label="F brk" value={telemetry.frontBrake} fillClass="bg-rose-500" />

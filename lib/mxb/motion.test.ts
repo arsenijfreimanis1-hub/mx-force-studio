@@ -111,3 +111,31 @@ test("world heading maps +X into chassis forward at yaw 90", () => {
   assert.ok(Math.abs(mapped.fwd - 4) < 1e-6, JSON.stringify(mapped));
   assert.ok(Math.abs(mapped.right) < 1e-6, JSON.stringify(mapped));
 });
+
+test("airborne 0G lifts the frame even if world Y is already washed out", () => {
+  const pose = run(
+    sample({
+      position: { x: 0, y: 2.2, z: 0 },
+      velocity: { x: 0, y: 0, z: 18 },
+      accelG: { x: 0, y: 0.06, z: 0 },
+      wheelMaterial: [0, 0],
+      suspLength: [0.31, 0.31],
+    }),
+    0.8,
+  );
+  assert.ok(pose.y > 0.25, `y ${pose.y}`);
+  assert.ok(pose.y <= 1, `y clamp ${pose.y}`);
+});
+
+test("steady speed does not pin the frame at the travel limit", () => {
+  const pose = run(
+    sample({
+      speedMs: 18,
+      velocity: { x: 0, y: 0, z: 18 },
+      position: { x: 0, y: 0, z: 40 },
+      accelG: { x: 0, y: 1, z: 0.08 },
+    }),
+    2.2,
+  );
+  assert.ok(Math.abs(pose.z) < 0.2, `z ${pose.z}`);
+});
