@@ -6,7 +6,7 @@ import * as THREE from "three";
 import type { MutableRefObject } from "react";
 import { FRAME_LOW_Y, PLATFORM_HOME_Y, type Pose6 } from "@/lib/mxb/motion";
 
-const BOX_H = 0.16;
+const BOX_H = 0.14;
 const BOX_Y = BOX_H * 0.5;
 const ROD_TOP_LOCAL = new THREE.Vector3(0, FRAME_LOW_Y, 0.01);
 

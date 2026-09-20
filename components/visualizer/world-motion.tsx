@@ -1,5 +1,7 @@
 "use client";
 
+import { Html } from "@react-three/drei";
+
 /** Garage pad + heading marks so a new user can read lean vs front. */
 export function WorldMotionCues() {
   return (
@@ -16,18 +18,21 @@ export function WorldMotionCues() {
         <circleGeometry args={[0.1, 16]} />
         <meshBasicMaterial color="#fde68a" />
       </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.012, 0.88]}>
-        <coneGeometry args={[0.08, 0.16, 3]} />
-        <meshBasicMaterial color="#fbbf24" />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, Math.PI / 2]} position={[0.88, 0.012, 0]}>
-        <coneGeometry args={[0.055, 0.11, 3]} />
-        <meshBasicMaterial color="#38bdf8" />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, -Math.PI / 2]} position={[-0.88, 0.012, 0]}>
-        <coneGeometry args={[0.055, 0.11, 3]} />
-        <meshBasicMaterial color="#f87171" />
-      </mesh>
+      <Html position={[0, 0.04, 0.98]} center distanceFactor={6}>
+        <div className="whitespace-nowrap text-[11px] font-bold tracking-wide text-amber-300">
+          FRONT
+        </div>
+      </Html>
+      <Html position={[0.98, 0.04, 0]} center distanceFactor={6}>
+        <div className="whitespace-nowrap text-[11px] font-bold tracking-wide text-sky-300">
+          RIGHT
+        </div>
+      </Html>
+      <Html position={[-0.98, 0.04, 0]} center distanceFactor={6}>
+        <div className="whitespace-nowrap text-[11px] font-bold tracking-wide text-rose-300">
+          LEFT
+        </div>
+      </Html>
     </group>
   );
 }

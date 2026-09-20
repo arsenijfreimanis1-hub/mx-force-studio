@@ -111,7 +111,7 @@ export function MxForceStudio() {
   const [connectRequested, setConnectRequested] = useState(false);
   const [staleMs, setStaleMs] = useState<number | null>(null);
   const [hudTel, setHudTel] = useState<Telemetry>(() => restTelemetry({ rpm: 0 }));
-  const [inspect, setInspect] = useState(true);
+  const [inspect, setInspect] = useState(false);
   const [travel, setTravel] = useState<FrameTravel>(STUDIO_TRAVEL);
   const [hudEvent, setHudEvent] = useState<BikeEvent>(DEFAULT_EVENT);
   const [padOn, setPadOn] = useState(false);
@@ -449,7 +449,7 @@ export function MxForceStudio() {
           </div>
 
           {!driving && liveState === "idle" ? (
-            <div className="pointer-events-none absolute inset-0 z-10 flex items-end justify-center pb-16">
+            <div className="pointer-events-none absolute inset-x-0 bottom-12 z-10 flex justify-center">
               <div className="max-w-sm rounded-md border border-white/10 bg-black/65 px-3 py-2 text-xs text-amber-50">
                 <p className="font-medium text-amber-100">New here?</p>
                 <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-white/80">

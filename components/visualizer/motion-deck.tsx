@@ -23,8 +23,8 @@ export function MotionDeck() {
       <mesh material={plate} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0.02]}>
         <planeGeometry args={[0.42, 0.72]} />
       </mesh>
-      <mesh material={front} position={[0, 0.012, 0.36]}>
-        <boxGeometry args={[0.42, 0.02, 0.04]} />
+      <mesh material={front} position={[0, 0.016, 0.36]}>
+        <boxGeometry args={[0.44, 0.028, 0.055]} />
       </mesh>
       <mesh material={rail} position={[0.2, 0.01, 0.02]}>
         <boxGeometry args={[0.02, 0.016, 0.7]} />

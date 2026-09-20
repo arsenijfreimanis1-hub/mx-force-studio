@@ -22,9 +22,9 @@ export const FRAME_BOTTOM: Vec3 = { x: 0, y: 0.09, z: 0.02 };
  * Stewart-platform mid-stroke. ±1 m heave then still clears the garage floor.
  * Rider-head washout (Barbagli / MORIS) is computed about this deck height.
  */
-export const PLATFORM_HOME_Y = 1.18;
+export const PLATFORM_HOME_Y = 0.68;
 /** Visual bike scale vs the original 1:1 tube drawing. */
-export const BIKE_SCALE = 0.5;
+export const BIKE_SCALE = 0.7;
 
 /** Lowest remaining frame tube vs the rig origin (after FRAME_CENTER_Y pin). */
 export const FRAME_LOW_Y = (0.28 + 0.55) * BIKE_SCALE;
