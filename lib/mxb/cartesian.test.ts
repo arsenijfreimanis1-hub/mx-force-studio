@@ -56,10 +56,11 @@ test("air freezes the lip so a jump is ΔY", () => {
   const state = createCartesianState();
   stepCartesian(state, world(0, 2, 10), { x: 0, y: 8, z: 14 }, 0, dt, "ground");
   let peak = 0;
+  let last = { x: 0, y: 0, z: 0 };
   for (let i = 1; i <= 50; i++) {
     const t = i * dt;
     const y = 2 + 8 * t - 0.5 * 9.80665 * t * t;
-    const cart = stepCartesian(
+    last = stepCartesian(
       state,
       world(0, y, 10 + 14 * t),
       { x: 0, y: 8 - 9.80665 * t, z: 14 },
@@ -67,10 +68,11 @@ test("air freezes the lip so a jump is ΔY", () => {
       dt,
       "air",
     );
-    peak = Math.max(peak, cart.y);
+    peak = Math.max(peak, last.y);
   }
   assert.ok(peak > 2.8, `peak ${peak}`);
   assert.ok(Math.abs(state.oy - 2) < 1e-9, `lip ${state.oy}`);
+  assert.ok(Math.abs(last.z) < 1.2, `air surge ${last.z}`);
 });
 
 test("stop walks the origin onto the bike so the deck recenters", () => {

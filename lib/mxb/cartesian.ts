@@ -115,7 +115,18 @@ export function stepCartesian(
   const movedY = Math.abs(world.y - state.py) > 0.0008;
 
   if (mode === "air") {
-    // Lip stays put. ΔY/ΔXZ are the ballistic Cartesian jump.
+    // Lip Y stays put so the jump is Cartesian ΔY. Walk XZ with speed so a
+    // 20 m table does not pin surge at the travel limit.
+    if (movedXZ) {
+      state.ovx = follow(state.ovx, vx, step, 0.35);
+      state.ovz = follow(state.ovz, vz, step, 0.35);
+      state.ox += state.ovx * step;
+      state.oz += state.ovz * step;
+      const velErr = Math.hypot(vx - state.ovx, vz - state.ovz);
+      const snap = velErr < 0.85 ? 0.4 : 1.6;
+      state.ox = follow(state.ox, world.x, step, snap);
+      state.oz = follow(state.oz, world.z, step, snap);
+    }
   } else if (mode === "stop" || mode === "crash") {
     state.ovx = follow(state.ovx, 0, step, 0.16);
     state.ovy = follow(state.ovy, 0, step, 0.16);
