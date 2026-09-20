@@ -16,7 +16,7 @@ import {
 } from "@/lib/mxb/adapt";
 import { DEFAULT_EVENT, DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
 import { formatG, speedKph } from "@/lib/mxb/forces";
-import { gamepadActive, readFirstGamepad } from "@/lib/mxb/gamepad";
+import { gamepadActive, padTraceActive, readFirstGamepad, readPadTrace } from "@/lib/mxb/gamepad";
 import { detectCrash } from "@/lib/mxb/crash";
 import { setupLabel } from "@/lib/mxb/inputs";
 import {
@@ -147,13 +147,7 @@ export function MxForceStudio() {
   const lastPublishedLiveRef = useRef(false);
   const traceRef = useRef(createTraceBuffer(900));
   const lastTraceMs = useRef(0);
-
-  const recordTrace = (tel: Telemetry) => {
-    const now = performance.now();
-    if (now - lastTraceMs.current < 16) return;
-    lastTraceMs.current = now;
-    pushTraceSample(traceRef.current, tel, now);
-  };
+  const graphOpenRef = useRef(false);
 
   useEffect(() => {
     const stored = loadStoredDof(2);
@@ -165,6 +159,7 @@ export function MxForceStudio() {
     connectRef.current = connectRequested;
     userTravelRef.current = travel;
     travelRef.current = travel;
+    graphOpenRef.current = graphOpen;
     if (!connectRequested) liveRef.current = false;
   });
 
@@ -176,9 +171,10 @@ export function MxForceStudio() {
 
   useEffect(() => {
     const id = window.setInterval(() => {
+      const gp = readFirstGamepad();
+      const padTrace = readPadTrace(gp);
       let pad = padActiveRef.current;
       if (!liveRef.current && !connectRef.current) {
-        const gp = readFirstGamepad();
         pad = Boolean(gp && gamepadActive(gp)) || pad;
       } else {
         pad = false;
@@ -195,12 +191,16 @@ export function MxForceStudio() {
       }
 
       const now = performance.now();
+      const logPad = graphOpenRef.current || liveRef.current || padTraceActive(padTrace);
+      if (logPad && now - lastTraceMs.current >= 16) {
+        lastTraceMs.current = now;
+        pushTraceSample(traceRef.current, telemetryRef.current, now, padTrace);
+      }
       if (now - lastHudRef.current < HUD_MS) return;
       lastHudRef.current = now;
-      if (liveRef.current) recordTrace(telemetryRef.current);
       setHudTel(telemetryRef.current);
       setHudEvent(eventRef.current);
-    }, 50);
+    }, 16);
     return () => window.clearInterval(id);
   }, []);
 
@@ -231,8 +231,8 @@ export function MxForceStudio() {
         adaptRef.current = lockParkedUnits(adaptRef.current, body.packet.telemetry);
         telemetryRef.current = sanitizeTelemetry(
           applyProfileToTelemetry(body.packet.telemetry, adaptRef.current),
+          telemetryRef.current,
         );
-        recordTrace(telemetryRef.current);
       } else {
         liveRef.current = false;
         const reallyGone = !wantLive || (body.staleMs != null && body.staleMs > 1500);

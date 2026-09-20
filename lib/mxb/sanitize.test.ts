@@ -68,6 +68,18 @@ test("garbage throttle and brake become zero instead of sticking on the HUD", ()
   assert.equal(clean.speedMs, 0);
 });
 
+test("a junk pedal packet keeps the last real full-throttle reading", () => {
+  const prev = sample({ throttle: 1, frontBrake: 0.9, rearBrake: 0.7, clutch: 0.4 });
+  const clean = sanitizeTelemetry(
+    sample({ throttle: 847, frontBrake: -40, rearBrake: 12, clutch: 99 }),
+    prev,
+  );
+  assert.equal(clean.throttle, 1);
+  assert.equal(clean.frontBrake, 0.9);
+  assert.equal(clean.rearBrake, 0.7);
+  assert.equal(clean.clutch, 0.4);
+});
+
 test("a real 0.6 throttle stays 0.6 after sanitize", () => {
   const clean = sanitizeTelemetry(sample({ throttle: 0.6, frontBrake: 0.35, clutch: 0.2 }));
   assert.equal(clean.throttle, 0.6);
@@ -91,7 +103,7 @@ test("normalizeTelemetry sanitizes junk pedals and still fills holes", () => {
   assert.equal(next.rpm, 9000);
   assert.equal(next.steer, -12);
   assert.equal(next.clutch, 0.4);
-  assert.equal(next.throttle, 0);
+  assert.equal(next.throttle, 0.55);
   assert.equal(next.frontBrake, 0);
   assert.equal(next.speedMs, 14);
 });

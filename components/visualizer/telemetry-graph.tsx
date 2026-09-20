@@ -79,6 +79,9 @@ export function TelemetryGraph({
       const buf = bufferRef.current;
       const latest: Record<string, number> = {};
       if (buf.len > 1) {
+        const t0 = buf.times[traceIndex(buf, 0)];
+        const t1 = buf.times[traceIndex(buf, buf.len - 1)];
+        const span = Math.max(16, t1 - t0);
         for (const id of ids) {
           const ch = traceChannel(id);
           const series = buf.values[id];
@@ -91,7 +94,7 @@ export function TelemetryGraph({
           for (let a = 0; a < buf.len; a++) {
             const idx = traceIndex(buf, a);
             const n = series[idx] / ch.span;
-            const x = (a / (buf.len - 1)) * w;
+            const x = ((buf.times[idx] - t0) / span) * w;
             const y = h * 0.5 - Math.max(-1.35, Math.min(1.35, n)) * h * 0.42;
             if (a === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
@@ -125,7 +128,7 @@ export function TelemetryGraph({
     <div className="flex h-full min-h-0 flex-col gap-1.5 rounded-md border border-white/15 bg-zinc-950 p-2 text-white shadow-lg">
       <div className="flex flex-wrap items-center gap-1">
         <span className="mr-1 text-[10px] font-medium tracking-wide text-white/55 uppercase">
-          Game data {live ? "· live" : "· last packet"}
+          RT/LT = pad · Thr/F brk = game {live ? "· live" : "· waiting"}
         </span>
         {TRACE_GROUPS.map((g) => {
           const members = byGroup.get(g.id) ?? [];

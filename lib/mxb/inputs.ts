@@ -22,7 +22,7 @@ export const MXB_PLUGIN_INPUTS = {
 /** Default Xbox / Standard Gamepad map used by MX Bikes on Windows. */
 export const MXB_XBOX_BINDINGS = {
   throttle: { button: 7, axis: 5, label: "RT" },
-  frontBrake: { button: 6, axis: 2, label: "LT" },
+  frontBrake: { button: 6, axis: 4, label: "LT" },
   rearBrake: { button: 4, label: "LB" },
   clutch: { button: 0, label: "A" },
   steer: { axis: 0, label: "Left stick X" },

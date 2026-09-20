@@ -12,6 +12,7 @@ import {
   toggleTraceId,
   traceIndex,
 } from "./trace.ts";
+import { idlePadTrace } from "./gamepad.ts";
 import type { Telemetry } from "./types.ts";
 
 function sample(partial: Partial<Telemetry> = {}): Telemetry {
@@ -76,6 +77,15 @@ test("clearTraceBuffer drops history", () => {
   clearTraceBuffer(buf);
   assert.equal(buf.len, 0);
   assert.equal(newestTraceValue(buf, "throttle"), 0);
+});
+
+test("pad overlay is logged next to the game pedals", () => {
+  const buf = createTraceBuffer(4);
+  const pad = { ...idlePadTrace(), throttle: 1, frontBrake: 0.4, lx: -0.5, rx: 0.8 };
+  pushTraceSample(buf, sample({ throttle: 0.55 }), 20, pad);
+  assert.ok(Math.abs(newestTraceValue(buf, "padThr") - 1) < 1e-5);
+  assert.ok(Math.abs(newestTraceValue(buf, "throttle") - 0.55) < 1e-5);
+  assert.ok(Math.abs(newestTraceValue(buf, "padLX") + 0.5) < 1e-5);
 });
 
 test("channel chips toggle one id or a whole group", () => {

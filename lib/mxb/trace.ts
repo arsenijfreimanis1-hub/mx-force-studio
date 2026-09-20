@@ -1,6 +1,7 @@
+import type { PadTrace } from "./gamepad.ts";
 import type { Telemetry } from "./types.ts";
 
-export type TraceGroup = "inputs" | "attitude" | "gforce" | "world" | "suspension" | "engine";
+export type TraceGroup = "pad" | "inputs" | "attitude" | "gforce" | "world" | "suspension" | "engine";
 
 export type TraceChannel = {
   id: string;
@@ -13,7 +14,8 @@ export type TraceChannel = {
 };
 
 export const TRACE_GROUPS: { id: TraceGroup; label: string }[] = [
-  { id: "inputs", label: "Inputs" },
+  { id: "pad", label: "Pad" },
+  { id: "inputs", label: "Game" },
   { id: "attitude", label: "Attitude" },
   { id: "gforce", label: "G" },
   { id: "world", label: "World" },
@@ -22,6 +24,14 @@ export const TRACE_GROUPS: { id: TraceGroup; label: string }[] = [
 ];
 
 export const TRACE_CHANNELS: TraceChannel[] = [
+  { id: "padThr", label: "RT", group: "pad", color: "#4ade80", span: 1, unit: "" },
+  { id: "padFbrk", label: "LT", group: "pad", color: "#fb7185", span: 1, unit: "" },
+  { id: "padRbrk", label: "LB", group: "pad", color: "#f9a8d4", span: 1, unit: "" },
+  { id: "padClh", label: "A", group: "pad", color: "#e2e8f0", span: 1, unit: "" },
+  { id: "padLX", label: "LX", group: "pad", color: "#c4b5fd", span: 1, unit: "" },
+  { id: "padLY", label: "LY", group: "pad", color: "#a78bfa", span: 1, unit: "" },
+  { id: "padRX", label: "RX", group: "pad", color: "#67e8f9", span: 1, unit: "" },
+  { id: "padRY", label: "RY", group: "pad", color: "#22d3ee", span: 1, unit: "" },
   { id: "throttle", label: "Thr", group: "inputs", color: "#34d399", span: 1, unit: "" },
   { id: "frontBrake", label: "F brk", group: "inputs", color: "#fb7185", span: 1, unit: "" },
   { id: "rearBrake", label: "R brk", group: "inputs", color: "#f9a8d4", span: 1, unit: "" },
@@ -64,20 +74,18 @@ export const TRACE_CHANNELS: TraceChannel[] = [
 ];
 
 export const DEFAULT_TRACE_IDS = [
+  "padThr",
   "throttle",
+  "padFbrk",
   "frontBrake",
+  "padRbrk",
   "rearBrake",
-  "steer",
-  "speed",
-  "roll",
-  "pitch",
-  "gx",
-  "gy",
-  "gz",
+  "padLX",
+  "padRX",
 ];
 
 export const TRACE_OPEN_KEY = "mxb-force-studio.graph";
-export const TRACE_IDS_KEY = "mxb-force-studio.graph-ids";
+export const TRACE_IDS_KEY = "mxb-force-studio.graph-ids-v2";
 
 const CHANNEL_BY_ID = new Map(TRACE_CHANNELS.map((c) => [c.id, c]));
 
@@ -85,8 +93,16 @@ export function traceChannel(id: string): TraceChannel | undefined {
   return CHANNEL_BY_ID.get(id);
 }
 
-export function flattenTelemetry(tel: Telemetry): Record<string, number> {
+export function flattenTelemetry(tel: Telemetry, pad?: PadTrace): Record<string, number> {
   return {
+    padThr: pad?.throttle ?? 0,
+    padFbrk: pad?.frontBrake ?? 0,
+    padRbrk: pad?.rearBrake ?? 0,
+    padClh: pad?.clutch ?? 0,
+    padLX: pad?.lx ?? 0,
+    padLY: pad?.ly ?? 0,
+    padRX: pad?.rx ?? 0,
+    padRY: pad?.ry ?? 0,
     throttle: tel.throttle,
     frontBrake: tel.frontBrake,
     rearBrake: tel.rearBrake,
@@ -148,8 +164,8 @@ export function clearTraceBuffer(buf: TraceBuffer) {
   buf.head = 0;
 }
 
-export function pushTraceSample(buf: TraceBuffer, tel: Telemetry, timeMs: number) {
-  const flat = flattenTelemetry(tel);
+export function pushTraceSample(buf: TraceBuffer, tel: Telemetry, timeMs: number, pad?: PadTrace) {
+  const flat = flattenTelemetry(tel, pad);
   const i = buf.head;
   buf.times[i] = timeMs;
   for (const ch of TRACE_CHANNELS) {

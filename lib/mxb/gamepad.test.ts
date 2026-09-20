@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { gamepadActive, readBodyStick } from "./gamepad.ts";
+import { gamepadActive, readBodyStick, readPadTrace, trigger } from "./gamepad.ts";
 
 function fakePad(partial: { buttons?: { pressed?: boolean; value?: number }[]; axes?: number[] }): Gamepad {
   const buttons = (partial.buttons ?? []).map((b) => ({
@@ -42,6 +42,27 @@ test("right stick is body weight for the dummy", () => {
   assert.ok(pose.lean < -0.2, `lean ${pose.lean}`);
   assert.ok(pose.foreAft > 0.04, `foreAft ${pose.foreAft}`);
   assert.ok(pose.stand > 0.3, `stand ${pose.stand}`);
+});
+
+test("full RT and LT read as 1 without using the right stick as brake", () => {
+  const pad = fakePad({
+    buttons: [{}, {}, {}, {}, {}, {}, { value: 1 }, { value: 1 }],
+    axes: [0, 0, 0.9, 0, 0, 0],
+  });
+  const snap = readPadTrace(pad);
+  assert.equal(snap.throttle, 1);
+  assert.equal(snap.frontBrake, 1);
+  assert.ok(snap.rx > 0.8);
+});
+
+test("RT axis 5 covers a missing trigger button", () => {
+  const pad = fakePad({
+    buttons: [],
+    axes: [0, 0, 0, 0, 0.2, 1],
+  });
+  assert.equal(trigger(pad, 7, 5), 1);
+  assert.ok(readPadTrace(pad).throttle > 0.95);
+  assert.ok(readPadTrace(pad).frontBrake < 0.25);
 });
 
 test("face buttons other than A do not count as rider input", () => {

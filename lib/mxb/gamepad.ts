@@ -1,11 +1,16 @@
 import type { SandboxInputs } from "./types";
 
-function trigger(gp: Gamepad, button: number, axis: number) {
-  const btn = gp.buttons[button];
-  if (btn && btn.value > 0.02) return btn.value;
+/** Pedal 0–1 from the Standard Gamepad button, or a dedicated trigger axis. */
+export function trigger(gp: Gamepad, button: number, axis: number) {
+  const btn = gp.buttons[button]?.value ?? 0;
   const ax = gp.axes[axis];
-  if (typeof ax === "number" && ax > 0.02) return ax;
-  return 0;
+  let fromAxis = 0;
+  if (typeof ax === "number" && Number.isFinite(ax)) {
+    if (ax >= 0 && ax <= 1.05) fromAxis = ax;
+    else if (ax >= -1.05 && ax <= 1.05) fromAxis = (ax + 1) / 2;
+  }
+  const v = Math.max(btn, fromAxis);
+  return v < 0.02 ? 0 : Math.min(1, v);
 }
 
 function stick(gp: Gamepad, axis: number, dead = 0.2) {
@@ -69,7 +74,7 @@ export function sandboxFromGamepad(
   steerLock = 40,
 ): SandboxInputs {
   const throttle = trigger(gp, 7, 5);
-  const frontBrake = trigger(gp, 6, 2);
+  const frontBrake = trigger(gp, 6, 4);
   const rearBrake = gp.buttons[4]?.pressed ? 0.7 : 0;
   const clutch = gp.buttons[0]?.pressed ? 1 : 0;
   const steer = -stick(gp, 0) * steerLock;
@@ -94,7 +99,69 @@ export function sandboxFromGamepad(
   };
 }
 
+export type PadTrace = {
+  throttle: number;
+  frontBrake: number;
+  rearBrake: number;
+  clutch: number;
+  lx: number;
+  ly: number;
+  rx: number;
+  ry: number;
+};
+
+export function idlePadTrace(): PadTrace {
+  return {
+    throttle: 0,
+    frontBrake: 0,
+    rearBrake: 0,
+    clutch: 0,
+    lx: 0,
+    ly: 0,
+    rx: 0,
+    ry: 0,
+  };
+}
+
+function rawAxis(gp: Gamepad, axis: number) {
+  const v = gp.axes[axis];
+  if (typeof v !== "number" || !Number.isFinite(v)) return 0;
+  return Math.abs(v) < 0.015 ? 0 : Math.max(-1, Math.min(1, v));
+}
+
+/** Live analog snapshot. Does not drive the deck — graph / log only. */
+export function readPadTrace(gp: Gamepad | null): PadTrace {
+  if (!gp) return idlePadTrace();
+  return {
+    throttle: trigger(gp, 7, 5),
+    frontBrake: trigger(gp, 6, 4),
+    rearBrake: gp.buttons[4]?.pressed || (gp.buttons[4]?.value ?? 0) > 0.35 ? 1 : 0,
+    clutch: (gp.buttons[0]?.value ?? 0) > 0.02 ? Math.min(1, gp.buttons[0]!.value) : 0,
+    lx: rawAxis(gp, 0),
+    ly: rawAxis(gp, 1),
+    rx: rawAxis(gp, 2),
+    ry: rawAxis(gp, 3),
+  };
+}
+
+export function padTraceActive(pad: PadTrace) {
+  return (
+    pad.throttle > 0.04 ||
+    pad.frontBrake > 0.04 ||
+    pad.rearBrake > 0.04 ||
+    pad.clutch > 0.04 ||
+    Math.abs(pad.lx) > 0.08 ||
+    Math.abs(pad.ly) > 0.08 ||
+    Math.abs(pad.rx) > 0.08 ||
+    Math.abs(pad.ry) > 0.08
+  );
+}
+
 export function readFirstGamepad(): Gamepad | null {
+  if (typeof window !== "undefined") {
+    const fake = (window as Window & { __mxbFakePad?: Gamepad | null }).__mxbFakePad;
+    if (fake) return fake;
+  }
   if (typeof navigator === "undefined" || !navigator.getGamepads) return null;
   const pads = navigator.getGamepads();
   for (const pad of pads) {
