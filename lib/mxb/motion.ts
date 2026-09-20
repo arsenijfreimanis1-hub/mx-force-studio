@@ -3,6 +3,15 @@ import type { Telemetry, Vec3 } from "./types";
 /** Bottom-middle of the main cradle, bike-local meters. */
 export const FRAME_BOTTOM: Vec3 = { x: 0, y: 0.09, z: 0.02 };
 
+/**
+ * Stewart-platform mid-stroke. ±1 m heave then still clears the garage floor.
+ * Rider-head washout (Barbagli / MORIS) is computed about this deck height.
+ */
+export const PLATFORM_HOME_Y = 1.55;
+
+/** Rider vestibular point above the cradle, bike-local meters (seat → inner ear). */
+export const RIDER_HEAD: Vec3 = { x: 0, y: 0.95, z: 0.04 };
+
 export type FrameTravel = {
   /** Half-range in meters. Default 1 = ±1 m left/right. */
   limitX: number;
@@ -10,6 +19,12 @@ export type FrameTravel = {
   limitY: number;
   /** Half-range in meters. Default 1 = ±1 m forward/back. */
   limitZ: number;
+  /** Half-range in radians. Default ≈ 40° so a berm lean is visible. */
+  limitRoll: number;
+  /** Half-range in radians. Default ≈ 28°. */
+  limitPitch: number;
+  /** Half-range in radians. Default ≈ 15°. */
+  limitYaw: number;
   /** 1 = default cue strength. */
   response: number;
 };
@@ -18,6 +33,9 @@ export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
   limitX: 1,
   limitY: 1,
   limitZ: 1,
+  limitRoll: (40 * Math.PI) / 180,
+  limitPitch: (28 * Math.PI) / 180,
+  limitYaw: (15 * Math.PI) / 180,
   response: 1,
 };
 
@@ -25,17 +43,37 @@ export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
 const GRAVITY = 9.80665;
 
 /**
- * Classical translational washout:
+ * Classical translational washout (Nahon & Reid / MORIS motorcycle WF):
  *   ẍ + 2 ζω ẋ + ω² x = a
- * ω² = g so a constant 1 G specific force settles at 1 m, then the travel
- * limits clamp. Critically damped so the 1 m/G mapping does not ring.
+ * ω² = g so 1 G of specific force settles at 1 m, then travel clamps.
  */
 export const WASH_OMEGA = Math.sqrt(GRAVITY);
 export const WASH_ZETA = 1;
+/** Faster rotational washout — MX rates are much quicker than aircraft. */
+export const WASH_OMEGA_ANG = 6.4;
 const INTEGRATOR_HZ = 120;
-const HEIGHT_EPS = 0.08;
+/**
+ * Motorcycle tilt-coordination. Cars use ~3°/s so the otoliths don't see the
+ * tilt; MX needs a faster channel or brake/accel cues arrive after the jump.
+ */
+const TILT_RATE_LIMIT = (55 * Math.PI) / 180;
+const TILT_TAU = 0.22;
+const ATTITUDE_TAU = 0.04;
+/** Jump / landing heave must snap; 2nd-order √g is ~1.3 s to settle. */
+const HEAVE_TAU = 0.07;
+/**
+ * Coordinated MX lean is mostly bike roll, not car-style sway. Follow almost
+ * all of the chassis roll so a person on the frame drops into the rut.
+ */
+const LEAN_FOLLOW = 0.9;
+const PITCH_FOLLOW = 0.82;
+/** Residual lateral tilt only — lean-follow owns the berm. */
+const TILT_ROLL_BLEND = 0.1;
+/** Brake / accel pitch tilt (gravity alignment). */
+const TILT_PITCH_BLEND = 0.38;
+const HEAD_ACCEL_CLAMP = 14;
 
-/** 6DOF pose. Rider will reuse this later. Yaw is stored but the garage heading stays fixed. */
+/** 6DOF pose of the motion base (radians). */
 export type Pose6 = {
   x: number;
   y: number;
@@ -53,12 +91,21 @@ export type MotionFilter = {
   x: number;
   vx: number;
   y: number;
-  vy: number;
   z: number;
   vz: number;
-  /** World Y of the last contact sample. Frozen in the air. */
-  groundY: number;
-  hadContact: boolean;
+  yaw: number;
+  vyaw: number;
+  pitchHp: number;
+  vpitch: number;
+  rollHp: number;
+  vroll: number;
+  tiltPitch: number;
+  tiltRoll: number;
+  followPitch: number;
+  followRoll: number;
+  wx: number;
+  wy: number;
+  wz: number;
   primed: boolean;
   shown: Pose6;
 };
@@ -68,11 +115,21 @@ export function createMotionFilter(): MotionFilter {
     x: 0,
     vx: 0,
     y: 0,
-    vy: 0,
     z: 0,
     vz: 0,
-    groundY: 0,
-    hadContact: false,
+    yaw: 0,
+    vyaw: 0,
+    pitchHp: 0,
+    vpitch: 0,
+    rollHp: 0,
+    vroll: 0,
+    tiltPitch: 0,
+    tiltRoll: 0,
+    followPitch: 0,
+    followRoll: 0,
+    wx: 0,
+    wy: 0,
+    wz: 0,
     primed: false,
     shown: identityPose(),
   };
@@ -84,6 +141,24 @@ function clamp(n: number, min: number, max: number) {
 
 function deg(n: number) {
   return (n * Math.PI) / 180;
+}
+
+function follow(current: number, target: number, dt: number, tau: number) {
+  if (tau <= 1e-4) return target;
+  const a = 1 - Math.exp(-dt / tau);
+  return current + (target - current) * a;
+}
+
+/**
+ * MX Bikes documents chassis accel in G, but some builds emit m/s².
+ * Parked specific force is ~1 G; m/s² parked is ~9.8.
+ */
+export function specificForceG(raw: Vec3): Vec3 {
+  const mag = Math.hypot(raw.x, raw.y, raw.z);
+  if (mag > 4.2) {
+    return { x: raw.x / GRAVITY, y: raw.y / GRAVITY, z: raw.z / GRAVITY };
+  }
+  return raw;
 }
 
 /**
@@ -110,18 +185,18 @@ export function washoutStepResponse(accelMs2: number, t: number) {
 function stepAxis(
   pos: number,
   vel: number,
-  accelMs2: number,
+  accel: number,
   dt: number,
   limit: number,
+  omega: number,
 ): { pos: number; vel: number } {
-  const w = WASH_OMEGA;
   const z = WASH_ZETA;
   let x = pos;
   let v = vel;
   const steps = Math.max(1, Math.ceil(dt * INTEGRATOR_HZ));
   const h = dt / steps;
   for (let i = 0; i < steps; i++) {
-    v += (accelMs2 - 2 * z * w * v - w * w * x) * h;
+    v += (accel - 2 * z * omega * v - omega * omega * x) * h;
     x += v * h;
   }
   if (x > limit) {
@@ -132,6 +207,53 @@ function stepAxis(
     if (v < 0) v = 0;
   }
   return { pos: x, vel: v };
+}
+
+function rateLimit(current: number, target: number, dt: number, limit: number) {
+  const maxDelta = limit * dt;
+  return current + clamp(target - current, -maxDelta, maxDelta);
+}
+
+/**
+ * Specific force at the rider's head (Barbagli washout location).
+ * a_head = a_seat + α×r + ω×(ω×r), then converted back to G.
+ */
+export function riderHeadSpecificForceG(
+  gForce: Vec3,
+  telemetry: Telemetry,
+  prevW: Vec3,
+  dt: number,
+): { g: Vec3; w: Vec3 } {
+  const wx = deg(telemetry.pitchRate);
+  const wy = deg(telemetry.yawRate);
+  const wz = deg(telemetry.rollRate);
+  const h = Math.max(0.0008, dt);
+  const ax = (wx - prevW.x) / h;
+  const ay = (wy - prevW.y) / h;
+  const az = (wz - prevW.z) / h;
+  const rx = RIDER_HEAD.x;
+  const ry = RIDER_HEAD.y;
+  const rz = RIDER_HEAD.z;
+
+  const tx = ay * rz - az * ry;
+  const ty = az * rx - ax * rz;
+  const tz = ax * ry - ay * rx;
+
+  const cx = wy * rz - wz * ry;
+  const cy = wz * rx - wx * rz;
+  const cz = wx * ry - wy * rx;
+  const nx = wy * cz - wz * cy;
+  const ny = wz * cx - wx * cz;
+  const nz = wx * cy - wy * cx;
+
+  return {
+    g: {
+      x: gForce.x + clamp(tx + nx, -HEAD_ACCEL_CLAMP, HEAD_ACCEL_CLAMP) / GRAVITY,
+      y: gForce.y + clamp(ty + ny, -HEAD_ACCEL_CLAMP, HEAD_ACCEL_CLAMP) / GRAVITY,
+      z: gForce.z + clamp(tz + nz, -HEAD_ACCEL_CLAMP, HEAD_ACCEL_CLAMP) / GRAVITY,
+    },
+    w: { x: wx, y: wy, z: wz },
+  };
 }
 
 export function stepMotion(
@@ -145,65 +267,101 @@ export function stepMotion(
   const limX = Math.max(0, travel.limitX);
   const limY = Math.max(0, travel.limitY);
   const limZ = Math.max(0, travel.limitZ);
-  const airborne = telemetry.wheelMaterial[0] <= 0 && telemetry.wheelMaterial[1] <= 0;
+  const limRoll = Math.max(0, travel.limitRoll);
+  const limPitch = Math.max(0, travel.limitPitch);
+  const limYaw = Math.max(0, travel.limitYaw);
 
   if (!filter.primed) {
     filter.primed = true;
-    if (!airborne) {
-      filter.groundY = telemetry.position.y;
-      filter.hadContact = true;
-    }
+    filter.followRoll = deg(telemetry.roll) * LEAN_FOLLOW;
+    filter.followPitch = deg(telemetry.pitch) * PITCH_FOLLOW;
+    filter.wx = deg(telemetry.pitchRate);
+    filter.wy = deg(telemetry.yawRate);
+    filter.wz = deg(telemetry.rollRate);
   }
 
   if (telemetry.crashed) {
     filter.x = 0;
     filter.vx = 0;
     filter.y = 0;
-    filter.vy = 0;
     filter.z = 0;
     filter.vz = 0;
+    filter.yaw = 0;
+    filter.vyaw = 0;
+    filter.pitchHp = 0;
+    filter.vpitch = 0;
+    filter.rollHp = 0;
+    filter.vroll = 0;
+    filter.tiltPitch = 0;
+    filter.tiltRoll = 0;
+    filter.followPitch = 0;
+    filter.followRoll = 0;
+    filter.wx = 0;
+    filter.wy = 0;
+    filter.wz = 0;
     filter.shown = identityPose();
     return filter.shown;
   }
 
+  const seatG = specificForceG(telemetry.accelG);
+  const head = riderHeadSpecificForceG(seatG, telemetry, { x: filter.wx, y: filter.wy, z: filter.wz }, step);
+  filter.wx = head.w.x;
+  filter.wy = head.w.y;
+  filter.wz = head.w.z;
+  const gForce = head.g;
   const scale = GRAVITY * response;
-  const aSway = telemetry.accelG.x * scale;
-  const aSurge = telemetry.accelG.z * scale;
-  const aHeave = (1 - telemetry.accelG.y) * scale;
 
-  const sway = stepAxis(filter.x, filter.vx, aSway, step, limX);
+  /**
+   * Vestibular heave at the rider's head: parked ay=1 → 0. Jump ay≈0 → the
+   * seat DROPS (weightless). Landing ay>1 → the platform PUNCHES UP.
+   * Direct 1st-order follow holds 0 G in the air (classical HP washout would
+   * sneak 1 G back in mid-flight).
+   */
+  const aSway = gForce.x * scale;
+  const aSurge = gForce.z * scale;
+  const heaveTarget = clamp((gForce.y - 1) * response, -1, 1) * limY;
+
+  const sway = stepAxis(filter.x, filter.vx, aSway, step, limX, WASH_OMEGA);
   filter.x = sway.pos;
   filter.vx = sway.vel;
 
-  const surge = stepAxis(filter.z, filter.vz, aSurge, step, limZ);
+  const surge = stepAxis(filter.z, filter.vz, aSurge, step, limZ, WASH_OMEGA);
   filter.z = surge.pos;
   filter.vz = surge.vel;
 
-  if (!airborne) {
-    filter.groundY = telemetry.position.y;
-    filter.hadContact = true;
-    const heave = stepAxis(filter.y, filter.vy, aHeave, step, limY);
-    filter.y = heave.pos;
-    filter.vy = heave.vel;
-  } else {
-    const offGround = (filter.hadContact ? telemetry.position.y - filter.groundY : telemetry.position.y) * response;
-    if (Math.abs(offGround) > HEIGHT_EPS) {
-      filter.y = clamp(offGround, -limY, limY);
-      filter.vy = 0;
-    } else {
-      const heave = stepAxis(filter.y, filter.vy, aHeave, step, limY);
-      filter.y = heave.pos;
-      filter.vy = heave.vel;
-    }
-  }
+  filter.y = clamp(follow(filter.y, heaveTarget, step, HEAVE_TAU), -limY, limY);
+
+  const yawAccel = deg(telemetry.yawRate) * 2.6 * response;
+  const yaw = stepAxis(filter.yaw, filter.vyaw, yawAccel, step, limYaw, WASH_OMEGA_ANG);
+  filter.yaw = yaw.pos;
+  filter.vyaw = yaw.vel;
+
+  const rollRateAccel = deg(telemetry.rollRate) * 0.42 * response;
+  const pitchRateAccel = deg(telemetry.pitchRate) * 0.42 * response;
+  const rollHp = stepAxis(filter.rollHp, filter.vroll, rollRateAccel, step, limRoll * 0.4, WASH_OMEGA_ANG);
+  filter.rollHp = rollHp.pos;
+  filter.vroll = rollHp.vel;
+  const pitchHp = stepAxis(filter.pitchHp, filter.vpitch, pitchRateAccel, step, limPitch * 0.4, WASH_OMEGA_ANG);
+  filter.pitchHp = pitchHp.pos;
+  filter.vpitch = pitchHp.vel;
+
+  const tiltPitchTarget = Math.atan(gForce.z) * TILT_PITCH_BLEND * response;
+  const tiltRollTarget = Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
+  filter.tiltPitch = rateLimit(filter.tiltPitch, tiltPitchTarget, step, TILT_RATE_LIMIT);
+  filter.tiltRoll = rateLimit(filter.tiltRoll, tiltRollTarget, step, TILT_RATE_LIMIT);
+  filter.tiltPitch = follow(filter.tiltPitch, tiltPitchTarget, step, TILT_TAU);
+  filter.tiltRoll = follow(filter.tiltRoll, tiltRollTarget, step, TILT_TAU);
+
+  filter.followRoll = follow(filter.followRoll, deg(telemetry.roll) * LEAN_FOLLOW, step, ATTITUDE_TAU);
+  filter.followPitch = follow(filter.followPitch, deg(telemetry.pitch) * PITCH_FOLLOW, step, ATTITUDE_TAU);
 
   filter.shown = {
     x: filter.x,
     y: filter.y,
     z: filter.z,
-    yaw: 0,
-    pitch: deg(telemetry.pitch),
-    roll: deg(telemetry.roll),
+    yaw: clamp(filter.yaw, -limYaw, limYaw),
+    pitch: clamp(filter.followPitch + filter.tiltPitch + filter.pitchHp, -limPitch, limPitch),
+    roll: clamp(filter.followRoll + filter.tiltRoll + filter.rollHp, -limRoll, limRoll),
   };
 
   return filter.shown;

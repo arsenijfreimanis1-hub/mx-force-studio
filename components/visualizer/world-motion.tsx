@@ -4,11 +4,9 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { MutableRefObject } from "react";
 import * as THREE from "three";
-import type { FrameTravel, Pose6 } from "@/lib/mxb/motion";
-import { FRAME_BOTTOM } from "@/lib/mxb/motion";
+import { FRAME_BOTTOM, PLATFORM_HOME_Y, type FrameTravel, type Pose6 } from "@/lib/mxb/motion";
 
 const TRAIL_POINTS = 140;
-const REST_Y = FRAME_BOTTOM.y;
 const UP = new THREE.Vector3(0, 1, 0);
 
 function Rod({
@@ -29,9 +27,9 @@ function Rod({
     const node = mesh.current;
     if (!node) return;
     const pose = poseRef.current;
-    if (fromHome) start.set(0, 0.03, 0);
+    if (fromHome) start.set(0, PLATFORM_HOME_Y, 0);
     else start.set(pose.x, 0.02, pose.z);
-    end.set(pose.x, pose.y + REST_Y, pose.z);
+    end.set(pose.x, PLATFORM_HOME_Y + pose.y + FRAME_BOTTOM.y, pose.z);
     dir.copy(end).sub(start);
     const len = dir.length();
     if (len < 1e-4) {
@@ -69,7 +67,7 @@ export function WorldMotionCues({
   const trailPts = useRef<number[]>([]);
   const sampleAcc = useRef(0);
   const last = useMemo(() => new THREE.Vector3(), []);
-  const restY = REST_Y + 0.24;
+  const restY = PLATFORM_HOME_Y + FRAME_BOTTOM.y + 0.24;
   const trailLine = useMemo(() => {
     const mat = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.75 });
     const line = new THREE.Line(trailGeom, mat);
@@ -88,7 +86,7 @@ export function WorldMotionCues({
     sampleAcc.current = 0;
 
     const x = pose.x;
-    const y = pose.y + REST_Y;
+    const y = PLATFORM_HOME_Y + pose.y + FRAME_BOTTOM.y;
     const z = pose.z;
     const pts = trailPts.current;
     if (pts.length >= 3) {
@@ -145,7 +143,7 @@ export function WorldMotionCues({
         <meshBasicMaterial color="#60a5fa" />
       </mesh>
 
-      <mesh position={[0, 0.55, 0]}>
+      <mesh position={[0, PLATFORM_HOME_Y + 0.55, 0]}>
         <boxGeometry args={[0.5, 1.15, 2]} />
         <meshBasicMaterial color="#e2e8f0" wireframe transparent opacity={0.22} />
       </mesh>

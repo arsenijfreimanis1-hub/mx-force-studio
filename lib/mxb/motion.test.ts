@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   createMotionFilter,
   DEFAULT_FRAME_TRAVEL,
+  specificForceG,
   stepMotion,
   washoutStepResponse,
   worldToChassis,
@@ -54,11 +55,14 @@ function run(telemetry: Telemetry, seconds: number, travel = DEFAULT_FRAME_TRAVE
   return pose;
 }
 
-test("parked bike stays at the garage origin", () => {
+test("parked bike stays at the garage origin with level deck", () => {
   const pose = run(sample(), 2.5);
   assert.ok(Math.abs(pose.x) < 0.01, `x ${pose.x}`);
   assert.ok(Math.abs(pose.y) < 0.01, `y ${pose.y}`);
   assert.ok(Math.abs(pose.z) < 0.01, `z ${pose.z}`);
+  assert.ok(Math.abs(pose.roll) < 0.02, `roll ${pose.roll}`);
+  assert.ok(Math.abs(pose.pitch) < 0.02, `pitch ${pose.pitch}`);
+  assert.ok(Math.abs(pose.yaw) < 0.02, `yaw ${pose.yaw}`);
 });
 
 test("1 G of surge settles at 1 m (ω² = g)", () => {
@@ -79,20 +83,14 @@ test("integrator matches the critically damped closed form at 1 s", () => {
     limitZ: 2,
   });
   const expected = washoutStepResponse(GRAVITY, seconds);
-  assert.ok(expected > 0.78 && expected < 0.86, `expected ${expected}`);
   assert.ok(Math.abs(pose.z - expected) < 0.02, `z ${pose.z} vs ${expected}`);
 });
 
-test("forward G shoves the frame forward", () => {
-  const pose = run(sample({ accelG: { x: 0, y: 1, z: 1.1 } }), 0.4);
-  assert.ok(pose.z > 0.25, `z ${pose.z}`);
-  assert.ok(pose.z <= 1, `z clamp ${pose.z}`);
-});
-
-test("braking G shoves the frame backward and clamps at the travel limit", () => {
-  const pose = run(sample({ accelG: { x: 0, y: 1.2, z: -1.2 } }), 2.4);
+test("braking G shoves the frame backward and pitches the deck", () => {
+  const pose = run(sample({ accelG: { x: 0, y: 1.2, z: -1.2 }, pitch: -8 }), 2.4);
   assert.ok(pose.z <= -0.98, `z ${pose.z}`);
   assert.ok(pose.z >= -1, `z clamp ${pose.z}`);
+  assert.ok(pose.pitch < -0.08, `pitch ${pose.pitch}`);
 });
 
 test("lateral G shoves the frame sideways 1 m per G", () => {
@@ -103,55 +101,44 @@ test("lateral G shoves the frame sideways 1 m per G", () => {
   assert.ok(Math.abs(pose.x - -0.9) < 0.05, `x ${pose.x}`);
 });
 
-test("a jump in world Y lifts the frame 1:1 then clamps at 1 m", () => {
-  const filter = createMotionFilter();
-  const grounded = sample({ position: { x: 0, y: 0.02, z: 0 } });
-  for (let i = 0; i < 30; i++) stepMotion(filter, grounded, 1 / 60);
-  const air = sample({
-    position: { x: 0, y: 2.4, z: 0 },
-    velocity: { x: 0, y: 6, z: 0 },
-    accelG: { x: 0, y: 0.05, z: 0 },
-    wheelMaterial: [0, 0],
-    suspLength: [0.31, 0.312],
-  });
-  let pose = stepMotion(filter, air, 1 / 60);
-  for (let i = 0; i < 20; i++) pose = stepMotion(filter, air, 1 / 60);
-  assert.ok(pose.y > 0.98, `y ${pose.y}`);
-  assert.ok(pose.y <= 1, `y clamp ${pose.y}`);
+test("coordinated lean rolls the platform with the bike", () => {
+  const pose = run(sample({ roll: 32, accelG: { x: -0.08, y: 1.05, z: 0.1 } }), 0.6);
+  assert.ok(pose.roll > 0.45, `roll ${pose.roll}`);
+  assert.ok(pose.roll <= DEFAULT_FRAME_TRAVEL.limitRoll + 1e-6, `clamp ${pose.roll}`);
+  assert.ok(Math.abs(pose.x) < 0.15, `sway ${pose.x}`);
 });
 
-test("airborne height is not washed out to zero", () => {
+test("jump 0G drops the seat within 250 ms", () => {
   const pose = run(
     sample({
+      accelG: { x: 0, y: 0.04, z: 0 },
+      pitch: 8,
+      wheelMaterial: [0, 0],
+    }),
+    0.25,
+  );
+  assert.ok(pose.y < -0.5, `onset y ${pose.y}`);
+});
+
+test("jump 0G unloads the seat — platform drops, not lifts", () => {
+  const pose = run(
+    sample({
+      accelG: { x: 0, y: 0.04, z: 0 },
+      pitch: 8,
+      wheelMaterial: [0, 0],
       position: { x: 0, y: 2.2, z: 0 },
-      velocity: { x: 0, y: 0, z: 18 },
-      accelG: { x: 0, y: 0.06, z: 0 },
-      wheelMaterial: [0, 0],
-      suspLength: [0.31, 0.31],
     }),
     2.5,
   );
+  assert.ok(pose.y < -0.85, `y ${pose.y}`);
+  assert.ok(pose.y >= -1, `y clamp ${pose.y}`);
+  assert.ok(pose.pitch > 0.05, `pitch ${pose.pitch}`);
+});
+
+test("landing G spike punches the platform up into the rider", () => {
+  const pose = run(sample({ accelG: { x: 0, y: 2.8, z: 0 }, pitch: -6 }), 2.4);
   assert.ok(pose.y > 0.98, `y ${pose.y}`);
   assert.ok(pose.y <= 1, `y clamp ${pose.y}`);
-});
-
-test("weightlessness still lifts when world Y is missing", () => {
-  const pose = run(
-    sample({
-      position: { x: 0, y: 0, z: 0 },
-      accelG: { x: 0, y: 0.02, z: 0 },
-      wheelMaterial: [0, 0],
-    }),
-    2.5,
-  );
-  assert.ok(pose.y > 0.9, `y ${pose.y}`);
-  assert.ok(pose.y <= 1, `y clamp ${pose.y}`);
-});
-
-test("a landing G spike drops the frame toward -1 m", () => {
-  const pose = run(sample({ accelG: { x: 0, y: 2.8, z: 0 } }), 2.4);
-  assert.ok(pose.y < -0.98, `y ${pose.y}`);
-  assert.ok(pose.y >= -1, `y clamp ${pose.y}`);
 });
 
 test("travel limits are adjustable", () => {
@@ -182,13 +169,20 @@ test("steady speed does not pin the frame at the travel limit", () => {
   assert.ok(Math.abs(pose.z) < 0.12, `z ${pose.z}`);
 });
 
-test("when surge G returns to zero the frame comes home", () => {
+test("m/s² accelerometer readings are converted to G", () => {
+  const g = specificForceG({ x: 0, y: 9.80665, z: 0 });
+  assert.ok(Math.abs(g.y - 1) < 1e-6, JSON.stringify(g));
+  const alreadyG = specificForceG({ x: 0, y: 1, z: 0 });
+  assert.ok(Math.abs(alreadyG.y - 1) < 1e-9, JSON.stringify(alreadyG));
+});
+
+test("yaw rate yaws the deck then washes out", () => {
   const filter = createMotionFilter();
-  const accel = sample({ accelG: { x: 0, y: 1, z: 1 } });
-  const coast = sample({ accelG: { x: 0, y: 1, z: 0 } });
-  for (let i = 0; i < 150; i++) stepMotion(filter, accel, 1 / 60);
-  assert.ok(filter.shown.z > 0.85, `loaded ${filter.shown.z}`);
-  let pose = filter.shown;
-  for (let i = 0; i < 180; i++) pose = stepMotion(filter, coast, 1 / 60);
-  assert.ok(Math.abs(pose.z) < 0.12, `home ${pose.z}`);
+  const turning = sample({ yawRate: 80 });
+  let pose = stepMotion(filter, turning, 1 / 60);
+  for (let i = 0; i < 40; i++) pose = stepMotion(filter, turning, 1 / 60);
+  assert.ok(Math.abs(pose.yaw) > 0.04, `onset ${pose.yaw}`);
+  const straight = sample({ yawRate: 0 });
+  for (let i = 0; i < 180; i++) pose = stepMotion(filter, straight, 1 / 60);
+  assert.ok(Math.abs(pose.yaw) < 0.05, `home ${pose.yaw}`);
 });

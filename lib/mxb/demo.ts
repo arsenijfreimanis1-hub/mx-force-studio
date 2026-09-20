@@ -15,6 +15,23 @@ function smooth(t: number) {
   return 0.5 - 0.5 * Math.cos(x * Math.PI * 2);
 }
 
+/**
+ * Motorcycle specific force in the chassis frame.
+ * Parked / slow: gravity components (−sin θ, cos θ).
+ * At speed: coordinated (ax ≈ 0, ay ≈ 1 / cos(lean)).
+ */
+function motorcycleSpecificForce(leanDeg: number, speedMs: number) {
+  const leanRad = (leanDeg * Math.PI) / 180;
+  const coord = clamp(speedMs / 8, 0, 1);
+  const uncoordX = -Math.sin(leanRad);
+  const uncoordY = Math.cos(leanRad);
+  const coordY = 1 / Math.max(0.38, Math.cos(leanRad));
+  return {
+    x: uncoordX * (1 - coord),
+    y: uncoordY * (1 - coord) + coordY * coord,
+  };
+}
+
 export const SCENARIOS: { id: ScenarioId; name: string; blurb: string }[] = [
   { id: "parked", name: "Parked", blurb: "Idle on the pegs. Weight through both tires, 1G down." },
   { id: "launch", name: "Holeshot", blurb: "Clutch dump. Rear unloads the front and the chain pulls hard." },
@@ -40,8 +57,10 @@ export function telemetryFromSandbox(inputs: SandboxInputs, time: number): Telem
     inputs.throttle * 0.72 * (inputs.gear > 0 ? 1 : 0.15) -
     inputs.frontBrake * 1.05 -
     inputs.rearBrake * 0.35;
-  const latG = -Math.sin((inputs.lean * Math.PI) / 180) * clamp(speedMs / 18, 0, 1.4);
-  const vertG = frontContact || rearContact ? 1 + inputs.frontTravel * 0.4 + inputs.rearTravel * 0.35 : 0.08;
+  const spec = motorcycleSpecificForce(inputs.lean, speedMs);
+  const latG = spec.x;
+  const vertG =
+    frontContact || rearContact ? spec.y + inputs.frontTravel * 0.25 + inputs.rearTravel * 0.2 : 0.08;
   const wheelie = inputs.pitch > 12;
   const stoppie = inputs.pitch < -8;
 
@@ -65,7 +84,7 @@ export function telemetryFromSandbox(inputs: SandboxInputs, time: number): Telem
     throttle: inputs.throttle,
     frontBrake: inputs.frontBrake,
     rearBrake: inputs.rearBrake,
-    clutch: inputs.gear === 0 ? 0.85 : 0,
+    clutch: inputs.clutch > 0 ? inputs.clutch : inputs.gear === 0 ? 0.85 : 0,
     wheelSpeed: [
       speedMs * (stoppie ? 0.2 : 1) * (1 - inputs.frontBrake * 0.35),
       speedMs * (1 + inputs.throttle * 0.28) * (wheelie ? 1.15 : 1),
@@ -137,6 +156,7 @@ export function telemetryForScenario(id: ScenarioId, time: number, sandbox: Sand
     case "left-rut": {
       const speed = 14 + wave * 1.5;
       const lean = 32 + wave * 6;
+      const spec = motorcycleSpecificForce(lean, speed);
       return restTelemetry({
         time: t,
         rpm: 9800,
@@ -144,8 +164,10 @@ export function telemetryForScenario(id: ScenarioId, time: number, sandbox: Sand
         speedMs: speed,
         position: { x: -0.4, y: 0.03, z: t * speed },
         velocity: { x: -1.2, y: 0, z: speed },
-        accelG: { x: -(0.85 + wave * 0.12), y: 1.08, z: 0.18 },
+        accelG: { x: spec.x + 0.02 * wave, y: spec.y, z: 0.16 },
         roll: lean,
+        rollRate: 18 + wave * 55,
+        yawRate: -26,
         steer: -8,
         throttle: 0.62,
         suspLength: [0.17, 0.16],
@@ -156,6 +178,7 @@ export function telemetryForScenario(id: ScenarioId, time: number, sandbox: Sand
     case "right-berm": {
       const speed = 16 + wave * 1.2;
       const lean = -28 - wave * 5;
+      const spec = motorcycleSpecificForce(lean, speed);
       return restTelemetry({
         time: t,
         rpm: 10400,
@@ -163,8 +186,10 @@ export function telemetryForScenario(id: ScenarioId, time: number, sandbox: Sand
         speedMs: speed,
         position: { x: 0.35, y: 0.04, z: t * speed },
         velocity: { x: 1.1, y: 0, z: speed },
-        accelG: { x: -0.78 + wave * 0.1, y: 1.2, z: 0.22 },
+        accelG: { x: spec.x + 0.02 * wave, y: spec.y, z: 0.2 },
         roll: lean,
+        rollRate: -16 + wave * -48,
+        yawRate: 24,
         steer: 11,
         throttle: 0.7,
         suspLength: [0.155, 0.15],
@@ -185,6 +210,7 @@ export function telemetryForScenario(id: ScenarioId, time: number, sandbox: Sand
         velocity: { x: 0, y: bump * 3.5, z: speed },
         accelG: { x: 0, y: 1 + bump * 0.85, z: 0.12 },
         pitch: bump * 4,
+        pitchRate: bump * 90,
         suspLength: [0.2 + bump * 0.07, 0.2 + bump2 * 0.08],
         suspVelocity: [bump * 1.4, bump2 * 1.6],
         throttle: 0.55,
