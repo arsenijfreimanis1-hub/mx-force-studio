@@ -17,8 +17,8 @@ import {
 import { buildForceModel } from "@/lib/mxb/forces";
 import type { BikeEvent, ForceModel, SandboxInputs, Telemetry } from "@/lib/mxb/types";
 
-/** Visual follow of the washout pose — keeps jump drop under 0.3 s. */
-export const VISUAL_POSE_TAU = 0.045;
+/** Visual follow of the washout pose. Longer than the IMU hash, still under jump-drop budget. */
+export const VISUAL_POSE_TAU = 0.08;
 
 export function ChassisRig({
   poseRef,

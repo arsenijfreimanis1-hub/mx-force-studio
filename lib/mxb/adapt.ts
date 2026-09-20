@@ -5,7 +5,7 @@ const STORAGE_PREFIX = "mxb-force-studio.profile.";
 const LEARN_SECONDS = 20;
 const GRAVITY = 9.80665;
 const EMA_TAU = 0.6;
-const DEFAULT_SMOOTH_TAU = 0.05;
+const DEFAULT_SMOOTH_TAU = 0.12;
 const LIMIT_ROLL = (40 * Math.PI) / 180;
 
 export type StorageLike = {
@@ -121,7 +121,8 @@ export function isMoving(tel: Telemetry, forceIsMs2: boolean | null = null) {
 }
 
 /**
- * Parked lock: G vs m/s², and whether MX Bikes roll is flipped vs the garage.
+ * Parked lock: G vs m/s² only. Roll sign is not inferred — a parked dab
+ * in a rut was flipping the whole session and mirroring live leans.
  */
 export function lockParkedUnits(profile: BikeProfile, tel: Telemetry): BikeProfile {
   if (!isParked(tel)) return profile;
@@ -129,17 +130,7 @@ export function lockParkedUnits(profile: BikeProfile, tel: Telemetry): BikeProfi
   let forceIsMs2 = profile.forceIsMs2;
   if (mag > 6.5) forceIsMs2 = true;
   else if (mag > 0.55 && mag < 1.8) forceIsMs2 = false;
-
-  let rollSign = profile.rollSign;
-  const rollRad = (tel.roll * Math.PI) / 180;
-  if (Math.abs(tel.roll) > 6) {
-    const ax = asG(tel.accelG.x, forceIsMs2);
-    const expected = -Math.sin(rollRad);
-    if (Math.abs(ax) > 0.08 && Math.abs(expected) > 0.08) {
-      rollSign = Math.sign(ax) === Math.sign(expected) ? 1 : -1;
-    }
-  }
-  return { ...profile, forceIsMs2, rollSign };
+  return { ...profile, forceIsMs2 };
 }
 
 function applyLearnedGain(profile: BikeProfile): BikeProfile {
@@ -153,7 +144,7 @@ function applyLearnedGain(profile: BikeProfile): BikeProfile {
     rollGain = (0.8 * LIMIT_ROLL) / (rollRad * 0.9);
   }
   const response = clamp((gGain + rollGain) / 2, 0.35, 1.8);
-  const smoothTau = clamp(0.035 + (profile.emaPitchRate / 400) * 0.08, 0.03, 0.12);
+  const smoothTau = clamp(0.1 + (profile.emaPitchRate / 400) * 0.06, 0.1, 0.18);
   return { ...profile, response, smoothTau, learned: true };
 }
 
@@ -190,7 +181,13 @@ export function observeTelemetry(profile: BikeProfile, tel: Telemetry, dt: numbe
     next.movingSeconds += step;
   }
   if (next.movingSeconds >= LEARN_SECONDS) {
-    next = applyLearnedGain(next);
+    const target = applyLearnedGain(next);
+    const slew = 1 - Math.exp(-step / 2);
+    next = {
+      ...target,
+      response: next.response + (target.response - next.response) * slew,
+      smoothTau: next.smoothTau + (target.smoothTau - next.smoothTau) * slew,
+    };
   }
   next.updatedAt = Date.now();
   return next;

@@ -60,7 +60,7 @@ test("parked 9.8 mag locks units as m/s²", () => {
   assert.equal(profile.forceIsMs2, true);
 });
 
-test("parked uncoordinated lean flips a reversed roll axis", () => {
+test("parked uncoordinated lean does not flip roll sign", () => {
   const profile = lockParkedUnits(
     defaultProfile("125"),
     sample({
@@ -68,7 +68,7 @@ test("parked uncoordinated lean flips a reversed roll axis", () => {
       accelG: { x: Math.sin((20 * Math.PI) / 180), y: Math.cos((20 * Math.PI) / 180), z: 0 },
     }),
   );
-  assert.equal(profile.rollSign, -1);
+  assert.equal(profile.rollSign, 1);
 });
 
 test("20 s of moving samples learns a response near 80% of travel", () => {

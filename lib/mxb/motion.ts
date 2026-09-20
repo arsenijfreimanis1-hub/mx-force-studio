@@ -44,7 +44,7 @@ export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
   limitRoll: (40 * Math.PI) / 180,
   limitPitch: (28 * Math.PI) / 180,
   limitYaw: (15 * Math.PI) / 180,
-  smoothTau: 0.05,
+  smoothTau: 0.12,
   response: 1,
 };
 
@@ -67,19 +67,20 @@ const INTEGRATOR_HZ = 120;
  */
 const TILT_RATE_LIMIT = (55 * Math.PI) / 180;
 const TILT_TAU = 0.22;
-const ATTITUDE_TAU = 0.055;
+/** Follow in-game Euler; long enough to kill 100 Hz IMU hash. */
+const ATTITUDE_TAU = 0.12;
 /** Jump / landing heave must snap; 2nd-order √g is ~1.3 s to settle. */
 const HEAVE_TAU = 0.07;
 /**
- * Coordinated MX lean is mostly bike roll, not car-style sway. Follow almost
- * all of the chassis roll so a person on the frame drops into the rut.
+ * Coordinated MX lean is the chassis roll. Follow 1:1 (then travel clamp)
+ * so a left rut in MX Bikes is a left rut on the deck.
  */
-const LEAN_FOLLOW = 0.9;
-const PITCH_FOLLOW = 0.82;
+const LEAN_FOLLOW = 1;
+const PITCH_FOLLOW = 0.9;
 /** Residual lateral tilt only — lean-follow owns the berm. */
-const TILT_ROLL_BLEND = 0.1;
+const TILT_ROLL_BLEND = 0.04;
 /** Brake / accel pitch tilt (gravity alignment). */
-const TILT_PITCH_BLEND = 0.38;
+const TILT_PITCH_BLEND = 0.28;
 const HEAD_ACCEL_CLAMP = 14;
 
 /** 6DOF pose of the motion base (radians). */
@@ -123,6 +124,8 @@ export type MotionFilter = {
   sYawRate: number;
   sPitchRate: number;
   sRollRate: number;
+  /** null until parked / high-mag sample locks G vs m/s² for the session. */
+  unitsMs2: boolean | null;
   primed: boolean;
   shown: Pose6;
 };
@@ -155,6 +158,7 @@ export function createMotionFilter(): MotionFilter {
     sYawRate: 0,
     sPitchRate: 0,
     sRollRate: 0,
+    unitsMs2: null,
     primed: false,
     shown: identityPose(),
   };
@@ -177,8 +181,20 @@ function follow(current: number, target: number, dt: number, tau: number) {
 /**
  * MX Bikes documents chassis accel in G, but some builds emit m/s².
  * Parked specific force is ~1 G; m/s² parked is ~9.8.
+ * Pass a locked unit flag so whoops/jumps cannot flicker across the 4.2 edge.
  */
-export function specificForceG(raw: Vec3): Vec3 {
+export function detectForceUnitsMs2(mag: number, prev: boolean | null): boolean | null {
+  if (prev != null) return prev;
+  if (mag > 6.5) return true;
+  if (mag > 0.55 && mag < 1.8) return false;
+  return null;
+}
+
+export function specificForceG(raw: Vec3, forceIsMs2: boolean | null = null): Vec3 {
+  if (forceIsMs2 === true) {
+    return { x: raw.x / GRAVITY, y: raw.y / GRAVITY, z: raw.z / GRAVITY };
+  }
+  if (forceIsMs2 === false) return raw;
   const mag = Math.hypot(raw.x, raw.y, raw.z);
   if (mag > 4.2) {
     return { x: raw.x / GRAVITY, y: raw.y / GRAVITY, z: raw.z / GRAVITY };
@@ -305,9 +321,11 @@ export function stepMotion(
   const limRoll = Math.max(0, travel.limitRoll);
   const limPitch = Math.max(0, travel.limitPitch);
   const limYaw = Math.max(0, travel.limitYaw);
+  const smoothTau = Math.max(0.08, travel.smoothTau);
 
-  const smoothTau = Math.max(0.008, travel.smoothTau);
-  const rawG = specificForceG(telemetry.accelG);
+  const mag = Math.hypot(telemetry.accelG.x, telemetry.accelG.y, telemetry.accelG.z);
+  filter.unitsMs2 = detectForceUnitsMs2(mag, filter.unitsMs2);
+  const rawG = specificForceG(telemetry.accelG, filter.unitsMs2);
 
   if (!filter.primed) {
     filter.primed = true;
@@ -366,29 +384,16 @@ export function stepMotion(
   filter.sPitchRate = follow(filter.sPitchRate, telemetry.pitchRate, step, smoothTau);
   filter.sRollRate = follow(filter.sRollRate, telemetry.rollRate, step, smoothTau);
 
-  /** Heave stays on raw ay so jump drop is not washed by the IMU EMA. */
-  const seatG = { x: filter.sAx, y: rawG.y, z: filter.sAz };
-  const smoothedTel = {
-    ...telemetry,
-    accelG: seatG,
-    roll: filter.sRoll,
-    pitch: filter.sPitch,
-    yawRate: filter.sYawRate,
-    pitchRate: filter.sPitchRate,
-    rollRate: filter.sRollRate,
-  };
-  const head = riderHeadSpecificForceG(seatG, smoothedTel, { x: filter.wx, y: filter.wy, z: filter.wz }, step);
-  filter.wx = head.w.x;
-  filter.wy = head.w.y;
-  filter.wz = head.w.z;
-  const gForce = { ...head.g, y: rawG.y };
+  /**
+   * Track the in-game chassis, not a differentiated head IMU. Rate-to-accel
+   * spikes at 100 Hz were the main visual jitter on live MX Bikes packets.
+   */
+  const gForce = { x: filter.sAx, y: rawG.y, z: filter.sAz };
   const scale = GRAVITY * response;
 
   /**
-   * Vestibular heave at the rider's head: parked ay=1 → 0. Jump ay≈0 → the
+   * Vestibular heave at the seat: parked ay=1 → 0. Jump ay≈0 → the
    * seat DROPS (weightless). Landing ay>1 → the platform PUNCHES UP.
-   * Direct 1st-order follow holds 0 G in the air (classical HP washout would
-   * sneak 1 G back in mid-flight).
    */
   const aSway = gForce.x * scale;
   const aSurge = gForce.z * scale;
@@ -404,19 +409,15 @@ export function stepMotion(
 
   filter.y = clamp(follow(filter.y, heaveTarget, step, HEAVE_TAU), -limY, limY);
 
-  const yawAccel = deg(filter.sYawRate) * 2.6 * response;
+  const yawAccel = deg(filter.sYawRate) * 1.4 * response;
   const yaw = stepAxis(filter.yaw, filter.vyaw, yawAccel, step, limYaw, WASH_OMEGA_ANG);
   filter.yaw = yaw.pos;
   filter.vyaw = yaw.vel;
 
-  const rollRateAccel = deg(filter.sRollRate) * 0.42 * response;
-  const pitchRateAccel = deg(filter.sPitchRate) * 0.42 * response;
-  const rollHp = stepAxis(filter.rollHp, filter.vroll, rollRateAccel, step, limRoll * 0.4, WASH_OMEGA_ANG);
-  filter.rollHp = rollHp.pos;
-  filter.vroll = rollHp.vel;
-  const pitchHp = stepAxis(filter.pitchHp, filter.vpitch, pitchRateAccel, step, limPitch * 0.4, WASH_OMEGA_ANG);
-  filter.pitchHp = pitchHp.pos;
-  filter.vpitch = pitchHp.vel;
+  filter.rollHp = follow(filter.rollHp, 0, step, 0.12);
+  filter.vroll = 0;
+  filter.pitchHp = follow(filter.pitchHp, 0, step, 0.12);
+  filter.vpitch = 0;
 
   const tiltPitchTarget = Math.atan(gForce.z) * TILT_PITCH_BLEND * response;
   const tiltRollTarget = Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
@@ -434,8 +435,8 @@ export function stepMotion(
     y: filter.y,
     z: filter.z,
     yaw: clamp(filter.yaw, -limYaw, limYaw),
-    pitch: clamp(filter.followPitch + filter.tiltPitch + filter.pitchHp, -limPitch, limPitch),
-    roll: clamp(filter.followRoll + filter.tiltRoll + filter.rollHp, -limRoll, limRoll),
+    pitch: clamp(filter.followPitch + filter.tiltPitch, -limPitch, limPitch),
+    roll: clamp(filter.followRoll + filter.tiltRoll, -limRoll, limRoll),
   });
 
   return filter.shown;

@@ -4,6 +4,7 @@ import {
   createMotionFilter,
   clearPoseFromFloor,
   DEFAULT_FRAME_TRAVEL,
+  detectForceUnitsMs2,
   FLOOR_CLEAR_Y,
   FRAME_HALF_SPAN,
   FRAME_LOW_Y,
@@ -235,4 +236,33 @@ test("jump drop still reaches −0.5 m inside 0.25 s with live EMA", () => {
     { ...DEFAULT_FRAME_TRAVEL, smoothTau: 0.05 },
   );
   assert.ok(pose.y < -0.5, `onset y ${pose.y}`);
+});
+
+test("positive MX Bikes roll is a left lean on the deck", () => {
+  const pose = run(sample({ roll: 28, accelG: { x: 0, y: 1, z: 0 } }), 0.8);
+  assert.ok(pose.roll > 0.35, `roll ${pose.roll}`);
+});
+
+test("noisy roll rate does not shake a steady lean", () => {
+  const filter = createMotionFilter();
+  const dt = 1 / 100;
+  let pose = stepMotion(filter, sample({ roll: 24, rollRate: 0 }), dt);
+  let min = pose.roll;
+  let max = pose.roll;
+  for (let i = 0; i < 180; i++) {
+    const rate = i % 2 === 0 ? 160 : -160;
+    pose = stepMotion(filter, sample({ roll: 24, rollRate: rate, accelG: { x: 0, y: 1, z: 0 } }), dt);
+    min = Math.min(min, pose.roll);
+    max = Math.max(max, pose.roll);
+  }
+  assert.ok(max - min < 0.08, `roll wander ${max - min}`);
+});
+
+test("accel unit lock does not flicker across the 4.2 G edge", () => {
+  assert.equal(detectForceUnitsMs2(9.8, null), true);
+  assert.equal(detectForceUnitsMs2(1, null), false);
+  assert.equal(detectForceUnitsMs2(3.9, true), true);
+  assert.equal(detectForceUnitsMs2(5.5, false), false);
+  const locked = specificForceG({ x: 0, y: 3.9, z: 0 }, true);
+  assert.ok(Math.abs(locked.y - 3.9 / 9.80665) < 1e-6, JSON.stringify(locked));
 });

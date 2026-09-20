@@ -173,7 +173,7 @@ export function MxForceStudio() {
       if (cancelled) return;
       const wantLive = connectRef.current;
       if (wantLive && body.packet?.telemetry) {
-        liveRef.current = Boolean(body.live);
+        liveRef.current = true;
         if (body.packet.event) {
           eventRef.current = body.packet.event;
         }

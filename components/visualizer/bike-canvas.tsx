@@ -54,7 +54,7 @@ export function BikeCanvas({
     >
       <color attach="background" args={["#120e0b"]} />
       <fog attach="fog" args={["#120e0b", 14, 32]} />
-      <PerspectiveCamera makeDefault position={[6.6, 4.6, 7.4]} fov={36} />
+      <PerspectiveCamera makeDefault position={[3.6, 2.7, -5.4]} fov={36} />
       <ambientLight intensity={0.48} />
       <directionalLight position={[4, 10, 3]} intensity={2.05} />
 
@@ -97,7 +97,7 @@ export function BikeCanvas({
         enableZoom
         enableRotate={inspect}
         maxPolarAngle={Math.PI / 2 - 0.04}
-        minDistance={3}
+        minDistance={2.4}
         maxDistance={18}
         target={[0, PLATFORM_HOME_Y, 0]}
       />
