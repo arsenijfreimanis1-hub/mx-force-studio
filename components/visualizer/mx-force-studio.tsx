@@ -163,7 +163,7 @@ export function MxForceStudio() {
     scenarioRef.current = scenario;
     sandboxRef.current = sandbox;
     playingRef.current = playing;
-    liveRef.current = mode === "live" && connectRequested;
+    if (mode !== "live" || !connectRequested) liveRef.current = false;
   });
 
   useEffect(() => {
