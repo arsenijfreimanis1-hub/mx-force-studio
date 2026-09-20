@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Gauge,
+  Loader2,
   Pause,
   Play,
   Radio,
@@ -108,6 +109,7 @@ export function MxForceStudio() {
   const [hidden, setHidden] = useState<Set<ForceId>>(new Set(["aero", "gyro"]));
   const [livePacket, setLivePacket] = useState<LivePacket | null>(null);
   const [liveOk, setLiveOk] = useState(false);
+  const [connectRequested, setConnectRequested] = useState(false);
   const [clock, setClock] = useState(0);
   const [inspect, setInspect] = useState(true);
   const clockRef = useRef(0);
@@ -158,7 +160,12 @@ export function MxForceStudio() {
     [mode, scenario, clock, sandbox],
   );
 
-  const usingLive = Boolean(mode === "live" && liveOk && livePacket);
+  const usingLive = Boolean(mode === "live" && connectRequested && liveOk && livePacket);
+  const liveState: "idle" | "waiting" | "connected" = !connectRequested
+    ? "idle"
+    : liveOk && livePacket
+      ? "connected"
+      : "waiting";
   const telemetry: Telemetry = usingLive && livePacket
     ? livePacket.telemetry
     : mode === "live"
@@ -195,8 +202,18 @@ export function MxForceStudio() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={usingLive ? "default" : "outline"} className="gap-1.5">
-            {usingLive ? <Radio className="size-3" /> : <Unplug className="size-3" />}
-            {usingLive ? "MX Bikes live" : liveOk ? "Live ready" : "Demo physics"}
+            {usingLive ? (
+              <Radio className="size-3" />
+            ) : liveState === "waiting" ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Unplug className="size-3" />
+            )}
+            {usingLive
+              ? "MX Bikes live"
+              : liveState === "waiting"
+                ? "Waiting for MX Bikes"
+                : "Demo physics"}
           </Badge>
           <Badge variant="secondary">
             {event.bikeName}
@@ -276,11 +293,76 @@ export function MxForceStudio() {
                   </Button>
                 </div>
                 {mode === "live" ? (
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    {liveOk
-                      ? "Receiving MX Bikes telemetry. The bike stays in the garage while the forces update from your session."
-                      : "Waiting for mxb_force_studio.dlo. Copy it into the MX Bikes plugins folder, run npm run bridge, then go on track."}
-                  </p>
+                  <div className="grid gap-2">
+                    {liveState === "idle" ? (
+                      <>
+                        <Button
+                          size="sm"
+                          className="w-full bg-sky-500 text-white hover:bg-sky-400"
+                          onClick={() => setConnectRequested(true)}
+                        >
+                          <Radio />
+                          Connect to MX Bikes
+                        </Button>
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          Launch MX Bikes and go out on track, then click Connect. The desktop
+                          icon already started the telemetry bridge — there is no in-game button,
+                          so you connect from here.
+                        </p>
+                      </>
+                    ) : null}
+
+                    {liveState === "waiting" ? (
+                      <>
+                        <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5">
+                          <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-amber-400" />
+                          <div className="grid gap-0.5">
+                            <p className="text-sm font-medium text-amber-300">
+                              Waiting for MX Bikes…
+                            </p>
+                            <p className="text-[11px] leading-4 text-amber-200/80">
+                              Launch the game and go on track (listening on UDP 47387).
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => setConnectRequested(false)}
+                        >
+                          <Unplug />
+                          Cancel
+                        </Button>
+                      </>
+                    ) : null}
+
+                    {liveState === "connected" ? (
+                      <>
+                        <div className="flex items-start gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2.5">
+                          <Radio className="mt-0.5 size-4 shrink-0 text-emerald-400" />
+                          <div className="grid gap-0.5">
+                            <p className="text-sm font-medium text-emerald-300">
+                              Connected — live forces streaming
+                            </p>
+                            <p className="text-[11px] leading-4 text-emerald-200/80">
+                              The bike stays in the garage while the arrows update from your
+                              session.
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => setConnectRequested(false)}
+                        >
+                          <Unplug />
+                          Disconnect
+                        </Button>
+                      </>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
 
