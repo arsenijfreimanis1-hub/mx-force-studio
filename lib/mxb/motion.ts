@@ -464,15 +464,18 @@ export function stepMotion(
   } else {
     if (filter.wasAir) {
       const impact = Math.max(0, -filter.airVy, -climb);
-      filter.landSink = -clamp(0.1 + impact * 0.055, 0.08, 0.55) * response;
+      filter.landSink = -clamp(0.12 + impact * 0.06, 0.1, 0.55) * response;
       filter.landSinkV = 0;
       filter.airY = 0;
+      filter.y = Math.min(0, filter.y);
     }
     filter.airVy = follow(filter.airVy, 0, step, 0.06);
     const sink = stepAxis(filter.landSink, filter.landSinkV, 0, step, limY, WASH_OMEGA * 1.35);
     filter.landSink = sink.pos;
     filter.landSinkV = sink.vel;
-    heaveTarget = heaveFromCues(cues, response) * limY + filter.landSink;
+    const ground = Math.abs(filter.landSink) > 0.03 ? 0 : heaveFromCues(cues, response) * limY;
+    heaveTarget = ground + filter.landSink;
+    if (Math.abs(filter.landSink) > 0.03) heaveTau = HEAVE_TAU_AIR;
   }
   filter.wasAir = airborne;
 

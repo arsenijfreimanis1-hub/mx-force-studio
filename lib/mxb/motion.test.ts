@@ -180,6 +180,7 @@ test("landing compresses the deck and does not hop up", () => {
   }
   let maxLand = -Infinity;
   let minLand = Infinity;
+  let firstLand = 0;
   for (let i = 0; i < 36; i++) {
     pose = stepMotion(
       filter,
@@ -192,10 +193,12 @@ test("landing compresses the deck and does not hop up", () => {
       }),
       dt,
     );
+    if (i === 0) firstLand = pose.y;
     maxLand = Math.max(maxLand, pose.y);
     minLand = Math.min(minLand, pose.y);
   }
-  assert.ok(maxLand < 0.2, `landing hop ${maxLand}`);
+  assert.ok(firstLand <= 0.02, `touchdown leftover ${firstLand}`);
+  assert.ok(maxLand < 0.12, `landing hop ${maxLand}`);
   assert.ok(minLand < -0.05, `compress ${minLand}`);
 });
 
