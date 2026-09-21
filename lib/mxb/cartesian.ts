@@ -69,7 +69,7 @@ export function chassisFromWorldDelta(dx: number, dy: number, dz: number, yawDeg
 }
 
 export function isFiniteVec(v: Vec3 | undefined): v is Vec3 {
-  return Boolean(v) && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
+  return v != null && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.z);
 }
 
 /**

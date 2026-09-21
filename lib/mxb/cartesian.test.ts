@@ -5,6 +5,7 @@ import {
   cartesianUseful,
   chassisFromWorldDelta,
   createCartesianState,
+  isFiniteVec,
   stepCartesian,
   worldToChassis,
 } from "./cartesian.ts";
@@ -33,6 +34,12 @@ test("chassis delta keeps world Y as heave", () => {
   assert.ok(Math.abs(d.y - 2.5) < 1e-9);
   assert.ok(Math.abs(d.z - 3) < 1e-9);
   assert.ok(Math.abs(d.x) < 1e-9);
+});
+
+test("isFiniteVec narrows missing vectors without throwing", () => {
+  assert.equal(isFiniteVec(undefined), false);
+  assert.equal(isFiniteVec(world(1, 2, 3)), true);
+  assert.equal(isFiniteVec({ x: Number.NaN, y: 0, z: 0 }), false);
 });
 
 test("zero placeholder is not a useful Cartesian point", () => {

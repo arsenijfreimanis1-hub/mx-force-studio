@@ -44,7 +44,7 @@ function windowsPluginCandidates(): string[] {
 }
 
 function ensureLogDir(pluginsDir: string, kind: SheetLogKind): SheetLogDir {
-  const dir = path.join(pluginsDir, LOG_SUBDIR);
+  const dir = path.join(/*turbopackIgnore: true*/ pluginsDir, LOG_SUBDIR);
   fs.mkdirSync(dir, { recursive: true });
   return { dir, kind, pluginsDir };
 }
@@ -91,7 +91,7 @@ export function writeSheetCsv(csv: string, filename: string) {
   }
   const info = resolveSheetLogDir();
   const name = safeSheetName(filename);
-  const file = path.join(info.dir, name);
+  const file = path.join(/*turbopackIgnore: true*/ info.dir, name);
   fs.writeFileSync(file, csv, "utf8");
   return { ok: true as const, file, name, ...info };
 }
