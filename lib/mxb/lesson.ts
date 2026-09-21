@@ -169,23 +169,33 @@ export function learnFromRows(rows: SheetRow[], hints: LessonHints | number = {}
 
   const busyPitch = moving.filter((r) => Math.abs(num(r, "pitch_deg")) >= PITCH_BUSY);
   if (busyPitch.length >= 24) {
-    const corr = pearson(
-      busyPitch.map((r) => num(r, "pitch_deg")),
-      busyPitch.map((r) => num(r, "shown_pitch")),
-    );
+    const gp = busyPitch.map((r) => num(r, "pitch_deg"));
+    const sp = busyPitch.map((r) => num(r, "shown_pitch"));
+    const corr = pearson(gp, sp);
     lesson.pitchCorr = corr;
-    if (corr <= -0.35) lesson.visualPitch = currentPitch < 0 ? 1 : -1;
+    const gMean = mean(gp);
+    const sMean = mean(sp);
+    const holdErr = rms(gp.map((g, i) => sp[i] - g));
+    if (Math.abs(corr) < 0.25 && holdErr < 5 && Math.abs(gMean) >= PITCH_BUSY) {
+      if (Math.abs(sMean - gMean) <= 5) lesson.visualPitch = currentPitch;
+      else if (Math.abs(sMean + gMean) <= 5) lesson.visualPitch = currentPitch < 0 ? 1 : -1;
+    } else if (corr <= -0.35) lesson.visualPitch = currentPitch < 0 ? 1 : -1;
     else if (corr >= 0.35) lesson.visualPitch = currentPitch;
   }
 
   const busyRoll = moving.filter((r) => Math.abs(num(r, "roll_deg")) >= ROLL_BUSY);
   if (busyRoll.length >= 24) {
-    const corr = pearson(
-      busyRoll.map((r) => num(r, "roll_deg")),
-      busyRoll.map((r) => num(r, "deck_roll")),
-    );
+    const gr = busyRoll.map((r) => num(r, "roll_deg"));
+    const dr = busyRoll.map((r) => num(r, "deck_roll"));
+    const corr = pearson(gr, dr);
     lesson.rollCorr = corr;
-    if (corr >= 0.35) lesson.leanSign = currentLean < 0 ? 1 : -1;
+    const gMean = mean(gr);
+    const dMean = mean(dr);
+    const holdErr = rms(gr.map((g, i) => dr[i] + g));
+    if (Math.abs(corr) < 0.25 && holdErr < 6 && Math.abs(gMean) >= ROLL_BUSY) {
+      if (Math.abs(dMean + gMean) <= 6) lesson.leanSign = currentLean;
+      else if (Math.abs(dMean - gMean) <= 6) lesson.leanSign = currentLean < 0 ? 1 : -1;
+    } else if (corr >= 0.35) lesson.leanSign = currentLean < 0 ? 1 : -1;
     else if (corr <= -0.35) lesson.leanSign = currentLean;
   }
 

@@ -76,6 +76,23 @@ test("bouncy heave lowers response", () => {
   assert.ok(next.response < STUDIO_TRAVEL.response);
 });
 
+test("a held wheelie with matching shown pitch still counts as follow", () => {
+  const rows = Array.from({ length: 80 }, (_, i) =>
+    movingRow(i, {
+      pitch_deg: -22,
+      shown_pitch: -22,
+      deck_pitch: 22,
+      err_pitch: 0,
+      roll_deg: -18,
+      deck_roll: 18,
+    }),
+  );
+  const lesson = learnFromRows(rows, { visualPitch: -1, leanSign: -1, dtMs: 40 });
+  assert.equal(lesson.visualPitch, -1);
+  assert.equal(lesson.leanSign, -1);
+  assert.ok(describeLesson(lesson).includes("Pitch follows"));
+});
+
 test("parked rows do not invent a lesson", () => {
   const rows = Array.from({ length: 80 }, (_, i) => ({
     t_s: i * 0.04,
