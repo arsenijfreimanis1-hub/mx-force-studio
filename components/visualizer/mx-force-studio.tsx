@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { Eye, EyeOff, Gamepad2, LineChart, Loader2, Radio, Unplug } from "lucide-react";
+import { Eye, EyeOff, Download, Gamepad2, LineChart, Loader2, Radio, Sparkles, Unplug, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -50,6 +50,26 @@ import {
   saveTraceOpen,
 } from "@/lib/mxb/trace";
 import type { BikeEvent, ForceId, ForceModel, LivePacket, SandboxInputs, Telemetry } from "@/lib/mxb/types";
+import {
+  applyLesson,
+  describeLesson,
+  emptyLesson,
+  learnFromRows,
+  type SheetLesson,
+} from "@/lib/mxb/lesson";
+import {
+  clearSheetBuffer,
+  createSheetBuffer,
+  downloadSheetCsv,
+  loadAutoLearn,
+  parseSheetCsv,
+  pushSheetRow,
+  readSheetRows,
+  saveAutoLearn,
+  sheetDurationS,
+  sheetFilename,
+  sheetToCsv,
+} from "@/lib/mxb/sheet";
 import { TelemetryGraph } from "@/components/visualizer/telemetry-graph";
 
 const BikeCanvas = dynamic(
@@ -127,6 +147,10 @@ export function MxForceStudio() {
   const [padOn, setPadOn] = useState(false);
   const [driving, setDriving] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
+  const [autoLearn, setAutoLearn] = useState(true);
+  const [sheetCount, setSheetCount] = useState(0);
+  const [sheetSeconds, setSheetSeconds] = useState(0);
+  const [lesson, setLesson] = useState<SheetLesson>(() => emptyLesson());
 
   const pollRef = useRef<() => Promise<void>>(async () => {});
   const motionRef = useRef(createMotionFilter());
@@ -150,11 +174,19 @@ export function MxForceStudio() {
   const traceRef = useRef(createTraceBuffer(900));
   const lastTraceMs = useRef(0);
   const graphOpenRef = useRef(false);
+  const sheetRef = useRef(createSheetBuffer(24000));
+  const lastSheetMs = useRef(0);
+  const lastLearnMs = useRef(0);
+  const lastSignFlipMs = useRef(0);
+  const autoLearnRef = useRef(true);
+  const lessonRef = useRef<SheetLesson>(emptyLesson());
+  const sheetFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const stored = loadStoredTravel(STUDIO_TRAVEL);
     setTravel(stored);
     setGraphOpen(loadTraceOpen(false));
+    setAutoLearn(loadAutoLearn(true));
   }, []);
 
   useEffect(() => {
@@ -162,6 +194,7 @@ export function MxForceStudio() {
     userTravelRef.current = travel;
     travelRef.current = travel;
     graphOpenRef.current = graphOpen;
+    autoLearnRef.current = autoLearn;
     if (!connectRequested) liveRef.current = false;
   });
 
@@ -176,6 +209,36 @@ export function MxForceStudio() {
 
   const setDof = (dof: DofLevel) => {
     patchTravel({ dof: clampDof(dof) });
+  };
+
+  const exportSheet = () => {
+    const csv = sheetToCsv(sheetRef.current);
+    downloadSheetCsv(csv, sheetFilename(displayBikeName(eventRef.current) || "session"));
+  };
+
+  const runLearn = (rows = readSheetRows(sheetRef.current, 8000), allowSignFlip = true) => {
+    const nextLesson = learnFromRows(rows, {
+      visualPitch: travelRef.current.visualPitch,
+      leanSign: travelRef.current.leanSign,
+      dtMs: 40,
+    });
+    lessonRef.current = nextLesson;
+    setLesson(nextLesson);
+    const patched = applyLesson(travelRef.current, nextLesson, { allowSignFlip, slew: 0.55 });
+    if (allowSignFlip) lastSignFlipMs.current = performance.now();
+    setTravel(patched);
+    saveStoredTravel(patched);
+    saveStoredDof(patched.dof);
+  };
+
+  const loadSheetFile = async (file: File) => {
+    const text = await file.text();
+    const rows = parseSheetCsv(text);
+    if (!rows.length) {
+      setLesson({ ...emptyLesson(), notes: ["That spreadsheet had no usable rows."] });
+      return;
+    }
+    runLearn(rows, true);
   };
 
   useEffect(() => {
@@ -203,12 +266,66 @@ export function MxForceStudio() {
       const logPad = graphOpenRef.current || liveRef.current || padTraceActive(padTrace);
       if (logPad && now - lastTraceMs.current >= 16) {
         lastTraceMs.current = now;
-        pushTraceSample(traceRef.current, telemetryRef.current, now, padTrace);
+        pushTraceSample(
+          traceRef.current,
+          telemetryRef.current,
+          now,
+          padTrace,
+          poseRef.current,
+          travelRef.current.visualPitch,
+        );
+      }
+      if (nextDriving && now - lastSheetMs.current >= 40) {
+        lastSheetMs.current = now;
+        pushSheetRow(
+          sheetRef.current,
+          telemetryRef.current,
+          poseRef.current,
+          now,
+          padTrace,
+          travelRef.current.visualPitch,
+        );
+      }
+      if (
+        autoLearnRef.current &&
+        nextDriving &&
+        sheetRef.current.len >= 80 &&
+        now - lastLearnMs.current >= 4000
+      ) {
+        lastLearnMs.current = now;
+        const rows = readSheetRows(sheetRef.current, 4500);
+        const nextLesson = learnFromRows(rows, {
+          visualPitch: travelRef.current.visualPitch,
+          leanSign: travelRef.current.leanSign,
+          dtMs: 40,
+        });
+        lessonRef.current = nextLesson;
+        setLesson(nextLesson);
+        const allowSignFlip = now - lastSignFlipMs.current > 20000;
+        const patched = applyLesson(travelRef.current, nextLesson, { allowSignFlip, slew: 0.22 });
+        const flipped =
+          patched.visualPitch !== travelRef.current.visualPitch ||
+          patched.leanSign !== travelRef.current.leanSign;
+        if (flipped) lastSignFlipMs.current = now;
+        if (
+          patched.visualTau !== travelRef.current.visualTau ||
+          patched.smoothTau !== travelRef.current.smoothTau ||
+          patched.response !== travelRef.current.response ||
+          patched.rateAng !== travelRef.current.rateAng ||
+          flipped
+        ) {
+          userTravelRef.current = patched;
+          travelRef.current = patched;
+          setTravel(patched);
+          saveStoredTravel(patched);
+        }
       }
       if (now - lastHudRef.current < HUD_MS) return;
       lastHudRef.current = now;
       setHudTel(telemetryRef.current);
       setHudEvent(eventRef.current);
+      setSheetCount(sheetRef.current.len);
+      setSheetSeconds(sheetDurationS(sheetRef.current));
     }, 16);
     return () => window.clearInterval(id);
   }, []);
@@ -382,6 +499,10 @@ export function MxForceStudio() {
               poseRef.current = identityPose();
               setHudTel(restTelemetry({ rpm: 0 }));
               setPadOn(false);
+              clearSheetBuffer(sheetRef.current);
+              setSheetCount(0);
+              setSheetSeconds(0);
+              setLesson(emptyLesson());
               void pollRef.current();
             }
           }}
@@ -478,6 +599,10 @@ export function MxForceStudio() {
               <LineChart />
               {graphOpen ? "Hide graph" : "Graph"}
             </Button>
+            <Button size="xs" variant="secondary" onClick={exportSheet} disabled={sheetCount < 2}>
+              <Download />
+              Sheet
+            </Button>
             <Button size="xs" variant={hideForces ? "default" : "secondary"} onClick={() => setHideForces((v) => !v)}>
               {hideForces ? <Eye /> : <EyeOff />}
               {hideForces ? "Show arrows" : "Hide arrows"}
@@ -508,7 +633,17 @@ export function MxForceStudio() {
 
           {graphOpen ? (
             <div className="absolute inset-x-0 bottom-0 z-20 h-[50%] min-h-[18rem] p-2 pt-0">
-              <TelemetryGraph bufferRef={traceRef} live={usingLive} />
+              <TelemetryGraph
+                bufferRef={traceRef}
+                live={usingLive}
+                sheetHint={
+                  sheetCount
+                    ? `${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)}s · ${describeLesson(lesson)}`
+                    : "Ride to fill the spreadsheet"
+                }
+                onDownload={exportSheet}
+                onLearn={() => runLearn()}
+              />
             </div>
           ) : (
             <InputsOverlay telemetry={telemetry} />
@@ -538,6 +673,10 @@ export function MxForceStudio() {
                       poseRef.current = identityPose();
                       setHudTel(restTelemetry({ rpm: 0 }));
                       setPadOn(false);
+                      clearSheetBuffer(sheetRef.current);
+                      setSheetCount(0);
+                      setSheetSeconds(0);
+                      setLesson(emptyLesson());
                       void pollRef.current();
                     }}
                   >
@@ -608,6 +747,54 @@ export function MxForceStudio() {
                   Xbox pad driving the frame — RT throttle, LT front brake, LB rear, left stick steer/lean
                 </p>
               ) : null}
+
+              <div className="grid gap-2">
+                <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                  Spreadsheet
+                </p>
+                <p className="text-xs leading-4 text-muted-foreground">
+                  {sheetCount
+                    ? `${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)} s logged`
+                    : "Ride or use the pad — every channel is written to a CSV."}
+                </p>
+                <p className="text-[11px] leading-4 text-foreground/80">{describeLesson(lesson)}</p>
+                <div className="grid grid-cols-2 gap-1">
+                  <Button size="xs" variant="secondary" onClick={exportSheet} disabled={sheetCount < 2}>
+                    <Download />
+                    Download CSV
+                  </Button>
+                  <Button size="xs" variant="secondary" onClick={() => runLearn()} disabled={sheetCount < 16}>
+                    <Sparkles />
+                    Learn now
+                  </Button>
+                  <Button size="xs" variant="outline" onClick={() => sheetFileRef.current?.click()}>
+                    <Upload />
+                    Load CSV
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant={autoLearn ? "default" : "outline"}
+                    onClick={() => {
+                      const next = !autoLearn;
+                      setAutoLearn(next);
+                      saveAutoLearn(next);
+                    }}
+                  >
+                    {autoLearn ? "Auto-learn on" : "Auto-learn off"}
+                  </Button>
+                </div>
+                <input
+                  ref={sheetFileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) void loadSheetFile(file);
+                  }}
+                />
+              </div>
 
               <div className="grid gap-2">
                 <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">

@@ -93,6 +93,8 @@ test("human callouts speak gas, brake, lean, and speed", () => {
   assert.equal(humanTraceCallout("padThr", 1), "Full gas");
   assert.equal(humanTraceCallout("frontBrake", 0.5), "Half brake");
   assert.equal(humanTraceCallout("roll", -18), "Lean 18° left");
+  assert.equal(humanTraceCallout("pitch", -22), "Nose up 22°");
+  assert.equal(humanTraceCallout("pitch", 16), "Nose down 16°");
   assert.equal(humanTraceCallout("speed", 42), "42 km/h");
 });
 

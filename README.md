@@ -42,6 +42,8 @@ npm run dev
 
 Open [http://127.0.0.1:43187](http://127.0.0.1:43187). Click **Connect** after MX Bikes is on track, or drive the frame with an Xbox pad.
 
+While you ride, Force Studio writes every game, pad, and deck channel into a spreadsheet. **Download CSV** (Excel / Google Sheets). **Learn now** (or Auto-learn) reads that sheet and tightens follow, lag, bounce, and pitch/lean sign. You can also **Load CSV** from an earlier session.
+
 ```bash
 npm test
 ```

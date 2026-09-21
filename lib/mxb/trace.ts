@@ -1,7 +1,8 @@
 import type { PadTrace } from "./gamepad.ts";
+import { visualPitch, type Pose6 } from "./motion.ts";
 import type { Telemetry } from "./types.ts";
 
-export type TraceGroup = "pad" | "inputs" | "attitude" | "gforce" | "world" | "suspension" | "engine";
+export type TraceGroup = "pad" | "inputs" | "attitude" | "gforce" | "world" | "suspension" | "engine" | "deck";
 
 export type TraceChannel = {
   id: string;
@@ -21,6 +22,7 @@ export const TRACE_GROUPS: { id: TraceGroup; label: string }[] = [
   { id: "world", label: "World" },
   { id: "suspension", label: "Susp" },
   { id: "engine", label: "Engine" },
+  { id: "deck", label: "Deck" },
 ];
 
 export const TRACE_CHANNELS: TraceChannel[] = [
@@ -71,6 +73,11 @@ export const TRACE_CHANNELS: TraceChannel[] = [
   { id: "steerNm", label: "Str Nm", group: "inputs", color: "#c084fc", span: 40, unit: "Nm" },
   { id: "trackPos", label: "Track", group: "world", color: "#fde047", span: 1, unit: "" },
   { id: "crashed", label: "Crash", group: "attitude", color: "#ef4444", span: 1, unit: "" },
+  { id: "deckRoll", label: "Deck R", group: "deck", color: "#7dd3fc", span: 45, unit: "°" },
+  { id: "deckPitch", label: "Deck P", group: "deck", color: "#fde68a", span: 25, unit: "°" },
+  { id: "deckY", label: "Deck Y", group: "deck", color: "#86efac", span: 0.6, unit: "m" },
+  { id: "deckZ", label: "Deck Z", group: "deck", color: "#fdba74", span: 0.8, unit: "m" },
+  { id: "errPitch", label: "P err", group: "deck", color: "#fb7185", span: 15, unit: "°" },
 ];
 
 export const HANDS_TRACE_IDS = ["padThr", "throttle", "padFbrk", "frontBrake", "padRbrk"];
@@ -93,6 +100,9 @@ export const TRACE_TITLES: Record<string, string> = {
   roll: "Lean",
   pitch: "Pitch",
   speed: "Speed",
+  deckPitch: "Deck pitch",
+  deckRoll: "Deck lean",
+  errPitch: "Pitch error",
 };
 
 export const TRACE_OPEN_KEY = "mxb-force-studio.graph";
@@ -104,7 +114,15 @@ export function traceChannel(id: string): TraceChannel | undefined {
   return CHANNEL_BY_ID.get(id);
 }
 
-export function flattenTelemetry(tel: Telemetry, pad?: PadTrace): Record<string, number> {
+export function flattenTelemetry(
+  tel: Telemetry,
+  pad?: PadTrace,
+  pose?: Pose6,
+  visualPitchSign = -1,
+): Record<string, number> {
+  const shownPitch = pose ? (visualPitch(pose.pitch, visualPitchSign) * 180) / Math.PI : 0;
+  const deckPitch = pose ? (pose.pitch * 180) / Math.PI : 0;
+  const deckRoll = pose ? (pose.roll * 180) / Math.PI : 0;
   return {
     padThr: pad?.throttle ?? 0,
     padFbrk: pad?.frontBrake ?? 0,
@@ -153,6 +171,11 @@ export function flattenTelemetry(tel: Telemetry, pad?: PadTrace): Record<string,
     steerNm: tel.steerTorqueNm,
     trackPos: tel.trackPos,
     crashed: tel.crashed ? 1 : 0,
+    deckRoll,
+    deckPitch,
+    deckY: pose?.y ?? 0,
+    deckZ: pose?.z ?? 0,
+    errPitch: shownPitch - tel.pitch,
   };
 }
 
@@ -175,8 +198,15 @@ export function clearTraceBuffer(buf: TraceBuffer) {
   buf.head = 0;
 }
 
-export function pushTraceSample(buf: TraceBuffer, tel: Telemetry, timeMs: number, pad?: PadTrace) {
-  const flat = flattenTelemetry(tel, pad);
+export function pushTraceSample(
+  buf: TraceBuffer,
+  tel: Telemetry,
+  timeMs: number,
+  pad?: PadTrace,
+  pose?: Pose6,
+  visualPitchSign = -1,
+) {
+  const flat = flattenTelemetry(tel, pad, pose, visualPitchSign);
   const i = buf.head;
   buf.times[i] = timeMs;
   for (const ch of TRACE_CHANNELS) {
@@ -225,9 +255,9 @@ export function humanTraceCallout(id: string, value: number): string {
     if (Math.abs(value) < 2) return "Upright";
     return `Lean ${Math.abs(value).toFixed(0)}° ${value < 0 ? "left" : "right"}`;
   }
-  if (id === "pitch") {
+  if (id === "pitch" || id === "deckPitch") {
     if (Math.abs(value) < 2) return "Level";
-    return value > 0 ? `Nose up ${value.toFixed(0)}°` : `Nose down ${Math.abs(value).toFixed(0)}°`;
+    return value > 0 ? `Nose down ${value.toFixed(0)}°` : `Nose up ${Math.abs(value).toFixed(0)}°`;
   }
   if (id === "speed") return `${Math.max(0, value).toFixed(0)} km/h`;
   return formatTraceValue(id, value);
