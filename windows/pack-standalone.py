@@ -39,6 +39,7 @@ SKIP_NAMES = {
     ".gitignore",
     ".gitattributes",
     "mxb-plugins-dir.txt",
+    "next-env.d.ts",
 }
 SKIP_PLUGIN_DEV = {
     "plugin/build.sh",
