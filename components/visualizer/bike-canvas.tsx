@@ -7,7 +7,7 @@ import { MotocrossBike } from "@/components/visualizer/motocross-bike";
 import { ForceArrows } from "@/components/visualizer/force-arrows";
 import { ChassisRig } from "@/components/visualizer/chassis-rig";
 import { RiderPov } from "@/components/visualizer/rider-pov";
-import { Paddock, WorldMotionCues } from "@/components/visualizer/world-motion";
+import { Paddock, PovLandmarks, WorldMotionCues } from "@/components/visualizer/world-motion";
 import { MotionPedestal } from "@/components/visualizer/support-rod";
 import {
   PLATFORM_HOME_Y,
@@ -67,9 +67,9 @@ export function BikeCanvas({
       onCreated={({ invalidate }) => invalidate()}
     >
       <color attach="background" args={["#8fb4d4"]} />
-      <fog attach="fog" args={["#c8b89c", 12, 30]} />
+      <fog attach="fog" args={pov ? ["#c8b89c", 22, 44] : ["#c8b89c", 12, 30]} />
       <mesh>
-        <sphereGeometry args={[22, 24, 16]} />
+        <sphereGeometry args={[pov ? 40 : 22, 24, 16]} />
         <meshBasicMaterial color="#8eb7d9" side={1} />
       </mesh>
       <PerspectiveCamera makeDefault={!pov} position={[1.38, 0.98, -1.72]} fov={38} />
@@ -87,6 +87,7 @@ export function BikeCanvas({
           frames={driving ? Infinity : 1}
         />
         <WorldMotionCues showLabels={showPadLabels} />
+        <PovLandmarks />
         <MotionPedestal poseRef={poseRef} travelRef={travelRef} />
         <ChassisRig
           poseRef={poseRef}

@@ -43,5 +43,5 @@ export function RiderPov({
   });
 
   if (!enabled) return null;
-  return <PerspectiveCamera ref={cam} makeDefault fov={76} near={0.04} far={48} />;
+  return <PerspectiveCamera ref={cam} makeDefault fov={76} near={0.04} far={56} />;
 }
