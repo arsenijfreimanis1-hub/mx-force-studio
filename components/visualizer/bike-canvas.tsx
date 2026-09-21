@@ -78,7 +78,7 @@ export function BikeCanvas({
           frames={driving ? Infinity : 1}
         />
         <WorldMotionCues showLabels={showPadLabels} />
-        <MotionPedestal poseRef={poseRef} />
+        <MotionPedestal poseRef={poseRef} travelRef={travelRef} />
         <ChassisRig
           poseRef={poseRef}
           telemetryRef={telemetryRef}

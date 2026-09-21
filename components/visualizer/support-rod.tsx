@@ -4,12 +4,18 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { MutableRefObject } from "react";
-import { PLATFORM_HOME_Y, type Pose6 } from "@/lib/mxb/motion";
+import { PLATFORM_HOME_Y, visualPitch, type FrameTravel, type Pose6 } from "@/lib/mxb/motion";
 import { DECK_ATTACH_Y, DECK_HALF_L, ROD_CORNERS, rodBaseCorner, rodDeckLocal } from "@/lib/mxb/rods";
 
 const up = new THREE.Vector3(0, 1, 0);
 
-export function MotionPedestal({ poseRef }: { poseRef: MutableRefObject<Pose6> }) {
+export function MotionPedestal({
+  poseRef,
+  travelRef,
+}: {
+  poseRef: MutableRefObject<Pose6>;
+  travelRef?: MutableRefObject<FrameTravel>;
+}) {
   const rod0 = useRef<THREE.Mesh>(null);
   const rod1 = useRef<THREE.Mesh>(null);
   const rod2 = useRef<THREE.Mesh>(null);
@@ -31,10 +37,12 @@ export function MotionPedestal({ poseRef }: { poseRef: MutableRefObject<Pose6> }
 
   useFrame(() => {
     const pose = poseRef.current;
-    euler.set(pose.pitch, pose.yaw, pose.roll, "YXZ");
+    const pitchSign = travelRef?.current.visualPitch ?? -1;
+    const pitch = visualPitch(pose.pitch, pitchSign);
+    euler.set(pitch, pose.yaw, pose.roll, "YXZ");
     if (hinge.current) {
       hinge.current.position.set(pose.x, PLATFORM_HOME_Y + pose.y + DECK_ATTACH_Y, pose.z);
-      hinge.current.rotation.set(pose.pitch, pose.yaw, pose.roll, "YXZ");
+      hinge.current.rotation.set(pitch, pose.yaw, pose.roll, "YXZ");
     }
     for (let i = 0; i < ROD_CORNERS.length; i++) {
       const mesh = rods[i].current;

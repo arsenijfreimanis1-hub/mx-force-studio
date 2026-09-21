@@ -14,6 +14,7 @@ import {
   identityPose,
   resetMotionFilter,
   stepMotion,
+  visualPitch,
   type FrameTravel,
   type MotionFilter,
   type Pose6,
@@ -89,11 +90,15 @@ export function ChassisRig({
     if (driving) {
       parked.current = false;
       lastDriveMs.current = now;
+      const travel = travelRef.current;
       poseRef.current = stepMotion(
         motionRef.current,
         telemetryRef.current,
         dt,
-        travelRef.current,
+        {
+          ...travel,
+          parkLock: liveRef.current ? travel.parkLock !== false : false,
+        },
       );
       forcesRef.current = buildForceModel(telemetryRef.current, eventRef.current);
     } else if (
@@ -112,8 +117,9 @@ export function ChassisRig({
     }
 
     const pose = poseRef.current;
+    const pitchSign = travelRef.current.visualPitch ?? -1;
     targetPos.set(pose.x, PLATFORM_HOME_Y + pose.y, pose.z);
-    euler.set(pose.pitch, pose.yaw, pose.roll, "YXZ");
+    euler.set(visualPitch(pose.pitch, pitchSign), pose.yaw, pose.roll, "YXZ");
     targetQuat.setFromEuler(euler);
 
     if (!driving || !visualPrimed.current || !wasPrimed) {
@@ -121,7 +127,7 @@ export function ChassisRig({
       node.quaternion.copy(targetQuat);
       visualPrimed.current = true;
     } else {
-      const a = 1 - Math.exp(-dt / visualPoseTau(travelRef.current.dof ?? 6));
+      const a = 1 - Math.exp(-dt / visualPoseTau(travelRef.current.dof ?? 6, travelRef.current.visualTau));
       node.position.lerp(targetPos, a);
       node.quaternion.slerp(targetQuat, a);
     }

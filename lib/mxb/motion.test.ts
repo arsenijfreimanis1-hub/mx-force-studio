@@ -15,6 +15,8 @@ import {
   PLATFORM_HOME_Y,
   specificForceG,
   stepMotion,
+  STUDIO_TRAVEL,
+  visualPitch,
   washoutStepResponse,
   worldToChassis,
 } from "./motion.ts";
@@ -468,4 +470,53 @@ test("accel unit lock does not flicker across the 4.2 G edge", () => {
   assert.equal(detectForceUnitsMs2(5.5, false), false);
   const locked = specificForceG({ x: 0, y: 3.9, z: 0 }, true);
   assert.ok(Math.abs(locked.y - 3.9 / 9.80665) < 1e-6, JSON.stringify(locked));
+});
+
+test("Three.js pitch is inverted so a PiBoSo wheelie draws nose-up", () => {
+  assert.equal(visualPitch(0.3), -0.3);
+  assert.equal(visualPitch(-0.2, -1), 0.2);
+  assert.equal(visualPitch(0.3, 1), 0.3);
+  const gas = run(sample({ speedMs: 12, throttle: 1, accelG: { x: 0, y: 1, z: 0.8 }, pitch: 14 }), 0.8);
+  assert.ok(gas.pitch > 0.12, `pose pitch ${gas.pitch}`);
+  assert.ok(visualPitch(gas.pitch) < -0.12, `visual pitch ${visualPitch(gas.pitch)}`);
+});
+
+test("pad demo wheelie at standstill still pitches when park lock is off", () => {
+  const locked = run(sample({ speedMs: 0, pitch: 22, throttle: 0.2 }), 0.7);
+  assert.ok(Math.abs(locked.pitch) < 0.04, `live parked ${locked.pitch}`);
+  const demo = run(sample({ speedMs: 0, pitch: 22, throttle: 0.2 }), 0.7, {
+    ...DEFAULT_FRAME_TRAVEL,
+    parkLock: false,
+  });
+  assert.ok(demo.pitch > 0.2, `demo wheelie ${demo.pitch}`);
+  assert.ok(visualPitch(demo.pitch) < -0.2, `demo visual ${visualPitch(demo.pitch)}`);
+});
+
+test("studio 6DOF travel unlocks heave surge sway and yaw", () => {
+  assert.equal(STUDIO_TRAVEL.dof, 6);
+  assert.ok(STUDIO_TRAVEL.limitX > 0.5 && STUDIO_TRAVEL.limitY > 0.5 && STUDIO_TRAVEL.limitZ > 0.5);
+  assert.ok(STUDIO_TRAVEL.limitYaw > 0.2 && STUDIO_TRAVEL.rateLin > HUMAN_LIN_MS);
+  const tilt = run(
+    sample({
+      speedMs: 14,
+      yawRate: 70,
+      accelG: { x: 0, y: 1, z: 0 },
+      pitch: 12,
+      roll: -20,
+      suspLength: [0.12, 0.12],
+    }),
+    0.9,
+    STUDIO_TRAVEL,
+  );
+  assert.ok(Math.abs(tilt.roll) > 0.15, `roll ${tilt.roll}`);
+  assert.ok(Math.abs(tilt.pitch) > 0.08, `pitch ${tilt.pitch}`);
+  assert.ok(Math.abs(tilt.y) > 0.04, `heave ${tilt.y}`);
+  assert.ok(Math.abs(tilt.yaw) > 0.02, `yaw ${tilt.yaw}`);
+  const shove = run(
+    sample({ speedMs: 0, velocity: { x: 0, y: 0, z: 0 }, accelG: { x: -0.5, y: 1, z: 0.7 } }),
+    1.2,
+    STUDIO_TRAVEL,
+  );
+  assert.ok(shove.z > 0.2, `surge ${shove.z}`);
+  assert.ok(shove.x < -0.15, `sway ${shove.x}`);
 });

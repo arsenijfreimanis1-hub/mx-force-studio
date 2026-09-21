@@ -1,6 +1,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { gamepadActive, readBodyStick, readPadTrace, trigger } from "./gamepad.ts";
+import { gamepadActive, readBodyStick, readPadTrace, sandboxFromGamepad, trigger } from "./gamepad.ts";
+import type { SandboxInputs } from "./types.ts";
+
+const IDLE_SANDBOX: SandboxInputs = {
+  throttle: 0,
+  frontBrake: 0,
+  rearBrake: 0,
+  clutch: 0,
+  steer: 0,
+  lean: 0,
+  pitch: 0,
+  speedKph: 0,
+  frontTravel: 0.34,
+  rearTravel: 0.33,
+  rpm: 1950,
+  gear: 0,
+};
 
 function fakePad(partial: { buttons?: { pressed?: boolean; value?: number }[]; axes?: number[] }): Gamepad {
   const buttons = (partial.buttons ?? []).map((b) => ({
@@ -70,4 +86,11 @@ test("face buttons other than A do not count as rider input", () => {
     buttons: [{}, { pressed: true }, { pressed: true }, { pressed: true }],
   });
   assert.equal(gamepadActive(pad), false);
+});
+
+test("pulling the stick back is a nose-up wheelie, not a stoppie", () => {
+  const left = sandboxFromGamepad(fakePad({ axes: [0, 1, 0, 0] }), { ...IDLE_SANDBOX }, 0.016);
+  const right = sandboxFromGamepad(fakePad({ axes: [0, 0, 0, 1] }), { ...IDLE_SANDBOX }, 0.016);
+  assert.ok(left.pitch > 16, `left-stick pull-back ${left.pitch}`);
+  assert.ok(right.pitch > 20, `right-stick pull-back ${right.pitch}`);
 });

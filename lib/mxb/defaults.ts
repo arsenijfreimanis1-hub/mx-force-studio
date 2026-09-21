@@ -10,7 +10,7 @@ export {
   GRAVITY,
   REAR_R,
   REAR_Z,
-} from "./bike";
+} from "./bike.ts";
 
 export const DEFAULT_SESSION: SessionInfo = {
   session: 1,

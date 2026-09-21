@@ -107,3 +107,8 @@ test("4DOF unlocks surge washout", () => {
   assert.ok(pose.z > 0.7, `z ${pose.z}`);
   assert.ok(Math.abs(pose.x) < 0.05, `x ${pose.x}`);
 });
+
+test("6DOF keeps yaw after the rest of the ladder", () => {
+  const pose = run(sample({ yawRate: 90, speedMs: 12 }), 0.5, 6);
+  assert.ok(Math.abs(pose.yaw) > 0.03, `yaw ${pose.yaw}`);
+});

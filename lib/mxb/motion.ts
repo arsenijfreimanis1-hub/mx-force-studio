@@ -54,32 +54,29 @@ export type FrameTravel = {
   response: number;
   /** 2 = lean+pitch only. Tests default to 6 so washout identity stays. */
   dof: DofLevel;
+  /** Max deck m/s. */
+  rateLin: number;
+  /** Max deck rad/s. */
+  rateAng: number;
+  /** Visual slerp seconds. */
+  visualTau: number;
+  /** Live: ignore Euler/pedal tilt while parked. Pad demo turns this off. */
+  parkLock: boolean;
+  /** +1 = Three.js X matches pose pitch (nose down). −1 = wheelie goes nose-up. */
+  visualPitch: number;
+  /** Deck roll vs plugin Euler. Default −1 so in-game left is camera-left. */
+  leanSign: number;
 };
 
-export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
-  limitX: 1,
-  limitY: 1,
-  limitZ: 1,
-  limitRoll: (40 * Math.PI) / 180,
-  limitPitch: (28 * Math.PI) / 180,
-  limitYaw: (15 * Math.PI) / 180,
-  smoothTau: 0.08,
-  response: 1,
-  dof: 6,
-};
+/**
+ * Three.js +X pitch with +Z-forward is nose-down. PiBoSo / MX Bikes +pitch is
+ * nose-up, so the garage multiplies by −1 unless the rider flips it.
+ */
+export const VISUAL_PITCH_SIGN = -1;
 
-/** Compact garage rig — start on 2DOF and add axes when that feels right. */
-export const STUDIO_TRAVEL: FrameTravel = {
-  limitX: 0.4,
-  limitY: 0.4,
-  limitZ: 0.4,
-  limitRoll: (28 * Math.PI) / 180,
-  limitPitch: (18 * Math.PI) / 180,
-  limitYaw: (10 * Math.PI) / 180,
-  smoothTau: 0.045,
-  response: 1,
-  dof: 2,
-};
+export function visualPitch(posePitch: number, sign: number = VISUAL_PITCH_SIGN) {
+  return posePitch * (sign < 0 ? -1 : 1);
+}
 
 /** Standard gravity (m/s²). Must match `GRAVITY` in bike.ts. */
 const GRAVITY = 9.80665;
@@ -127,6 +124,94 @@ const TILT_ROLL_BLEND = 0.04;
 /** Brake / accel pitch so gas lifts the front and the brakes drop it. */
 const TILT_PITCH_BLEND = 0.42;
 const HEAD_ACCEL_CLAMP = 14;
+
+export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
+  limitX: 1,
+  limitY: 1,
+  limitZ: 1,
+  limitRoll: (40 * Math.PI) / 180,
+  limitPitch: (28 * Math.PI) / 180,
+  limitYaw: (15 * Math.PI) / 180,
+  smoothTau: 0.08,
+  response: 1,
+  dof: 6,
+  rateLin: HUMAN_LIN_MS,
+  rateAng: HUMAN_ANG_RS,
+  visualTau: 0.04,
+  parkLock: true,
+  visualPitch: VISUAL_PITCH_SIGN,
+  leanSign: LEAN_FOLLOW,
+};
+
+/** Garage rig — full 6DOF, wide travel, every axis on a slider. */
+export const STUDIO_TRAVEL: FrameTravel = {
+  limitX: 1,
+  limitY: 1,
+  limitZ: 1,
+  limitRoll: (45 * Math.PI) / 180,
+  limitPitch: (35 * Math.PI) / 180,
+  limitYaw: (22 * Math.PI) / 180,
+  smoothTau: 0.05,
+  response: 1.15,
+  dof: 6,
+  rateLin: 2.8,
+  rateAng: 2.6,
+  visualTau: 0.032,
+  parkLock: true,
+  visualPitch: VISUAL_PITCH_SIGN,
+  leanSign: LEAN_FOLLOW,
+};
+
+export const TRAVEL_STORAGE_KEY = "mxb-force-studio.travel.v2";
+
+function finiteOr(n: unknown, fallback: number) {
+  const v = Number(n);
+  return Number.isFinite(v) ? v : fallback;
+}
+
+export function sanitizeTravel(
+  raw: Partial<FrameTravel> | null | undefined,
+  fallback: FrameTravel = STUDIO_TRAVEL,
+): FrameTravel {
+  const src = raw ?? {};
+  return {
+    limitX: clamp(finiteOr(src.limitX, fallback.limitX), 0, 2.5),
+    limitY: clamp(finiteOr(src.limitY, fallback.limitY), 0, 2.5),
+    limitZ: clamp(finiteOr(src.limitZ, fallback.limitZ), 0, 2.5),
+    limitRoll: clamp(finiteOr(src.limitRoll, fallback.limitRoll), 0, (80 * Math.PI) / 180),
+    limitPitch: clamp(finiteOr(src.limitPitch, fallback.limitPitch), 0, (80 * Math.PI) / 180),
+    limitYaw: clamp(finiteOr(src.limitYaw, fallback.limitYaw), 0, (80 * Math.PI) / 180),
+    smoothTau: clamp(finiteOr(src.smoothTau, fallback.smoothTau), 0.008, 0.4),
+    response: clamp(finiteOr(src.response, fallback.response), 0.05, 4),
+    dof: clampDof(src.dof ?? fallback.dof),
+    rateLin: clamp(finiteOr(src.rateLin, fallback.rateLin), 0.15, 8),
+    rateAng: clamp(finiteOr(src.rateAng, fallback.rateAng), 0.15, 8),
+    visualTau: clamp(finiteOr(src.visualTau, fallback.visualTau), 0.008, 0.25),
+    parkLock: src.parkLock !== false,
+    visualPitch: finiteOr(src.visualPitch, fallback.visualPitch) < 0 ? -1 : 1,
+    leanSign: finiteOr(src.leanSign, fallback.leanSign) < 0 ? -1 : 1,
+  };
+}
+
+export function loadStoredTravel(fallback: FrameTravel = STUDIO_TRAVEL): FrameTravel {
+  try {
+    if (typeof localStorage === "undefined") return fallback;
+    const raw = localStorage.getItem(TRAVEL_STORAGE_KEY);
+    if (!raw) return fallback;
+    return sanitizeTravel(JSON.parse(raw) as Partial<FrameTravel>, fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveStoredTravel(travel: FrameTravel) {
+  try {
+    if (typeof localStorage === "undefined") return;
+    localStorage.setItem(TRAVEL_STORAGE_KEY, JSON.stringify(sanitizeTravel(travel)));
+  } catch {
+    // quota / private mode
+  }
+}
 
 /** 6DOF pose of the motion base (radians). */
 export type Pose6 = {
@@ -376,17 +461,20 @@ export function stepMotion(
   travel: FrameTravel = DEFAULT_FRAME_TRAVEL,
 ): Pose6 {
   const step = Math.min(0.05, Math.max(0.0005, dt));
-  const dof = clampDof(travel.dof ?? 6);
+  const travelUse = sanitizeTravel(travel, DEFAULT_FRAME_TRAVEL);
+  const dof = clampDof(travelUse.dof ?? 6);
   const axes = dofAxes(dof);
-  const response = clamp(travel.response, 0.05, 3);
-  const limX = axes.x ? Math.max(0, travel.limitX) : 0;
-  const limY = axes.y ? Math.max(0, travel.limitY) : 0;
-  const limZ = axes.z ? Math.max(0, travel.limitZ) : 0;
-  const limRoll = Math.max(0, travel.limitRoll);
-  const limPitch = Math.max(0, travel.limitPitch);
-  const limYaw = axes.yaw ? Math.max(0, travel.limitYaw) : 0;
+  const response = clamp(travelUse.response, 0.05, 4);
+  const leanFollow = travelUse.leanSign < 0 ? -1 : 1;
+  const parkLock = travelUse.parkLock !== false;
+  const limX = axes.x ? Math.max(0, travelUse.limitX) : 0;
+  const limY = axes.y ? Math.max(0, travelUse.limitY) : 0;
+  const limZ = axes.z ? Math.max(0, travelUse.limitZ) : 0;
+  const limRoll = Math.max(0, travelUse.limitRoll);
+  const limPitch = Math.max(0, travelUse.limitPitch);
+  const limYaw = axes.yaw ? Math.max(0, travelUse.limitYaw) : 0;
   const smoothTau =
-    dof <= 3 ? Math.max(0.03, travel.smoothTau * 0.45) : Math.max(0.08, travel.smoothTau);
+    dof <= 3 ? Math.max(0.03, travelUse.smoothTau * 0.45) : Math.max(0.06, travelUse.smoothTau);
 
   const mag = Math.hypot(telemetry.accelG.x, telemetry.accelG.y, telemetry.accelG.z);
   filter.unitsMs2 = detectForceUnitsMs2(mag, filter.unitsMs2);
@@ -403,7 +491,7 @@ export function stepMotion(
     filter.sYawRate = telemetry.yawRate;
     filter.sPitchRate = telemetry.pitchRate;
     filter.sRollRate = telemetry.rollRate;
-    filter.followRoll = deg(attitude.roll) * LEAN_FOLLOW;
+    filter.followRoll = deg(attitude.roll) * leanFollow;
     filter.followPitch = deg(attitude.pitch) * PITCH_FOLLOW;
     filter.wx = deg(telemetry.pitchRate);
     filter.wy = deg(telemetry.yawRate);
@@ -414,7 +502,7 @@ export function stepMotion(
   const airborne = isAirborne(telemetry);
   const parked = !crashed && isParked(telemetry);
   const stopped = !crashed && isStopped(telemetry);
-  const restDeck = stopped || parked;
+  const restDeck = parkLock && (stopped || parked);
   const cartMode = crashed ? "crash" : airborne ? "air" : stopped ? "stop" : "ground";
   if (airborne || telemetry.speedMs > 1.2) filter.cartOn = true;
   else if (!airborne && telemetry.speedMs < 0.35) filter.cartOn = false;
@@ -593,7 +681,7 @@ export function stepMotion(
     : dof <= 3
       ? 0.05
       : ATTITUDE_TAU;
-  filter.followRoll = follow(filter.followRoll, deg(rollCmd) * LEAN_FOLLOW, step, attitudeTau);
+  filter.followRoll = follow(filter.followRoll, deg(rollCmd) * leanFollow, step, attitudeTau);
   filter.followPitch = follow(filter.followPitch, deg(pitchCmd) * PITCH_FOLLOW, step, attitudeTau);
 
   const rollLimit = crashed ? Math.max(limRoll, (82 * Math.PI) / 180) : limRoll;
@@ -612,7 +700,7 @@ export function stepMotion(
     }),
     dof,
   );
-  filter.shown = limitShownPose(filter.shown, rawShown, step, dof);
+  filter.shown = limitShownPose(filter.shown, rawShown, step, dof, travelUse);
 
   return filter.shown;
 }
@@ -623,9 +711,10 @@ export function limitShownPose(
   next: Pose6,
   dt: number,
   dof: DofLevel = 6,
+  travel?: Pick<FrameTravel, "rateLin" | "rateAng">,
 ): Pose6 {
-  const lin = dof <= 3 ? HUMAN_LIN_MS * 1.35 : HUMAN_LIN_MS;
-  const ang = dof <= 3 ? 2.15 : HUMAN_ANG_RS;
+  const lin = travel?.rateLin ?? (dof <= 3 ? HUMAN_LIN_MS * 1.35 : HUMAN_LIN_MS);
+  const ang = travel?.rateAng ?? (dof <= 3 ? 2.15 : HUMAN_ANG_RS);
   return {
     x: rateLimit(prev.x, next.x, dt, lin),
     y: rateLimit(prev.y, next.y, dt, lin),

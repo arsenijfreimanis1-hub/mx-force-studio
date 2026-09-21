@@ -34,11 +34,11 @@ export const DOF_STEPS: {
   adds: string;
   hint: string;
 }[] = [
-  { dof: 2, title: "2DOF", adds: "Lean + pitch", hint: "Berms and gas / brake. Dial this first." },
+  { dof: 2, title: "2DOF", adds: "Lean + pitch", hint: "Berms and gas / brake only." },
   { dof: 3, title: "3DOF", adds: "+ Heave", hint: "Jumps and whoops lift the deck." },
   { dof: 4, title: "4DOF", adds: "+ Surge", hint: "Throttle shoves forward, brakes pull back." },
   { dof: 5, title: "5DOF", adds: "+ Sway", hint: "Side-to-side on ruts and landings." },
-  { dof: 6, title: "6DOF", adds: "+ Yaw", hint: "Heading washout. Last — easy to overdo." },
+  { dof: 6, title: "6DOF", adds: "+ Yaw", hint: "All six axes. Crank the sliders if it still feels small." },
 ];
 
 export function dofStep(dof: DofLevel) {
@@ -60,17 +60,20 @@ export function maskPose<T extends { x: number; y: number; z: number; yaw: numbe
   };
 }
 
-/** Visual follow — 2DOF must feel like the game, not a washed-out copy. */
-export function visualPoseTau(dof: DofLevel) {
+/** Visual follow. Override with travel.visualTau when the rider wants it snappier. */
+export function visualPoseTau(dof: DofLevel, visualTau?: number) {
+  if (visualTau != null && Number.isFinite(visualTau) && visualTau > 0) {
+    return Math.min(0.25, Math.max(0.008, visualTau));
+  }
   if (dof <= 2) return 0.026;
   if (dof <= 3) return 0.04;
   if (dof <= 4) return 0.055;
-  return 0.07;
+  return 0.04;
 }
 
-export const DOF_STORAGE_KEY = "mxb-force-studio.dof";
+export const DOF_STORAGE_KEY = "mxb-force-studio.dof.v2";
 
-export function loadStoredDof(fallback: DofLevel = 2): DofLevel {
+export function loadStoredDof(fallback: DofLevel = 6): DofLevel {
   try {
     if (typeof localStorage === "undefined") return fallback;
     const raw = localStorage.getItem(DOF_STORAGE_KEY);

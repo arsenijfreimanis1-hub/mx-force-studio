@@ -1,4 +1,4 @@
-import { DEFAULT_EVENT, restTelemetry } from "./defaults";
+import { DEFAULT_EVENT, restTelemetry } from "./defaults.ts";
 import type { SandboxInputs, Telemetry } from "./types";
 
 function clamp(n: number, min: number, max: number) {

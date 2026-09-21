@@ -79,7 +79,8 @@ export function sandboxFromGamepad(
   const clutch = gp.buttons[0]?.pressed ? 1 : 0;
   const steer = -stick(gp, 0) * steerLock;
   const lean = stick(gp, 0) * 38 + stick(gp, 2) * 28;
-  const pitch = -stick(gp, 1) * 12 - stick(gp, 3) * 18;
+  // Standard Gamepad: +Y is pull-back. That is a wheelie (PiBoSo +pitch = nose up).
+  const pitch = stick(gp, 1) * 22 + stick(gp, 3) * 28;
   const accel = throttle * 38 - frontBrake * 42 - rearBrake * 18;
   const speedKph = clamp(prev.speedKph + accel * dt, 0, 95);
   const rpm = clamp(1800 + throttle * 11000 + speedKph * 40, 900, 13200);

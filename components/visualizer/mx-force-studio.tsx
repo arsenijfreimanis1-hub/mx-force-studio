@@ -24,7 +24,6 @@ import {
   clampDof,
   dofAxes,
   dofStep,
-  loadStoredDof,
   saveStoredDof,
   type DofLevel,
 } from "@/lib/mxb/dof";
@@ -33,6 +32,9 @@ import { sanitizeTelemetry } from "@/lib/mxb/sanitize";
 import { fmtLapMs, fmtOnTrackS, sessionKind, suspUsedPct, trackPct } from "@/lib/mxb/session";
 import {
   createMotionFilter,
+  loadStoredTravel,
+  saveStoredTravel,
+  sanitizeTravel,
   STUDIO_TRAVEL,
   identityPose,
   resetMotionFilter,
@@ -150,8 +152,8 @@ export function MxForceStudio() {
   const graphOpenRef = useRef(false);
 
   useEffect(() => {
-    const stored = loadStoredDof(2);
-    setTravel((prev) => ({ ...prev, dof: stored }));
+    const stored = loadStoredTravel(STUDIO_TRAVEL);
+    setTravel(stored);
     setGraphOpen(loadTraceOpen(false));
   }, []);
 
@@ -163,10 +165,17 @@ export function MxForceStudio() {
     if (!connectRequested) liveRef.current = false;
   });
 
+  const patchTravel = (patch: Partial<FrameTravel>) => {
+    setTravel((prev) => {
+      const next = sanitizeTravel({ ...prev, ...patch });
+      saveStoredTravel(next);
+      saveStoredDof(next.dof);
+      return next;
+    });
+  };
+
   const setDof = (dof: DofLevel) => {
-    const next = clampDof(dof);
-    saveStoredDof(next);
-    setTravel((prev) => ({ ...prev, dof: next }));
+    patchTravel({ dof: clampDof(dof) });
   };
 
   useEffect(() => {
@@ -491,7 +500,7 @@ export function MxForceStudio() {
                 <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-white/80">
                   <li>Start MX Bikes on this PC and go on track.</li>
                   <li>Press Connect. The pad stays with the game.</li>
-                  <li>Stay on 2DOF until lean and gas/brake feel right, then add heave.</li>
+                  <li>6DOF is on. Use the sliders if the deck feels small.</li>
                 </ol>
               </div>
             </div>
@@ -515,7 +524,7 @@ export function MxForceStudio() {
                 <>
                   <p className="text-xs leading-4 text-muted-foreground">
                     {step.hint} Amber edge is the front of the deck. Start MX Bikes, go on track,
-                    then Connect. Xbox: RT gas, LT front brake, LB rear, right stick body weight.
+                    then Connect. Xbox: RT gas, LT front brake, LB rear, pull stick back to wheelie.
                   </p>
                   <Button
                     size="sm"
@@ -602,17 +611,80 @@ export function MxForceStudio() {
 
               <div className="grid gap-2">
                 <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                  {dof <= 2 ? "2DOF tilt" : `Travel · ${step.title}`}
+                  6DOF travel · {step.title}
                 </p>
-                {axes.x ? (
+                <NumberSlider
+                  label="Response"
+                  value={travel.response}
+                  min={0.1}
+                  max={3}
+                  step={0.05}
+                  display={`${Math.round(travel.response * 100)}%`}
+                  onChange={(response) => patchTravel({ response })}
+                />
+                <NumberSlider
+                  label="Axis speed · slide"
+                  value={travel.rateLin}
+                  min={0.2}
+                  max={6}
+                  step={0.1}
+                  display={`${travel.rateLin.toFixed(1)} m/s`}
+                  onChange={(rateLin) => patchTravel({ rateLin })}
+                />
+                <NumberSlider
+                  label="Axis speed · tilt"
+                  value={travel.rateAng}
+                  min={0.2}
+                  max={6}
+                  step={0.1}
+                  display={`${((travel.rateAng * 180) / Math.PI).toFixed(0)} °/s`}
+                  onChange={(rateAng) => patchTravel({ rateAng })}
+                />
+                <NumberSlider
+                  label="Smooth"
+                  value={travel.smoothTau}
+                  min={0.01}
+                  max={0.25}
+                  step={0.005}
+                  display={`${Math.round(travel.smoothTau * 1000)} ms`}
+                  onChange={(smoothTau) => patchTravel({ smoothTau })}
+                />
+                <NumberSlider
+                  label="Visual follow"
+                  value={travel.visualTau}
+                  min={0.01}
+                  max={0.18}
+                  step={0.005}
+                  display={`${Math.round(travel.visualTau * 1000)} ms`}
+                  onChange={(visualTau) => patchTravel({ visualTau })}
+                />
+                <NumberSlider
+                  label="Roll · lean"
+                  value={(travel.limitRoll * 180) / Math.PI}
+                  min={0}
+                  max={70}
+                  step={1}
+                  display={`${((travel.limitRoll * 180) / Math.PI).toFixed(0)}°`}
+                  onChange={(deg) => patchTravel({ limitRoll: (deg * Math.PI) / 180 })}
+                />
+                <NumberSlider
+                  label="Pitch · wheelie"
+                  value={(travel.limitPitch * 180) / Math.PI}
+                  min={0}
+                  max={70}
+                  step={1}
+                  display={`${((travel.limitPitch * 180) / Math.PI).toFixed(0)}°`}
+                  onChange={(deg) => patchTravel({ limitPitch: (deg * Math.PI) / 180 })}
+                />
+                {axes.yaw ? (
                   <NumberSlider
-                    label="Sway · left / right"
-                    value={travel.limitX}
+                    label="Yaw · heading"
+                    value={(travel.limitYaw * 180) / Math.PI}
                     min={0}
-                    max={1}
-                    step={0.05}
-                    display={`${travel.limitX.toFixed(2)} m`}
-                    onChange={(limitX) => setTravel((prev) => ({ ...prev, limitX }))}
+                    max={60}
+                    step={1}
+                    display={`${((travel.limitYaw * 180) / Math.PI).toFixed(0)}°`}
+                    onChange={(deg) => patchTravel({ limitYaw: (deg * Math.PI) / 180 })}
                   />
                 ) : null}
                 {axes.y ? (
@@ -620,10 +692,10 @@ export function MxForceStudio() {
                     label="Heave · up / down"
                     value={travel.limitY}
                     min={0}
-                    max={1}
+                    max={2}
                     step={0.05}
                     display={`${travel.limitY.toFixed(2)} m`}
-                    onChange={(limitY) => setTravel((prev) => ({ ...prev, limitY }))}
+                    onChange={(limitY) => patchTravel({ limitY })}
                   />
                 ) : null}
                 {axes.z ? (
@@ -631,21 +703,58 @@ export function MxForceStudio() {
                     label="Surge · fore / aft"
                     value={travel.limitZ}
                     min={0}
-                    max={1}
+                    max={2}
                     step={0.05}
                     display={`${travel.limitZ.toFixed(2)} m`}
-                    onChange={(limitZ) => setTravel((prev) => ({ ...prev, limitZ }))}
+                    onChange={(limitZ) => patchTravel({ limitZ })}
                   />
                 ) : null}
-                <NumberSlider
-                  label="Response"
-                  value={travel.response}
-                  min={0.25}
-                  max={2}
-                  step={0.05}
-                  display={`${Math.round(travel.response * 100)}%`}
-                  onChange={(response) => setTravel((prev) => ({ ...prev, response }))}
-                />
+                {axes.x ? (
+                  <NumberSlider
+                    label="Sway · left / right"
+                    value={travel.limitX}
+                    min={0}
+                    max={2}
+                    step={0.05}
+                    display={`${travel.limitX.toFixed(2)} m`}
+                    onChange={(limitX) => patchTravel({ limitX })}
+                  />
+                ) : null}
+                <div className="grid grid-cols-2 gap-1">
+                  <Button
+                    size="xs"
+                    variant={travel.visualPitch < 0 ? "default" : "outline"}
+                    onClick={() => patchTravel({ visualPitch: travel.visualPitch < 0 ? 1 : -1 })}
+                  >
+                    {travel.visualPitch < 0 ? "Wheelie nose-up" : "Wheelie flipped"}
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant={travel.leanSign < 0 ? "default" : "outline"}
+                    onClick={() => patchTravel({ leanSign: travel.leanSign < 0 ? 1 : -1 })}
+                  >
+                    {travel.leanSign < 0 ? "Lean camera-left" : "Lean flipped"}
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant={travel.parkLock ? "default" : "outline"}
+                    onClick={() => patchTravel({ parkLock: !travel.parkLock })}
+                  >
+                    {travel.parkLock ? "Parked stays level" : "Parked still tilts"}
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => {
+                      const next = sanitizeTravel(STUDIO_TRAVEL);
+                      setTravel(next);
+                      saveStoredTravel(next);
+                      saveStoredDof(next.dof);
+                    }}
+                  >
+                    Reset travel
+                  </Button>
+                </div>
               </div>
             </div>
           </ScrollArea>
@@ -691,7 +800,7 @@ function DofPicker({ dof, onChange }: { dof: DofLevel; onChange: (dof: DofLevel)
   return (
     <div className="grid gap-2">
       <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-        Dial in · start at 2DOF
+        Motion axes · 6DOF on
       </p>
       <div className="grid grid-cols-5 gap-1">
         {DOF_STEPS.map((item) => (
