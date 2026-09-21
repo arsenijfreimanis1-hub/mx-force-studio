@@ -250,6 +250,9 @@ def write_folder_zip(path: Path, payload: bytes) -> None:
                     "Extract this whole folder, then double-click:",
                     "  MX Force Studio.bat",
                     "",
+                    "To remove Force Studio later, double-click:",
+                    "  Uninstall Force Studio.bat",
+                    "",
                     "Read START HERE.txt if you want the same steps in plain English.",
                     "",
                 ]

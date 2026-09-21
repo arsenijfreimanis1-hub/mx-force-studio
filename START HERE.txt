@@ -36,6 +36,13 @@ the .bat again. Close the black window to stop.
 If you still see the old garage with wheels, close every Force
 Studio window and run this new .bat again.
 
+UNINSTALL
+---------
+Double-click  Uninstall Force Studio.bat
+That removes the Desktop icon, the app cache, and the plugin.
+Spreadsheets in force_studio_logs stay. This folder stays too
+until you delete it.
+
 LOGGING
 -------
 Nothing is recorded until you press Auto log or Start log.

@@ -24,9 +24,13 @@ There is also a one-line reminder in [`START HERE.txt`](START%20HERE.txt).
 
 If you still see an old garage with wheels, close every Force Studio window and run the new `.bat` again. It deletes leftover copies under `%LOCALAPPDATA%\MXForceStudio\app` and rebuilds this revision.
 
-### Xbox pad
+To remove Force Studio later, double-click **Uninstall Force Studio.bat** in this folder. That deletes the Desktop / Start Menu icons, the portable app under `%LOCALAPPDATA%\MXForceStudio`, and the plugin copies. Spreadsheets in `force_studio_logs` stay.
 
-Same map MX Bikes uses: **RT** throttle, **LT** front brake, **LB** rear brake, **A** clutch, left stick steer. Right stick is body weight for the dummy (the plugin has no rider skeleton). You can drive the garage with the pad while Connect is off. Live MX Bikes always uses **Connect**.
+### Controllers
+
+Force Studio picks the rider pad and ignores a racing wheel when both are plugged in. Xbox (XInput / Standard Gamepad) wins unless another Standard pad is the one you are actually using. The header shows which pad it chose.
+
+Same map MX Bikes uses on Xbox: **RT** throttle, **LT** front brake, **LB** rear brake, **A** clutch, left stick steer. Right stick is body weight for the dummy (the plugin has no rider skeleton). Live MX Bikes always uses **Connect**.
 
 ### Spreadsheets
 

@@ -178,6 +178,20 @@ try {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $shortcut
   }
 
+  if ($env:MXFS_BAT -and (Test-Path -LiteralPath $env:MXFS_BAT)) {
+    $batDir = Split-Path -Parent $env:MXFS_BAT
+    $srcUninstall = Join-Path $root "Uninstall Force Studio.bat"
+    $srcUninstallPs = Join-Path $root "windows\uninstall.ps1"
+    if (Test-Path -LiteralPath $srcUninstall) {
+      Copy-Item -LiteralPath $srcUninstall -Destination (Join-Path $batDir "Uninstall Force Studio.bat") -Force
+    }
+    if (Test-Path -LiteralPath $srcUninstallPs) {
+      $destWin = Join-Path $batDir "windows"
+      New-Item -ItemType Directory -Force -Path $destWin | Out-Null
+      Copy-Item -LiteralPath $srcUninstallPs -Destination (Join-Path $destWin "uninstall.ps1") -Force
+    }
+  }
+
   $plugin = Join-Path $root "windows\install-plugin.ps1"
   if (Test-Path -LiteralPath $plugin) {
     Write-Step "Installing MX Bikes telemetry plugin"
