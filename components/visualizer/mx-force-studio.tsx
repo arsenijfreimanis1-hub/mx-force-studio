@@ -104,6 +104,7 @@ function NumberSlider({
         <span className="font-mono text-foreground">{display}</span>
       </span>
       <Slider
+        className="py-1.5"
         value={[value]}
         min={min}
         max={max}
@@ -145,6 +146,7 @@ export function MxForceStudio() {
   const travelRef = useRef(STUDIO_TRAVEL);
   const connectRef = useRef(connectRequested);
   const lastHudRef = useRef(0);
+  const lastHarnessHud = useRef(0);
   const bikeLatchRef = useRef({ id: "", name: "" });
   const liveRef = useRef(false);
   const telemetryRef = useRef<Telemetry>(hudTel);
@@ -255,6 +257,11 @@ export function MxForceStudio() {
           poseRef.current,
           travelRef.current.visualPitch,
         );
+      }
+      // Live applyLive also stamps lastHudRef; keep harness off that clock.
+      if (now - lastHarnessHud.current >= HUD_MS) {
+        lastHarnessHud.current = now;
+        setHudHarness(harnessRef.current);
       }
       const mode = logModeRef.current;
       const shouldLog = mode === "start" || (mode === "auto" && nextDriving);
@@ -367,6 +374,7 @@ export function MxForceStudio() {
         setStaleMs(body.staleMs);
         setHudTel(telemetryRef.current);
         setHudEvent(eventRef.current);
+        setHudHarness(harnessRef.current);
         drivingRef.current = liveNow || padOnRef.current;
         setDriving(drivingRef.current);
         lastHudRef.current = performance.now();
@@ -381,6 +389,7 @@ export function MxForceStudio() {
       setStaleMs(body.staleMs);
       setHudTel(telemetryRef.current);
       setHudEvent(eventRef.current);
+      setHudHarness(harnessRef.current);
     };
 
     const poll = async () => {
