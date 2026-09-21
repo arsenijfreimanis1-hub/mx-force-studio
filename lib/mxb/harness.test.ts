@@ -47,11 +47,21 @@ test("idle belts sit slack-ish on the pegs", () => {
 });
 
 test("throttle loads the rear belt, front brake loads the front", () => {
-  const gas = stepHarness(sample({ throttle: 1, pitch: -18 }));
-  const stop = stepHarness(sample({ throttle: 0, frontBrake: 1, pitch: 12 }));
+  const gas = stepHarness(sample({ throttle: 1, pitch: -18, accelG: { x: 0, y: 1, z: 0.5 } }));
+  const stop = stepHarness(sample({ throttle: 0, frontBrake: 1, pitch: 12, accelG: { x: 0, y: 1, z: -0.4 } }));
   assert.equal(gas.mode, "ride");
   assert.ok(gas.rearBelt > gas.frontBelt, `gas F ${gas.frontBelt} R ${gas.rearBelt}`);
   assert.ok(stop.frontBelt > stop.rearBelt, `stop F ${stop.frontBelt} R ${stop.rearBelt}`);
+  assert.ok(gas.chest.z < stop.chest.z, `chest gas ${gas.chest.z} stop ${stop.chest.z}`);
+});
+
+test("forward accel pulls the rider back into the rear belt", () => {
+  const tel = sample({ throttle: 0.85, accelG: { x: 0, y: 1, z: 0.6 } });
+  const rider = riderFromTelemetry(tel);
+  const h = stepHarness(tel, rider);
+  assert.ok(rider.foreAft < 0, `foreAft ${rider.foreAft}`);
+  assert.ok(h.rearBelt > 0.55, `rear ${h.rearBelt}`);
+  assert.ok(h.rearBelt > h.frontBelt + 0.12, `F ${h.frontBelt} R ${h.rearBelt}`);
 });
 
 test("a berm lean hugs the rider into the bike", () => {

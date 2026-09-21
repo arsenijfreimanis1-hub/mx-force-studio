@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { idleRider, riderFromTelemetry } from "./rider.ts";
+import { idleRider, riderFromTelemetry, standFromTelemetry } from "./rider.ts";
 import type { Telemetry } from "./types.ts";
 
 function sample(partial: Partial<Telemetry> = {}): Telemetry {
@@ -55,10 +55,22 @@ test("in-game left lean hangs the dummy with the mirrored deck", () => {
   assert.ok(r.lean > 0.1, `lean ${r.lean}`);
 });
 
-test("front brake sits the dummy back", () => {
+test("front brake sits the dummy toward the bars", () => {
   const r = riderFromTelemetry(sample({ frontBrake: 0.8, speedMs: 14, throttle: 0 }));
-  assert.ok(r.foreAft < -0.04, `foreAft ${r.foreAft}`);
-  assert.ok(r.stand < 0.2);
+  assert.ok(r.foreAft > 0.04, `foreAft ${r.foreAft}`);
+  assert.ok(r.stand < 0.25);
+});
+
+test("throttle sits the dummy back", () => {
+  const r = riderFromTelemetry(sample({ throttle: 0.9, speedMs: 14, accelG: { x: 0, y: 1, z: 0.45 } }));
+  assert.ok(r.foreAft < -0.03, `foreAft ${r.foreAft}`);
+});
+
+test("whoops and gas raise the stand meter", () => {
+  const whoops = standFromTelemetry(sample({ speedMs: 14, suspVelocity: [0.8, -0.7] }));
+  const gas = standFromTelemetry(sample({ speedMs: 10, throttle: 0.85 }));
+  assert.ok(whoops > 0.45, `whoops ${whoops}`);
+  assert.ok(gas > 0.5, `gas ${gas}`);
 });
 
 test("body-weight stick moves the dummy even when the chassis is still", () => {

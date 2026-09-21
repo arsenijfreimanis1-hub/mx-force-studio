@@ -1038,12 +1038,7 @@ function InputsColumn({ telemetry, padName }: { telemetry: Telemetry; padName: s
       <InputBar label="R brk" value={telemetry.rearBrake} fillClass="bg-pink-400" />
       <InputBar label="Clh" value={telemetry.clutch} fillClass="bg-slate-300" />
       <SignedBar label="Str" value={steerT} display={`${telemetry.steer.toFixed(0)}°`} fillClass="bg-violet-400" />
-      <InputBar
-        label="Seat"
-        value={rider.stand}
-        fillClass="bg-amber-300"
-        display={rider.stand > 0.45 ? "Stand" : "Sit"}
-      />
+      <SitStandBar stand={rider.stand} />
       <SignedBar
         label="Lean"
         value={leanT}
@@ -1051,6 +1046,23 @@ function InputsColumn({ telemetry, padName }: { telemetry: Telemetry; padName: s
         fillClass="bg-sky-400"
       />
     </aside>
+  );
+}
+
+function SitStandBar({ stand }: { stand: number }) {
+  const t = Math.min(1, Math.max(0, stand));
+  const pct = Math.round(t * 100);
+  return (
+    <div className="grid gap-0.5">
+      <div className="flex items-center justify-between text-[10px] tracking-wide text-muted-foreground uppercase">
+        <span>Sit</span>
+        <span className="font-mono text-foreground">{pct >= 50 ? `Stand ${pct}` : `Sit ${100 - pct}`}</span>
+        <span>Stand</span>
+      </div>
+      <div className="relative h-7 overflow-hidden rounded-sm bg-muted">
+        <div className="absolute inset-y-1 left-1 rounded-sm bg-amber-300" style={{ width: `${Math.max(3, t * 92)}%` }} />
+      </div>
+    </div>
   );
 }
 

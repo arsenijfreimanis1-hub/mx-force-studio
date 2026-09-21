@@ -3,7 +3,7 @@
  * Front and rear centerline mounts at chest height. No mesh yet — tension only.
  */
 
-import { detectCrash, isAirborne, isParked, isStopped } from "./crash.ts";
+import { accelAsG, detectCrash, isAirborne, isParked, isStopped } from "./crash.ts";
 import { riderFromTelemetry, type RiderPose } from "./rider.ts";
 import type { Telemetry, Vec3 } from "./types.ts";
 
@@ -98,14 +98,28 @@ export function stepHarness(
     rear = 0.2;
     inward = 0;
   } else if (mode === "ride") {
+    const g = accelAsG(tel.accelG);
     const wheelie = Math.max(0, -tel.pitch) / 28;
     const stoppie = Math.max(0, tel.pitch) / 22;
-    rear = clamp(tel.throttle * 0.55 + wheelie * 0.45 + Math.max(0, rider.foreAft) * 4, 0, 1);
-    front = clamp(tel.frontBrake * 0.7 + tel.rearBrake * 0.22 + stoppie * 0.5 + Math.max(0, -rider.foreAft) * 4, 0, 1);
+    // Forward accel / gas throws the rider BACK into the rear belt.
+    rear = clamp(
+      tel.throttle * 0.32 + Math.max(0, g.z) * 0.78 + wheelie * 0.4 + Math.max(0, -rider.foreAft) * 3.4,
+      0,
+      1,
+    );
+    front = clamp(
+      tel.frontBrake * 0.55 +
+        tel.rearBrake * 0.18 +
+        Math.max(0, -g.z) * 0.78 +
+        stoppie * 0.45 +
+        Math.max(0, rider.foreAft) * 3.4,
+      0,
+      1,
+    );
     const leanMag = Math.min(1, Math.abs(tel.roll) / 38 + Math.abs(rider.lean) * 0.85);
     inward = leanMag * 0.82;
-    front = clamp(front + inward * 0.22, 0, 1);
-    rear = clamp(rear + inward * 0.22, 0, 1);
+    front = clamp(front + inward * 0.18, 0, 1);
+    rear = clamp(rear + inward * 0.18, 0, 1);
   }
 
   const senseF = sensorTension(sensors?.frontMm, 80, 12);
