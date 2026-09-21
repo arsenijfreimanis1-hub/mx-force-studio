@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { Eye, EyeOff, Gamepad2, LineChart, Loader2, Play, Radio, Save, Square, Unplug } from "lucide-react";
+import { Eye, EyeOff, Gamepad2, LineChart, Loader2, Radio, Unplug } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -743,7 +743,6 @@ export function MxForceStudio() {
                     variant={logMode === "auto" ? "default" : "outline"}
                     onClick={() => setLogMode("auto")}
                   >
-                    <Radio />
                     Auto log
                   </Button>
                   <Button
@@ -752,11 +751,9 @@ export function MxForceStudio() {
                     disabled={logMode === "off"}
                     onClick={() => setLogMode("off")}
                   >
-                    <Square />
                     Stop log
                   </Button>
                   <Button size="xs" variant="secondary" onClick={() => void saveSheet()} disabled={sheetCount < 2 || saving}>
-                    <Save />
                     {saving ? "Saving…" : "Save"}
                   </Button>
                   <Button
@@ -764,7 +761,6 @@ export function MxForceStudio() {
                     variant={logMode === "start" ? "default" : "outline"}
                     onClick={() => setLogMode("start")}
                   >
-                    <Play />
                     Start log
                   </Button>
                 </div>
