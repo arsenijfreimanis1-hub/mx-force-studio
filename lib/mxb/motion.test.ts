@@ -520,3 +520,20 @@ test("studio 6DOF travel unlocks heave surge sway and yaw", () => {
   assert.ok(shove.z > 0.2, `surge ${shove.z}`);
   assert.ok(shove.x < -0.15, `sway ${shove.x}`);
 });
+
+test("demo 6DOF at speed still surges when world XYZ is a zero placeholder", () => {
+  const pose = run(
+    sample({
+      speedMs: 18,
+      throttle: 1,
+      accelG: { x: 0, y: 1, z: 0.8 },
+      pitch: 8,
+      position: { x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 18 },
+    }),
+    1.1,
+    STUDIO_TRAVEL,
+  );
+  assert.ok(pose.z > 0.15, `demo surge ${pose.z}`);
+  assert.ok(pose.pitch > 0.05, `demo pitch ${pose.pitch}`);
+});

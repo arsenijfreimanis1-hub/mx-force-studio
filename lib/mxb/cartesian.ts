@@ -79,6 +79,10 @@ export function isFiniteVec(v: Vec3 | undefined): v is Vec3 {
  */
 export function cartesianUseful(world: Vec3, speedMs: number, airborne: boolean): boolean {
   if (!isFiniteVec(world)) return false;
+  const mag = Math.hypot(world.x, world.y, world.z);
+  // Plugin/demo rest pose is (0,0,0). That is not a track point — using it as
+  // Cartesian travel zeros surge/sway and the 6DOF deck looks frozen.
+  if (mag < 0.05 && !airborne) return false;
   if (airborne) return true;
   return speedMs > 0.8;
 }

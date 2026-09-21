@@ -37,7 +37,7 @@ test("chassis delta keeps world Y as heave", () => {
 
 test("zero placeholder is not a useful Cartesian point", () => {
   assert.equal(cartesianUseful(world(0, 0, 0), 0, false), false);
-  assert.equal(cartesianUseful(world(0, 0, 0), 12, false), true);
+  assert.equal(cartesianUseful(world(0, 0, 0), 12, false), false);
   assert.equal(cartesianUseful(world(0, 0, 0), 0, true), true);
   assert.equal(cartesianUseful(world(80, 4, -20), 0, false), false);
 });
