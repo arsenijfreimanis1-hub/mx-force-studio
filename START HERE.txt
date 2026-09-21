@@ -4,6 +4,8 @@ MX Bikes Force Studio
 This is the garage 6DOF for MX Bikes. You do not need to install Node,
 Git, or Visual Studio. Internet is only needed the first time.
 
+You only need this file and MX Force Studio.bat. Ignore the rest.
+
 ON THE PC THAT RUNS MX BIKES
 ----------------------------
 
@@ -14,6 +16,8 @@ ON THE PC THAT RUNS MX BIKES
 
 3. Leave the black window open.
    First run downloads Node.js and builds the app (a few minutes).
+   It also puts MX Force Studio on your Desktop and copies the
+   plugin into your MX Bikes plugins folder (any drive / Steam library).
 
 4. When the window says APP READY, a browser tab opens by itself.
 
@@ -22,11 +26,15 @@ ON THE PC THAT RUNS MX BIKES
 
 6. In the browser, click Connect.
    The deck follows the live bike. Parked stays still.
+   The 3D bike is a frame only (no wheels).
 
 NEXT TIME
 ---------
 Use the MX Force Studio icon on your Desktop, or double-click
 the .bat again. Close the black window to stop.
+
+If you still see the old garage with wheels, close every Force
+Studio window and run this new .bat again.
 
 LOGGING
 -------

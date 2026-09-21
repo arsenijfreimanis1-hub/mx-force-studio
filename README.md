@@ -8,19 +8,21 @@ You do **not** need Node, Git, Visual Studio, or admin rights on the gaming PC.
 
 ## Install (Windows, the PC that runs MX Bikes)
 
-**Easiest:** double-click [`MX Force Studio.bat`](MX%20Force%20Studio.bat) in this folder. That is the whole installer.
+**Riders:** double-click [`MX Force Studio.bat`](MX%20Force%20Studio.bat). Ignore every other file in this folder.
 
-1. Copy this folder to the gaming PC (or clone this repo, or extract the GitHub zip).
+1. Copy this folder to the gaming PC (or download the GitHub zip and extract it).
 2. Double-click **MX Force Studio.bat**.
 3. If SmartScreen says *Windows protected your PC*, click **More info** → **Run anyway**.
-4. Leave the black window open. The first run downloads portable Node.js, installs packages, builds the app, copies the telemetry plugin next to `mxbikes.exe`, and puts **MX Force Studio** on your Desktop.
+4. Leave the black window open. The first run downloads portable Node.js, installs packages, builds the app, copies the telemetry plugin next to `mxbikes.exe` (any Steam library / drive), and puts **MX Force Studio** on your Desktop.
 5. When it prints **APP READY**, a browser tab opens at [http://127.0.0.1:43187](http://127.0.0.1:43187).
 6. Start **MX Bikes on this same PC** and go on track. If the game was already running, **restart it** so the plugin loads.
 7. In Force Studio, click **Connect**. The frame follows the live bike.
 
 Next sessions: use the Desktop icon, or the `.bat` again. Close the black window to stop.
 
-There is also a one-line reminder in [`START HERE.txt`](START%20HERE.txt) if you would rather not open this page.
+There is also a one-line reminder in [`START HERE.txt`](START%20HERE.txt).
+
+If you still see an old garage with wheels, close every Force Studio window and run the new `.bat` again. It deletes leftover copies under `%LOCALAPPDATA%\MXForceStudio\app` and rebuilds this revision.
 
 ### Xbox pad
 
@@ -78,18 +80,18 @@ python3 windows/pack-standalone.py
 
 Support rods keep a fixed steel base. The **Rod stroke** slider is how far each actuator may grow or shrink. Chest-belt tension is in the sidebar (front / rear / hug). No extra mesh yet.
 
-The garage will not invent a bike name. Live only follows a real MX Bikes session after **Connect**.
+The garage will not invent a bike name. Live only follows a real MX Bikes session after **Connect**. The 3D bike is a **frame only** — no wheels.
 
 ---
 
 ## Plugin
 
-First launch copies these next to `mxbikes.exe`:
+First launch copies these next to every `mxbikes.exe` it finds on this PC:
 
 - `plugin/mxb_force_studio.dlo`
 - `plugin/force_studio.ini` (`127.0.0.1:47387`)
 
-Steam libraries are searched automatically. Rebuild with `npm run plugin:build` if you have MinGW-w64 — details in [`plugin/README.md`](plugin/README.md).
+Steam libraries, Start Menu shortcuts, and a running `mxbikes.exe` are searched automatically. Rebuild with `npm run plugin:build` if you have MinGW-w64 — details in [`plugin/README.md`](plugin/README.md).
 
 ---
 
