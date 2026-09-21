@@ -70,7 +70,7 @@ export function stepHarness(
   let landBoost = prev.landBoost;
   if (crash) landBoost = 0;
   else if (prev.mode === "air" && !airborne) landBoost = 1;
-  else landBoost = follow(landBoost, 0, step, 0.18);
+  else landBoost = follow(landBoost, 0, step, 0.85);
 
   let mode: HarnessMode;
   if (crash) mode = "crash";

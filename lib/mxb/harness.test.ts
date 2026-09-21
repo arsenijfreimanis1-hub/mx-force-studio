@@ -89,6 +89,13 @@ test("landing pulls both belts down after air", () => {
   assert.equal(land.mode, "land");
   assert.ok(land.frontBelt > 0.7 && land.rearBelt > 0.7, JSON.stringify(land));
   assert.ok(land.chest.y < air.chest.y, `y ${land.chest.y} vs ${air.chest.y}`);
+  let held = land;
+  const grounded = sample({ speedMs: 12, accelG: { x: 0, y: 1.4, z: 0 } });
+  for (let i = 0; i < 24; i++) {
+    held = stepHarness(grounded, riderFromTelemetry(grounded), undefined, held, 1 / 60);
+  }
+  assert.equal(held.mode, "land", `still land after 0.4s ${held.landBoost}`);
+  assert.ok(held.frontBelt > 0.55 && held.rearBelt > 0.55, JSON.stringify(held));
 });
 
 test("crash dumps the hug", () => {
