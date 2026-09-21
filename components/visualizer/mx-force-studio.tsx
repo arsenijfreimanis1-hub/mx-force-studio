@@ -43,13 +43,8 @@ import {
   saveTraceOpen,
 } from "@/lib/mxb/trace";
 import type { BikeEvent, ForceId, ForceModel, LivePacket, SandboxInputs, Telemetry } from "@/lib/mxb/types";
-import {
-  applyLesson,
-  describeLesson,
-  emptyLesson,
-  learnFromRows,
-  type SheetLesson,
-} from "@/lib/mxb/lesson";
+import { applyLesson, describeLesson, emptyLesson, learnFromRows, type SheetLesson } from "@/lib/mxb/lesson";
+import { describeHarness, idleHarness, type HarnessState } from "@/lib/mxb/harness";
 import {
   createSheetBuffer,
   pushSheetRow,
@@ -142,6 +137,7 @@ export function MxForceStudio() {
   const [saveMsg, setSaveMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const [logDir, setLogDir] = useState("");
+  const [hudHarness, setHudHarness] = useState<HarnessState>(() => idleHarness());
 
   const pollRef = useRef<() => Promise<void>>(async () => {});
   const motionRef = useRef(createMotionFilter());
@@ -166,6 +162,7 @@ export function MxForceStudio() {
   const lastTraceMs = useRef(0);
   const graphOpenRef = useRef(false);
   const sheetRef = useRef(createSheetBuffer(24000));
+  const harnessRef = useRef(idleHarness());
   const lastSheetMs = useRef(0);
   const lastLearnMs = useRef(0);
   const lastSignFlipMs = useRef(0);
@@ -312,6 +309,7 @@ export function MxForceStudio() {
       setHudEvent(eventRef.current);
       setSheetCount(sheetRef.current.len);
       setSheetSeconds(sheetDurationS(sheetRef.current));
+      setHudHarness(harnessRef.current);
     }, 16);
     return () => window.clearInterval(id);
   }, []);
@@ -533,6 +531,7 @@ export function MxForceStudio() {
             hiddenRef={hiddenRef}
             driving={driving}
             showPadLabels={!graphOpen}
+            harnessRef={harnessRef}
           />
 
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-2">
@@ -737,6 +736,7 @@ export function MxForceStudio() {
                 </p>
                 {saveMsg ? <p className="text-[11px] leading-4 text-emerald-300">{saveMsg}</p> : null}
                 <p className="text-[11px] leading-4 text-foreground/80">{describeLesson(lesson)}</p>
+                <p className="font-mono text-[11px] leading-4 text-muted-foreground">{describeHarness(hudHarness)}</p>
                 <div className="grid grid-cols-2 gap-1">
                   <Button
                     size="xs"
@@ -834,13 +834,13 @@ export function MxForceStudio() {
                   onChange={(deg) => patchTravel({ limitPitch: (deg * Math.PI) / 180 })}
                 />
                 <NumberSlider
-                  label="Rod length"
-                  value={travel.rodLength}
-                  min={0.4}
-                  max={1.8}
+                  label="Rod stroke"
+                  value={travel.rodStroke}
+                  min={0.08}
+                  max={0.55}
                   step={0.01}
-                  display={`${travel.rodLength.toFixed(2)} m`}
-                  onChange={(rodLength) => patchTravel({ rodLength })}
+                  display={`±${travel.rodStroke.toFixed(2)} m`}
+                  onChange={(rodStroke) => patchTravel({ rodStroke })}
                 />
                 <NumberSlider
                   label="Yaw · heading"

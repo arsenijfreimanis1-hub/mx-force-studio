@@ -9,11 +9,14 @@ import {
 } from "./cartesian.ts";
 import { chassisCues, heaveFromCues } from "./channels.ts";
 import { detectCrash, isAirborne, isParked, isStopped } from "./crash.ts";
+import { BIKE_SCALE, DEFAULT_ROD_LENGTH, DEFAULT_ROD_STROKE, PLATFORM_HOME_Y } from "./dims.ts";
 import { clampDof, dofAxes, maskPose, type DofLevel } from "./dof.ts";
+import { clampPoseToRodStroke } from "./rods.ts";
 import type { Telemetry, Vec3 } from "./types";
 
 export { worldToChassis } from "./cartesian.ts";
 export { CART_XZ_M, CART_Y_M };
+export { BIKE_SCALE, DEFAULT_ROD_LENGTH, DEFAULT_ROD_STROKE, PLATFORM_HOME_Y };
 
 /** Bottom-middle of the main cradle, bike-local meters. */
 export const FRAME_BOTTOM: Vec3 = { x: 0, y: 0.09, z: 0.02 };
@@ -22,11 +25,6 @@ export const FRAME_BOTTOM: Vec3 = { x: 0, y: 0.09, z: 0.02 };
  * Stewart-platform mid-stroke. ±1 m heave then still clears the garage floor.
  * Rider-head washout (Barbagli / MORIS) is computed about this deck height.
  */
-export const PLATFORM_HOME_Y = 0.38;
-/** Visual bike scale vs the original 1:1 tube drawing. */
-export const BIKE_SCALE = 0.48;
-/** Rest actuator length (m) at ~45° with the current deck height. */
-export const DEFAULT_ROD_LENGTH = 0.98;
 
 /** Lowest remaining frame tube vs the rig origin (after FRAME_CENTER_Y pin). */
 export const FRAME_LOW_Y = (0.28 + 0.55) * BIKE_SCALE;
@@ -68,8 +66,8 @@ export type FrameTravel = {
   visualPitch: number;
   /** Deck roll vs plugin Euler. Default −1 so in-game left is camera-left. */
   leanSign: number;
-  /** Rest support-rod length in meters. Wider splay as the rods grow. */
-  rodLength: number;
+  /** Half-range each support rod may grow or shrink from rest, meters. */
+  rodStroke: number;
 };
 
 /**
@@ -93,6 +91,8 @@ const GRAVITY = 9.80665;
  */
 export const WASH_OMEGA = Math.sqrt(GRAVITY);
 export const WASH_ZETA = 1;
+/** Riding: snap the deck home faster so the next cue has travel left. */
+export const WASH_OMEGA_RIDE = WASH_OMEGA * 1.85;
 /** Faster rotational washout — MX rates are much quicker than aircraft. */
 export const WASH_OMEGA_ANG = 6.4;
 const INTEGRATOR_HZ = 120;
@@ -104,7 +104,7 @@ export const HUMAN_LIN_MS = 1.15;
 /** Angular rad/s. ~77°/s — a berm lean, not a twitch. */
 export const HUMAN_ANG_RS = 1.35;
 /** Grounded whoops stay on the shocks. Air tracks the ballistic arc. */
-const HEAVE_TAU_GROUND = 0.22;
+const HEAVE_TAU_GROUND = 0.12;
 const HEAVE_TAU_AIR = 0.08;
 /**
  * Chase-cam deck roll. Plugin m_fRoll negative is in-game left, but that
@@ -143,7 +143,7 @@ export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
   parkLock: true,
   visualPitch: VISUAL_PITCH_SIGN,
   leanSign: LEAN_FOLLOW,
-  rodLength: DEFAULT_ROD_LENGTH,
+  rodStroke: DEFAULT_ROD_STROKE,
 };
 
 /** Garage rig — 6DOF with calmer follow so the deck tracks the live bike. */
@@ -159,14 +159,14 @@ export const STUDIO_TRAVEL: FrameTravel = {
   dof: 6,
   rateLin: 1.4,
   rateAng: 1.55,
-  visualTau: 0.055,
+  visualTau: 0.032,
   parkLock: true,
   visualPitch: VISUAL_PITCH_SIGN,
   leanSign: LEAN_FOLLOW,
-  rodLength: DEFAULT_ROD_LENGTH,
+  rodStroke: DEFAULT_ROD_STROKE,
 };
 
-export const TRAVEL_STORAGE_KEY = "mxb-force-studio.travel.v3";
+export const TRAVEL_STORAGE_KEY = "mxb-force-studio.travel.v4";
 
 function finiteOr(n: unknown, fallback: number) {
   const v = Number(n);
@@ -174,10 +174,12 @@ function finiteOr(n: unknown, fallback: number) {
 }
 
 export function sanitizeTravel(
-  raw: Partial<FrameTravel> | null | undefined,
+  raw: (Partial<FrameTravel> & { rodLength?: number }) | null | undefined,
   fallback: FrameTravel = STUDIO_TRAVEL,
 ): FrameTravel {
   const src = raw ?? {};
+  // v3 `rodLength` used to splay the steel base. Read it only to drop it.
+  void src.rodLength;
   return {
     limitX: clamp(finiteOr(src.limitX, fallback.limitX), 0, 2.5),
     limitY: clamp(finiteOr(src.limitY, fallback.limitY), 0, 2.5),
@@ -194,7 +196,9 @@ export function sanitizeTravel(
     parkLock: src.parkLock !== false,
     visualPitch: finiteOr(src.visualPitch, fallback.visualPitch) < 0 ? -1 : 1,
     leanSign: finiteOr(src.leanSign, fallback.leanSign) < 0 ? -1 : 1,
-    rodLength: clamp(finiteOr(src.rodLength, fallback.rodLength), 0.35, 2.2),
+    // Garage slider is 0.08–0.55. Allow 1 m so washout identity tests still
+    // measure ω² = g without the actuator band shrinking a 1 G hold.
+    rodStroke: clamp(finiteOr(src.rodStroke, fallback.rodStroke), 0.08, 1),
   };
 }
 
@@ -507,6 +511,8 @@ export function stepMotion(
   const parked = !crashed && isParked(telemetry);
   const stopped = !crashed && isStopped(telemetry);
   const restDeck = parkLock && (stopped || parked);
+  const riding = !crashed && !parked && !stopped;
+  const washOmega = riding ? WASH_OMEGA_RIDE : WASH_OMEGA;
   const cartMode = crashed ? "crash" : airborne ? "air" : stopped ? "stop" : "ground";
   if (airborne || telemetry.speedMs > 1.2) filter.cartOn = true;
   else if (!airborne && telemetry.speedMs < 0.35) filter.cartOn = false;
@@ -603,7 +609,7 @@ export function stepMotion(
     }
     filter.airVy = follow(filter.airVy, 0, step, 0.06);
     if (hasWorld) filter.groundY = follow(filter.groundY, worldY, step, 0.85);
-    const sink = stepAxis(filter.landSink, filter.landSinkV, 0, step, limY, WASH_OMEGA * 1.05);
+    const sink = stepAxis(filter.landSink, filter.landSinkV, 0, step, limY, washOmega * 1.05);
     filter.landSink = sink.pos;
     filter.landSinkV = sink.vel;
     const ride = useCart
@@ -625,16 +631,16 @@ export function stepMotion(
   } else if (useCart && !stopped && !crashed) {
     const tx = clamp(cart.x / CART_XZ_M, -1, 1) * limX * response;
     const tz = clamp(cart.z / CART_XZ_M, -1, 1) * limZ * response;
-    filter.x = follow(filter.x, tx, step, 0.18);
-    filter.z = follow(filter.z, tz, step, 0.18);
+    filter.x = follow(filter.x, tx, step, 0.09);
+    filter.z = follow(filter.z, tz, step, 0.09);
     filter.vx = follow(filter.vx, 0, step, 0.1);
     filter.vz = follow(filter.vz, 0, step, 0.1);
   } else {
-    const sway = stepAxis(filter.x, filter.vx, aSway, step, limX, WASH_OMEGA);
+    const sway = stepAxis(filter.x, filter.vx, aSway, step, limX, washOmega);
     filter.x = sway.pos;
     filter.vx = sway.vel;
 
-    const surge = stepAxis(filter.z, filter.vz, aSurge, step, limZ, WASH_OMEGA);
+    const surge = stepAxis(filter.z, filter.vz, aSurge, step, limZ, washOmega);
     filter.z = surge.pos;
     filter.vz = surge.vel;
   }
@@ -700,7 +706,11 @@ export function stepMotion(
     }),
     dof,
   );
-  filter.shown = limitShownPose(filter.shown, rawShown, step, dof, travelUse);
+  const limited = limitShownPose(filter.shown, rawShown, step, dof, travelUse);
+  // Crash dummys still lay over; rods do not pin a high-side to rest.
+  filter.shown = crashed
+    ? limited
+    : clampPoseToRodStroke(limited, travelUse.rodStroke, PLATFORM_HOME_Y, travelUse.visualPitch);
 
   return filter.shown;
 }

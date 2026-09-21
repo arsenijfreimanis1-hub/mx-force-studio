@@ -125,12 +125,12 @@ export function stepCartesian(
     // Lip Y stays put so the jump is Cartesian ΔY. Walk XZ with speed so a
     // 20 m table does not pin surge at the travel limit.
     if (movedXZ) {
-      state.ovx = follow(state.ovx, vx, step, 0.35);
-      state.ovz = follow(state.ovz, vz, step, 0.35);
+      state.ovx = follow(state.ovx, vx, step, 0.22);
+      state.ovz = follow(state.ovz, vz, step, 0.22);
       state.ox += state.ovx * step;
       state.oz += state.ovz * step;
       const velErr = Math.hypot(vx - state.ovx, vz - state.ovz);
-      const snap = velErr < 0.85 ? 0.4 : 1.6;
+      const snap = velErr < 0.85 ? 0.22 : 0.9;
       state.ox = follow(state.ox, world.x, step, snap);
       state.oz = follow(state.oz, world.z, step, snap);
     }
@@ -145,20 +145,20 @@ export function stepCartesian(
     // Walk the origin at low-passed velocity so constant speed does not pin,
     // but a burst still leaves a Cartesian surge / sway / whoop.
     if (movedXZ) {
-      state.ovx = follow(state.ovx, vx, step, 0.5);
-      state.ovz = follow(state.ovz, vz, step, 0.5);
+      state.ovx = follow(state.ovx, vx, step, 0.28);
+      state.ovz = follow(state.ovz, vz, step, 0.28);
       state.ox += state.ovx * step;
       state.oz += state.ovz * step;
       const velErr = Math.hypot(vx - state.ovx, vz - state.ovz);
-      const snap = velErr < 0.85 ? 0.45 : 2.1;
+      const snap = velErr < 0.85 ? 0.22 : 1.05;
       state.ox = follow(state.ox, world.x, step, snap);
       state.oz = follow(state.oz, world.z, step, snap);
     }
     if (movedY) {
-      state.ovy = follow(state.ovy, vy, step, 0.75);
+      state.ovy = follow(state.ovy, vy, step, 0.4);
       state.oy += state.ovy * step;
       const yErr = Math.abs(vy - state.ovy);
-      state.oy = follow(state.oy, world.y, step, yErr < 0.6 ? 0.7 : 2.2);
+      state.oy = follow(state.oy, world.y, step, yErr < 0.6 ? 0.35 : 1.2);
     }
   } else {
     // Frozen world sample (paused game / unit tests). Glue so we do not invent travel.

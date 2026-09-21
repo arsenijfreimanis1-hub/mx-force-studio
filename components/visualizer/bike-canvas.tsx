@@ -14,6 +14,7 @@ import {
   type MotionFilter,
   type Pose6,
 } from "@/lib/mxb/motion";
+import type { HarnessState } from "@/lib/mxb/harness";
 import type { BikeEvent, ForceId, ForceModel, SandboxInputs, Telemetry } from "@/lib/mxb/types";
 
 export function BikeCanvas({
@@ -32,6 +33,7 @@ export function BikeCanvas({
   hiddenRef,
   driving,
   showPadLabels = true,
+  harnessRef,
 }: {
   telemetryRef: MutableRefObject<Telemetry>;
   hideForces: boolean;
@@ -48,6 +50,7 @@ export function BikeCanvas({
   hiddenRef: MutableRefObject<Set<ForceId>>;
   driving: boolean;
   showPadLabels?: boolean;
+  harnessRef?: MutableRefObject<HarnessState>;
 }) {
   return (
     <Canvas
@@ -90,6 +93,7 @@ export function BikeCanvas({
           sandboxRef={sandboxRef}
           eventRef={eventRef}
           forcesRef={forcesRef}
+          harnessRef={harnessRef}
         >
           <MotocrossBike telemetryRef={telemetryRef} liveRef={liveRef} padActiveRef={padActiveRef} />
           {hideForces ? null : <ForceArrows forcesRef={forcesRef} hiddenRef={hiddenRef} />}

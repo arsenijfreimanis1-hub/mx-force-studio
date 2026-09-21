@@ -9,6 +9,8 @@ import { telemetryFromSandbox } from "@/lib/mxb/demo";
 import { DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
 import { gamepadActive, readFirstGamepad, sandboxFromGamepad } from "@/lib/mxb/gamepad";
 import { visualPoseTau } from "@/lib/mxb/dof";
+import { idleHarness, stepHarness, type HarnessState } from "@/lib/mxb/harness";
+import { riderFromTelemetry } from "@/lib/mxb/rider";
 import {
   PLATFORM_HOME_Y,
   identityPose,
@@ -36,6 +38,7 @@ export function ChassisRig({
   sandboxRef,
   eventRef,
   forcesRef,
+  harnessRef,
   children,
 }: {
   poseRef: MutableRefObject<Pose6>;
@@ -48,6 +51,7 @@ export function ChassisRig({
   sandboxRef: MutableRefObject<SandboxInputs>;
   eventRef: MutableRefObject<BikeEvent>;
   forcesRef: MutableRefObject<ForceModel>;
+  harnessRef?: MutableRefObject<HarnessState>;
   children: ReactNode;
 }) {
   const group = useRef<Group>(null);
@@ -101,6 +105,10 @@ export function ChassisRig({
         },
       );
       forcesRef.current = buildForceModel(telemetryRef.current, eventRef.current);
+      if (harnessRef) {
+        const rider = riderFromTelemetry(telemetryRef.current);
+        harnessRef.current = stepHarness(telemetryRef.current, rider, undefined, harnessRef.current, dt);
+      }
     } else if (
       lastDriveMs.current > 0 &&
       now - lastDriveMs.current > 1500 &&
@@ -114,6 +122,7 @@ export function ChassisRig({
       parked.current = true;
       lastDriveMs.current = 0;
       forcesRef.current = buildForceModel(telemetryRef.current, eventRef.current);
+      if (harnessRef) harnessRef.current = idleHarness();
     }
 
     const pose = poseRef.current;

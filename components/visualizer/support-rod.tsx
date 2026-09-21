@@ -4,7 +4,7 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { MutableRefObject } from "react";
-import { DEFAULT_ROD_LENGTH, PLATFORM_HOME_Y, visualPitch, type FrameTravel, type Pose6 } from "@/lib/mxb/motion";
+import { PLATFORM_HOME_Y, visualPitch, type FrameTravel, type Pose6 } from "@/lib/mxb/motion";
 import { ROD_CORNERS, rodBaseCorner, rodDeckLocal } from "@/lib/mxb/rods";
 
 const up = new THREE.Vector3(0, 1, 0);
@@ -42,32 +42,31 @@ export function MotionPedestal({
   const dir = useMemo(() => new THREE.Vector3(), []);
   const euler = useMemo(() => new THREE.Euler(0, 0, 0, "YXZ"), []);
   const local = useMemo(() => new THREE.Vector3(), []);
+  const fl = useMemo(() => rodBaseCorner(-1, 1), []);
+  const railW = Math.abs(fl.x) * 2 + 0.08;
+  const railD = Math.abs(fl.z) * 2 + 0.08;
 
   useFrame(() => {
     const pose = poseRef.current;
-    const restLen = travelRef?.current.rodLength ?? DEFAULT_ROD_LENGTH;
     const pitchSign = travelRef?.current.visualPitch ?? -1;
     const pitch = visualPitch(pose.pitch, pitchSign);
     euler.set(pitch, pose.yaw, pose.roll, "YXZ");
 
-    const fl = rodBaseCorner(-1, 1, restLen);
-    const width = Math.abs(fl.x) * 2 + 0.08;
-    const depth = Math.abs(fl.z) * 2 + 0.08;
     if (railF.current) {
       railF.current.position.set(0, 0.04, fl.z);
-      railF.current.scale.set(width, 0.045, 0.07);
+      railF.current.scale.set(railW, 0.045, 0.07);
     }
     if (railR.current) {
       railR.current.position.set(0, 0.04, -fl.z);
-      railR.current.scale.set(width, 0.045, 0.07);
+      railR.current.scale.set(railW, 0.045, 0.07);
     }
     if (railL.current) {
       railL.current.position.set(fl.x, 0.04, 0);
-      railL.current.scale.set(0.07, 0.045, depth);
+      railL.current.scale.set(0.07, 0.045, railD);
     }
     if (railRi.current) {
       railRi.current.position.set(-fl.x, 0.04, 0);
-      railRi.current.scale.set(0.07, 0.045, depth);
+      railRi.current.scale.set(0.07, 0.045, railD);
     }
 
     for (let i = 0; i < ROD_CORNERS.length; i++) {
@@ -76,7 +75,7 @@ export function MotionPedestal({
       const uj = ujs[i].current;
       if (!mesh) continue;
       const c = ROD_CORNERS[i];
-      const base = rodBaseCorner(c.x, c.z, restLen);
+      const base = rodBaseCorner(c.x, c.z);
       const deck = rodDeckLocal(c.x, c.z);
       start.set(base.x, base.y, base.z);
       if (uj) uj.position.copy(start);

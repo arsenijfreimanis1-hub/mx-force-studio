@@ -13,12 +13,14 @@ import {
   identityPose,
   limitShownPose,
   PLATFORM_HOME_Y,
+  sanitizeTravel,
   specificForceG,
   stepMotion,
   STUDIO_TRAVEL,
   visualPitch,
   washoutStepResponse,
   worldToChassis,
+  type FrameTravel,
 } from "./motion.ts";
 import { rzRoll } from "./attitude.ts";
 import { GRAVITY } from "./bike.ts";
@@ -59,6 +61,9 @@ function sample(partial: Partial<Telemetry> = {}): Telemetry {
   };
 }
 
+/** Open actuator band so washout identity is not clipped by rod stroke. */
+const WIDE_RODS: FrameTravel = { ...DEFAULT_FRAME_TRAVEL, rodStroke: 1 };
+
 function run(telemetry: Telemetry, seconds: number, travel = DEFAULT_FRAME_TRAVEL, dt = 1 / 60) {
   const filter = createMotionFilter();
   let pose = stepMotion(filter, telemetry, dt, travel);
@@ -81,7 +86,7 @@ test("parked bike stays at the garage origin with level deck", () => {
 test("1 G of surge settles at 1 m (ω² = g)", () => {
   const seconds = 2.6;
   const pose = run(sample({ accelG: { x: 0, y: 1, z: 1 } }), seconds, {
-    ...DEFAULT_FRAME_TRAVEL,
+    ...WIDE_RODS,
     limitZ: 2,
   });
   const expected = washoutStepResponse(GRAVITY, seconds);
@@ -92,7 +97,7 @@ test("1 G of surge settles at 1 m (ω² = g)", () => {
 test("integrator matches the critically damped closed form at 1 s", () => {
   const seconds = 1;
   const pose = run(sample({ accelG: { x: 0, y: 1, z: 1 } }), seconds, {
-    ...DEFAULT_FRAME_TRAVEL,
+    ...WIDE_RODS,
     limitZ: 2,
   });
   const expected = washoutStepResponse(GRAVITY, seconds);
@@ -100,7 +105,7 @@ test("integrator matches the critically damped closed form at 1 s", () => {
 });
 
 test("braking G shoves the frame backward without a parked nod", () => {
-  const pose = run(sample({ accelG: { x: 0, y: 1.2, z: -1.2 }, pitch: -8, frontBrake: 1 }), 2.4);
+  const pose = run(sample({ accelG: { x: 0, y: 1.2, z: -1.2 }, pitch: -8, frontBrake: 1 }), 2.4, WIDE_RODS);
   assert.ok(pose.z <= -0.98, `z ${pose.z}`);
   assert.ok(pose.z >= -1, `z clamp ${pose.z}`);
   assert.ok(Math.abs(pose.pitch) < 0.04, `pitch ${pose.pitch}`);
@@ -108,7 +113,7 @@ test("braking G shoves the frame backward without a parked nod", () => {
 
 test("lateral G shoves the frame sideways 1 m per G", () => {
   const pose = run(sample({ accelG: { x: -0.9, y: 1, z: 0 } }), 2.5, {
-    ...DEFAULT_FRAME_TRAVEL,
+    ...WIDE_RODS,
     limitX: 2,
   });
   assert.ok(Math.abs(pose.x - -0.9) < 0.05, `x ${pose.x}`);
@@ -142,6 +147,7 @@ test("a jump rises then falls on a parabola", () => {
         pitch: 6,
       }),
       dt,
+      WIDE_RODS,
     );
     if (i === 18) yAtRise = pose.y;
     if (pose.y > peak) peak = pose.y;
@@ -511,7 +517,7 @@ test("pad demo wheelie at standstill still pitches when park lock is off", () =>
 
 test("studio 6DOF travel unlocks heave surge sway and yaw", () => {
   assert.equal(STUDIO_TRAVEL.dof, 6);
-  assert.ok(STUDIO_TRAVEL.rodLength > 0.5);
+  assert.ok(STUDIO_TRAVEL.rodStroke > 0.1);
   assert.ok(STUDIO_TRAVEL.limitX > 0.5 && STUDIO_TRAVEL.limitY > 0.5 && STUDIO_TRAVEL.limitZ > 0.5);
   assert.ok(STUDIO_TRAVEL.limitYaw > 0.2 && STUDIO_TRAVEL.rateLin > HUMAN_LIN_MS);
   const tilt = run(
@@ -553,4 +559,35 @@ test("demo 6DOF at speed still surges when world XYZ is a zero placeholder", () 
   );
   assert.ok(pose.z > 0.15, `demo surge ${pose.z}`);
   assert.ok(pose.pitch > 0.05, `demo pitch ${pose.pitch}`);
+});
+
+test("legacy rodLength does not splay the base or change stroke", () => {
+  const a = sanitizeTravel({ rodStroke: 0.28 });
+  const b = sanitizeTravel({ rodStroke: 0.28, rodLength: 2 });
+  assert.equal(a.rodStroke, 0.28);
+  assert.equal(b.rodStroke, 0.28);
+  assert.equal(sanitizeTravel({ rodStroke: 0.03 }).rodStroke, 0.08);
+  assert.equal(sanitizeTravel({ rodStroke: 3 }).rodStroke, 1);
+});
+
+test("a riding surge washes home faster than a parked 1 G hold", () => {
+  const burst = sample({
+    speedMs: 16,
+    throttle: 0.8,
+    accelG: { x: 0, y: 1, z: 0.9 },
+    velocity: { x: 0, y: 0, z: 16 },
+  });
+  const filter = createMotionFilter();
+  let pose = identityPose();
+  for (let i = 0; i < 24; i++) pose = stepMotion(filter, burst, 1 / 60);
+  const peak = Math.abs(pose.z);
+  assert.ok(peak > 0.04, `onset ${pose.z}`);
+  const cruise = sample({
+    speedMs: 16,
+    throttle: 0.4,
+    accelG: { x: 0, y: 1, z: 0 },
+    velocity: { x: 0, y: 0, z: 16 },
+  });
+  for (let i = 0; i < 50; i++) pose = stepMotion(filter, cruise, 1 / 60);
+  assert.ok(Math.abs(pose.z) < peak * 0.55, `home ${pose.z} peak ${peak}`);
 });

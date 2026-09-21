@@ -115,8 +115,14 @@ test("a forward burst leaves Cartesian surge, then washes out", () => {
     surge = Math.max(surge, cart.z);
   }
   assert.ok(surge > 0.25, `surge ${surge}`);
+  let quick = { x: 0, y: 0, z: 0 };
+  for (let i = 0; i < 48; i++) {
+    z += v * dt;
+    quick = stepCartesian(state, world(0, 1, z), { x: 0, y: 0, z: v }, 0, dt, "ground");
+  }
+  assert.ok(Math.abs(quick.z) < surge * 0.7, `snap ${quick.z} surge ${surge}`);
   let settled = { x: 0, y: 0, z: 0 };
-  for (let i = 0; i < 180; i++) {
+  for (let i = 0; i < 132; i++) {
     z += v * dt;
     settled = stepCartesian(state, world(0, 1, z), { x: 0, y: 0, z: v }, 0, dt, "ground");
   }

@@ -39,9 +39,9 @@ function sample(partial: Partial<Telemetry> = {}): Telemetry {
   };
 }
 
-function run(tel: Telemetry, seconds: number) {
+function run(tel: Telemetry, seconds: number, extra: Partial<typeof DEFAULT_FRAME_TRAVEL> = {}) {
   const filter = createMotionFilter();
-  const travel = { ...DEFAULT_FRAME_TRAVEL, dof: 6 as const };
+  const travel = { ...DEFAULT_FRAME_TRAVEL, dof: 6 as const, ...extra };
   let pose = stepMotion(filter, tel, 1 / 60, travel);
   for (let t = 1 / 60; t < seconds; t += 1 / 60) {
     pose = stepMotion(filter, tel, 1 / 60, travel);
@@ -86,7 +86,11 @@ test("6DOF heave on a jump", () => {
 });
 
 test("6DOF surge washout", () => {
-  const pose = run(sample({ speedMs: 0, velocity: { x: 0, y: 0, z: 0 }, accelG: { x: 0, y: 1, z: 1 } }), 2.4);
+  const pose = run(
+    sample({ speedMs: 0, velocity: { x: 0, y: 0, z: 0 }, accelG: { x: 0, y: 1, z: 1 } }),
+    2.4,
+    { rodStroke: 1 },
+  );
   assert.ok(pose.z > 0.7, `z ${pose.z}`);
 });
 
