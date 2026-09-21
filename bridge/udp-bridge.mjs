@@ -27,10 +27,12 @@ async function flush() {
     latest = null;
     posting = true;
     try {
+      const raw = Buffer.isBuffer(body) ? body.toString("utf8") : String(body);
+      const payload = raw.replace(/(?<![A-Za-z0-9_])-?(?:nan|NaN|Infinity|Inf)(?![A-Za-z0-9_])/g, "0");
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body,
+        body: payload,
       });
       if (!response.ok && Date.now() - lastError > 4000) {
         lastError = Date.now();

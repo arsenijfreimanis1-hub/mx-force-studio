@@ -57,5 +57,9 @@ export function sanitizeTelemetry(tel: Telemetry, prev?: Telemetry): Telemetry {
       saneNumber(tel.suspVelocity[0], -8, 8, p?.suspVelocity[0] ?? 0),
       saneNumber(tel.suspVelocity[1], -8, 8, p?.suspVelocity[1] ?? 0),
     ],
+    brakePressureKpa: [
+      saneNumber(tel.brakePressureKpa[0], 0, 8000, p?.brakePressureKpa[0] ?? 0),
+      saneNumber(tel.brakePressureKpa[1], 0, 8000, p?.brakePressureKpa[1] ?? 0),
+    ],
   };
 }

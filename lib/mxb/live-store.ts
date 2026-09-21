@@ -215,8 +215,10 @@ function vec(v: Vec3 | undefined, fallback: Vec3): Vec3 {
 }
 
 function pair(v: [number, number] | undefined, fallback: [number, number]): [number, number] {
-  if (!v || v.length < 2 || typeof v[0] !== "number" || typeof v[1] !== "number") return fallback;
-  return [v[0], v[1]];
+  if (!v || v.length < 2) return fallback;
+  const a = Number(v[0]);
+  const b = Number(v[1]);
+  return [Number.isFinite(a) ? a : fallback[0], Number.isFinite(b) ? b : fallback[1]];
 }
 
 /** Fill holes so a 50cc or a 450 packet still drives the 6DOF deck. */

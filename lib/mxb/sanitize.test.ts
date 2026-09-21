@@ -87,6 +87,13 @@ test("a real 0.6 throttle stays 0.6 after sanitize", () => {
   assert.equal(clean.clutch, 0.2);
 });
 
+test("NaN brake pressure falls back instead of poisoning the packet", () => {
+  const prev = sample({ brakePressureKpa: [120, 80] });
+  const clean = sanitizeTelemetry(sample({ brakePressureKpa: [Number.NaN, 3.3] }), prev);
+  assert.equal(clean.brakePressureKpa[0], 120);
+  assert.equal(clean.brakePressureKpa[1], 3.3);
+});
+
 test("normalizeTelemetry sanitizes junk pedals and still fills holes", () => {
   const prev = sample({ rpm: 9000, steer: -12, clutch: 0.4, throttle: 0.55 });
   const next = normalizeTelemetry(

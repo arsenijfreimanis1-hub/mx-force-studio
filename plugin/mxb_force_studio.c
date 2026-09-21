@@ -274,6 +274,11 @@ __declspec(dllexport) void RunSplit(void *_pData, int _iDataSize)
 	g_have_split = 1;
 }
 
+static float jn(float v)
+{
+	return isfinite(v) ? v : 0.f;
+}
+
 static int telemetry_json(char *buf, size_t buf_sz, const SPluginsBikeData_t *d, float time, float pos)
 {
 	return snprintf(
@@ -301,7 +306,7 @@ static int telemetry_json(char *buf, size_t buf_sz, const SPluginsBikeData_t *d,
 		d->m_fClutch,
 		d->m_afWheelSpeed[0], d->m_afWheelSpeed[1],
 		d->m_aiWheelMaterial[0], d->m_aiWheelMaterial[1],
-		d->m_afBrakePressure[0], d->m_afBrakePressure[1],
+		jn(d->m_afBrakePressure[0]), jn(d->m_afBrakePressure[1]),
 		d->m_fSteerTorque,
 		time,
 		pos,

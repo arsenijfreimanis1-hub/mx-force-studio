@@ -5,6 +5,7 @@ import {
   isLive,
   packetAgeMs,
 } from "@/lib/mxb/live-store";
+import { parsePluginJson } from "@/lib/mxb/plugin-json";
 import type { LivePacket, Telemetry } from "@/lib/mxb/types";
 
 export const runtime = "nodejs";
@@ -26,7 +27,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as Partial<LivePacket>;
+  let body: Partial<LivePacket>;
+  try {
+    body = parsePluginJson<Partial<LivePacket>>(await request.text());
+  } catch {
+    return NextResponse.json({ error: "Body is not JSON." }, { status: 400 });
+  }
 
   const leavingTrack = typeof body.state === "number" && body.state < 1;
   if (!leavingTrack && !isTelemetry(body.telemetry)) {
