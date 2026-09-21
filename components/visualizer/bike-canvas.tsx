@@ -58,12 +58,12 @@ export function BikeCanvas({
       onCreated={({ invalidate }) => invalidate()}
     >
       <color attach="background" args={["#8fb4d4"]} />
-      <fog attach="fog" args={["#c8b89c", 22, 55]} />
+      <fog attach="fog" args={["#c8b89c", 12, 30]} />
       <mesh>
-        <sphereGeometry args={[40, 24, 16]} />
+        <sphereGeometry args={[22, 24, 16]} />
         <meshBasicMaterial color="#8eb7d9" side={1} />
       </mesh>
-      <PerspectiveCamera makeDefault position={[2.05, 1.62, -2.55]} fov={40} />
+      <PerspectiveCamera makeDefault position={[1.38, 0.98, -1.72]} fov={38} />
       <hemisphereLight color="#fff1d6" groundColor="#7a5a3c" intensity={0.85} />
       <directionalLight position={[8, 10, 4]} intensity={1.7} color="#ffe7c2" />
 
@@ -72,9 +72,9 @@ export function BikeCanvas({
         <ContactShadows
           position={[0, 0.002, 0]}
           opacity={0.35}
-          scale={8}
+          scale={4.6}
           blur={2.2}
-          far={2.5}
+          far={1.8}
           frames={driving ? Infinity : 1}
         />
         <WorldMotionCues showLabels={showPadLabels} />
@@ -101,9 +101,9 @@ export function BikeCanvas({
         enableZoom
         enableRotate={inspect}
         maxPolarAngle={Math.PI / 2 - 0.04}
-        minDistance={0.95}
-        maxDistance={7}
-        target={[0, PLATFORM_HOME_Y + 0.42, 0]}
+        minDistance={0.7}
+        maxDistance={4.2}
+        target={[0, PLATFORM_HOME_Y + 0.28, 0]}
       />
     </Canvas>
   );

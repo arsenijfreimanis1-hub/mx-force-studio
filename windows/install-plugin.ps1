@@ -68,5 +68,12 @@ if (-not (Test-Path -LiteralPath $dest)) {
 Copy-Item -LiteralPath $srcDlo -Destination (Join-Path $dest "mxb_force_studio.dlo") -Force
 Copy-Item -LiteralPath $srcIni -Destination (Join-Path $dest "force_studio.ini") -Force
 
+$logDir = Join-Path $dest "force_studio_logs"
+if (-not (Test-Path -LiteralPath $logDir)) {
+  New-Item -ItemType Directory -Path $logDir | Out-Null
+}
+Set-Content -LiteralPath (Join-Path $root "plugin\mxb-plugins-dir.txt") -Value $dest -NoNewline
+
 Write-Host "Plugin installed to $dest"
+Write-Host "Spreadsheets save to $logDir"
 Write-Host "MX Bikes loads plugins at startup - if the game is already open, restart it."

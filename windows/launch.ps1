@@ -138,6 +138,12 @@ try {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $plugin
   }
 
+  $pointer = Join-Path $root "plugin\mxb-plugins-dir.txt"
+  if (Test-Path -LiteralPath $pointer) {
+    $env:MXB_PLUGINS_DIR = (Get-Content -LiteralPath $pointer -Raw).Trim()
+    Write-Host "Spreadsheet folder: $(Join-Path $env:MXB_PLUGINS_DIR 'force_studio_logs')"
+  }
+
   Write-Host ""
   Write-Host "================================================================" -ForegroundColor Green
   Write-Host "  APP READY   http://127.0.0.1:43187" -ForegroundColor Green

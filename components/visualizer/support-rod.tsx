@@ -4,8 +4,8 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { MutableRefObject } from "react";
-import { PLATFORM_HOME_Y, visualPitch, type FrameTravel, type Pose6 } from "@/lib/mxb/motion";
-import { DECK_ATTACH_Y, DECK_HALF_L, ROD_CORNERS, rodBaseCorner, rodDeckLocal } from "@/lib/mxb/rods";
+import { DEFAULT_ROD_LENGTH, PLATFORM_HOME_Y, visualPitch, type FrameTravel, type Pose6 } from "@/lib/mxb/motion";
+import { ROD_CORNERS, rodBaseCorner, rodDeckLocal } from "@/lib/mxb/rods";
 
 const up = new THREE.Vector3(0, 1, 0);
 
@@ -24,9 +24,17 @@ export function MotionPedestal({
   const top1 = useRef<THREE.Mesh>(null);
   const top2 = useRef<THREE.Mesh>(null);
   const top3 = useRef<THREE.Mesh>(null);
+  const uj0 = useRef<THREE.Mesh>(null);
+  const uj1 = useRef<THREE.Mesh>(null);
+  const uj2 = useRef<THREE.Mesh>(null);
+  const uj3 = useRef<THREE.Mesh>(null);
+  const railF = useRef<THREE.Mesh>(null);
+  const railR = useRef<THREE.Mesh>(null);
+  const railL = useRef<THREE.Mesh>(null);
+  const railRi = useRef<THREE.Mesh>(null);
   const rods = [rod0, rod1, rod2, rod3];
   const tops = [top0, top1, top2, top3];
-  const hinge = useRef<THREE.Group>(null);
+  const ujs = [uj0, uj1, uj2, uj3];
   const start = useMemo(() => new THREE.Vector3(), []);
   const end = useMemo(() => new THREE.Vector3(), []);
   const mid = useMemo(() => new THREE.Vector3(), []);
@@ -37,21 +45,41 @@ export function MotionPedestal({
 
   useFrame(() => {
     const pose = poseRef.current;
+    const restLen = travelRef?.current.rodLength ?? DEFAULT_ROD_LENGTH;
     const pitchSign = travelRef?.current.visualPitch ?? -1;
     const pitch = visualPitch(pose.pitch, pitchSign);
     euler.set(pitch, pose.yaw, pose.roll, "YXZ");
-    if (hinge.current) {
-      hinge.current.position.set(pose.x, PLATFORM_HOME_Y + pose.y + DECK_ATTACH_Y, pose.z);
-      hinge.current.rotation.set(pitch, pose.yaw, pose.roll, "YXZ");
+
+    const fl = rodBaseCorner(-1, 1, restLen);
+    const width = Math.abs(fl.x) * 2 + 0.08;
+    const depth = Math.abs(fl.z) * 2 + 0.08;
+    if (railF.current) {
+      railF.current.position.set(0, 0.04, fl.z);
+      railF.current.scale.set(width, 0.045, 0.07);
     }
+    if (railR.current) {
+      railR.current.position.set(0, 0.04, -fl.z);
+      railR.current.scale.set(width, 0.045, 0.07);
+    }
+    if (railL.current) {
+      railL.current.position.set(fl.x, 0.04, 0);
+      railL.current.scale.set(0.07, 0.045, depth);
+    }
+    if (railRi.current) {
+      railRi.current.position.set(-fl.x, 0.04, 0);
+      railRi.current.scale.set(0.07, 0.045, depth);
+    }
+
     for (let i = 0; i < ROD_CORNERS.length; i++) {
       const mesh = rods[i].current;
       const ball = tops[i].current;
+      const uj = ujs[i].current;
       if (!mesh) continue;
       const c = ROD_CORNERS[i];
-      const base = rodBaseCorner(c.x, c.z);
+      const base = rodBaseCorner(c.x, c.z, restLen);
       const deck = rodDeckLocal(c.x, c.z);
       start.set(base.x, base.y, base.z);
+      if (uj) uj.position.copy(start);
       local.set(deck.x, deck.y, deck.z).applyEuler(euler);
       end.set(local.x + pose.x, local.y + PLATFORM_HOME_Y + pose.y, local.z + pose.z);
       dir.copy(end).sub(start);
@@ -67,74 +95,47 @@ export function MotionPedestal({
 
   return (
     <group>
-      {(() => {
-        const fl = rodBaseCorner(-1, 1);
-        const width = Math.abs(fl.x) * 2 + 0.08;
-        const depth = Math.abs(fl.z) * 2 + 0.08;
-        return (
-          <>
-            <mesh position={[0, 0.04, fl.z]}>
-              <boxGeometry args={[width, 0.045, 0.07]} />
-              <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
-            </mesh>
-            <mesh position={[0, 0.04, -fl.z]}>
-              <boxGeometry args={[width, 0.045, 0.07]} />
-              <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
-            </mesh>
-            <mesh position={[fl.x, 0.04, 0]}>
-              <boxGeometry args={[0.07, 0.045, depth]} />
-              <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
-            </mesh>
-            <mesh position={[-fl.x, 0.04, 0]}>
-              <boxGeometry args={[0.07, 0.045, depth]} />
-              <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
-            </mesh>
-          </>
-        );
-      })()}
+      <mesh ref={railF}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
+      </mesh>
+      <mesh ref={railR}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
+      </mesh>
+      <mesh ref={railL}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
+      </mesh>
+      <mesh ref={railRi}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color="#292524" metalness={0.45} roughness={0.5} />
+      </mesh>
       <mesh position={[0, 0.05, 0]}>
-        <boxGeometry args={[0.28, 0.03, 0.22]} />
+        <boxGeometry args={[0.22, 0.03, 0.18]} />
         <meshStandardMaterial color="#44403c" metalness={0.45} roughness={0.4} />
       </mesh>
 
-      {ROD_CORNERS.map((c) => {
-        const base = rodBaseCorner(c.x, c.z);
-        return (
-          <mesh key={`uj-${c.id}`} position={[base.x, base.y, base.z]}>
-            <sphereGeometry args={[0.032, 10, 8]} />
-            <meshStandardMaterial color="#a8a29e" metalness={0.7} roughness={0.28} />
-          </mesh>
-        );
-      })}
+      {ujs.map((ref, i) => (
+        <mesh key={`uj-${ROD_CORNERS[i].id}`} ref={ref}>
+          <sphereGeometry args={[0.026, 10, 8]} />
+          <meshStandardMaterial color="#a8a29e" metalness={0.7} roughness={0.28} />
+        </mesh>
+      ))}
 
       {rods.map((ref, i) => (
         <mesh key={`rod-${ROD_CORNERS[i].id}`} ref={ref}>
-          <cylinderGeometry args={[0.016, 0.022, 1, 8]} />
+          <cylinderGeometry args={[0.013, 0.018, 1, 8]} />
           <meshStandardMaterial color="#ea580c" metalness={0.55} roughness={0.35} />
         </mesh>
       ))}
 
       {tops.map((ref, i) => (
         <mesh key={`ball-${ROD_CORNERS[i].id}`} ref={ref}>
-          <sphereGeometry args={[0.028, 10, 8]} />
+          <sphereGeometry args={[0.022, 10, 8]} />
           <meshStandardMaterial color="#d6d3d1" metalness={0.75} roughness={0.22} />
         </mesh>
       ))}
-
-      <group ref={hinge}>
-        <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, -0.04, 0]}>
-          <cylinderGeometry args={[0.018, 0.018, DECK_HALF_L * 2 + 0.08, 10]} />
-          <meshStandardMaterial color="#78716c" metalness={0.65} roughness={0.3} />
-        </mesh>
-        <mesh position={[0, -0.04, DECK_HALF_L * 0.55]}>
-          <boxGeometry args={[0.08, 0.05, 0.055]} />
-          <meshStandardMaterial color="#57534e" metalness={0.5} roughness={0.4} />
-        </mesh>
-        <mesh position={[0, -0.04, -DECK_HALF_L * 0.55]}>
-          <boxGeometry args={[0.08, 0.05, 0.055]} />
-          <meshStandardMaterial color="#57534e" metalness={0.5} roughness={0.4} />
-        </mesh>
-      </group>
     </group>
   );
 }

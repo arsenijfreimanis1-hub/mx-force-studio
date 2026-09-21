@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { Eye, EyeOff, Download, Gamepad2, LineChart, Loader2, Radio, Sparkles, Unplug, Upload } from "lucide-react";
+import { Eye, EyeOff, Gamepad2, LineChart, Loader2, Play, Radio, Save, Square, Unplug } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -19,14 +19,7 @@ import { formatG, speedKph } from "@/lib/mxb/forces";
 import { gamepadActive, padTraceActive, readFirstGamepad, readPadTrace } from "@/lib/mxb/gamepad";
 import { detectCrash } from "@/lib/mxb/crash";
 import { setupLabel } from "@/lib/mxb/inputs";
-import {
-  DOF_STEPS,
-  clampDof,
-  dofAxes,
-  dofStep,
-  saveStoredDof,
-  type DofLevel,
-} from "@/lib/mxb/dof";
+import { dofStep, saveStoredDof } from "@/lib/mxb/dof";
 import { displayBikeName, holdLive, isPlaceholderBikeName, stabilizeBikeEvent } from "@/lib/mxb/live-store";
 import { sanitizeTelemetry } from "@/lib/mxb/sanitize";
 import { fmtLapMs, fmtOnTrackS, sessionKind, suspUsedPct, trackPct } from "@/lib/mxb/session";
@@ -58,14 +51,9 @@ import {
   type SheetLesson,
 } from "@/lib/mxb/lesson";
 import {
-  clearSheetBuffer,
   createSheetBuffer,
-  downloadSheetCsv,
-  loadAutoLearn,
-  parseSheetCsv,
   pushSheetRow,
   readSheetRows,
-  saveAutoLearn,
   sheetDurationS,
   sheetFilename,
   sheetToCsv,
@@ -147,10 +135,13 @@ export function MxForceStudio() {
   const [padOn, setPadOn] = useState(false);
   const [driving, setDriving] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
-  const [autoLearn, setAutoLearn] = useState(true);
+  const [logMode, setLogMode] = useState<"off" | "auto" | "start">("off");
   const [sheetCount, setSheetCount] = useState(0);
   const [sheetSeconds, setSheetSeconds] = useState(0);
   const [lesson, setLesson] = useState<SheetLesson>(() => emptyLesson());
+  const [saveMsg, setSaveMsg] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [logDir, setLogDir] = useState("");
 
   const pollRef = useRef<() => Promise<void>>(async () => {});
   const motionRef = useRef(createMotionFilter());
@@ -178,15 +169,19 @@ export function MxForceStudio() {
   const lastSheetMs = useRef(0);
   const lastLearnMs = useRef(0);
   const lastSignFlipMs = useRef(0);
-  const autoLearnRef = useRef(true);
+  const logModeRef = useRef<"off" | "auto" | "start">("off");
   const lessonRef = useRef<SheetLesson>(emptyLesson());
-  const sheetFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const stored = loadStoredTravel(STUDIO_TRAVEL);
     setTravel(stored);
     setGraphOpen(loadTraceOpen(false));
-    setAutoLearn(loadAutoLearn(true));
+    void fetch("/api/sheet")
+      .then((res) => res.json())
+      .then((data: { dir?: string }) => {
+        if (data.dir) setLogDir(data.dir);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -194,7 +189,7 @@ export function MxForceStudio() {
     userTravelRef.current = travel;
     travelRef.current = travel;
     graphOpenRef.current = graphOpen;
-    autoLearnRef.current = autoLearn;
+    logModeRef.current = logMode;
     if (!connectRequested) liveRef.current = false;
   });
 
@@ -207,38 +202,27 @@ export function MxForceStudio() {
     });
   };
 
-  const setDof = (dof: DofLevel) => {
-    patchTravel({ dof: clampDof(dof) });
-  };
-
-  const exportSheet = () => {
-    const csv = sheetToCsv(sheetRef.current);
-    downloadSheetCsv(csv, sheetFilename(displayBikeName(eventRef.current) || "session"));
-  };
-
-  const runLearn = (rows = readSheetRows(sheetRef.current, 8000), allowSignFlip = true) => {
-    const nextLesson = learnFromRows(rows, {
-      visualPitch: travelRef.current.visualPitch,
-      leanSign: travelRef.current.leanSign,
-      dtMs: 40,
-    });
-    lessonRef.current = nextLesson;
-    setLesson(nextLesson);
-    const patched = applyLesson(travelRef.current, nextLesson, { allowSignFlip, slew: 0.55 });
-    if (allowSignFlip) lastSignFlipMs.current = performance.now();
-    setTravel(patched);
-    saveStoredTravel(patched);
-    saveStoredDof(patched.dof);
-  };
-
-  const loadSheetFile = async (file: File) => {
-    const text = await file.text();
-    const rows = parseSheetCsv(text);
-    if (!rows.length) {
-      setLesson({ ...emptyLesson(), notes: ["That spreadsheet had no usable rows."] });
-      return;
+  const saveSheet = async () => {
+    if (sheetRef.current.len < 2 || saving) return;
+    setSaving(true);
+    setSaveMsg("");
+    try {
+      const csv = sheetToCsv(sheetRef.current);
+      const filename = sheetFilename(displayBikeName(eventRef.current) || "session");
+      const res = await fetch("/api/sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv, filename }),
+      });
+      const data = (await res.json()) as { file?: string; dir?: string; error?: string };
+      if (!res.ok) throw new Error(data.error || "Save failed");
+      if (data.dir) setLogDir(data.dir);
+      setSaveMsg(data.file ? `Saved ${data.file}` : "Saved next to the plugin.");
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : "Could not save next to the plugin.");
+    } finally {
+      setSaving(false);
     }
-    runLearn(rows, true);
   };
 
   useEffect(() => {
@@ -275,7 +259,9 @@ export function MxForceStudio() {
           travelRef.current.visualPitch,
         );
       }
-      if (nextDriving && now - lastSheetMs.current >= 40) {
+      const mode = logModeRef.current;
+      const shouldLog = mode === "start" || (mode === "auto" && nextDriving);
+      if (shouldLog && now - lastSheetMs.current >= 40) {
         lastSheetMs.current = now;
         pushSheetRow(
           sheetRef.current,
@@ -287,8 +273,8 @@ export function MxForceStudio() {
         );
       }
       if (
-        autoLearnRef.current &&
-        nextDriving &&
+        mode === "auto" &&
+        shouldLog &&
         sheetRef.current.len >= 80 &&
         now - lastLearnMs.current >= 4000
       ) {
@@ -462,9 +448,7 @@ export function MxForceStudio() {
   const frontSuspPct = Math.round(suspUsedPct(telemetry.suspLength[0], hudEvent.suspMaxTravel[0]) * 100);
   const rearSuspPct = Math.round(suspUsedPct(telemetry.suspLength[1], hudEvent.suspMaxTravel[1]) * 100);
   const onTrackPct = Math.round(trackPct(telemetry) * 100);
-  const dof = clampDof(travel.dof);
-  const axes = dofAxes(dof);
-  const step = dofStep(dof);
+  const step = dofStep();
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
@@ -499,10 +483,6 @@ export function MxForceStudio() {
               poseRef.current = identityPose();
               setHudTel(restTelemetry({ rpm: 0 }));
               setPadOn(false);
-              clearSheetBuffer(sheetRef.current);
-              setSheetCount(0);
-              setSheetSeconds(0);
-              setLesson(emptyLesson());
               void pollRef.current();
             }
           }}
@@ -581,7 +561,7 @@ export function MxForceStudio() {
               ) : null}
               <span className="text-white/35">·</span>
               <span>
-                <PoseReadout poseRef={poseRef} dof={dof} />
+                <PoseReadout poseRef={poseRef} />
               </span>
             </div>
           </div>
@@ -598,10 +578,6 @@ export function MxForceStudio() {
             >
               <LineChart />
               {graphOpen ? "Hide graph" : "Graph"}
-            </Button>
-            <Button size="xs" variant="secondary" onClick={exportSheet} disabled={sheetCount < 2}>
-              <Download />
-              Sheet
             </Button>
             <Button size="xs" variant={hideForces ? "default" : "secondary"} onClick={() => setHideForces((v) => !v)}>
               {hideForces ? <Eye /> : <EyeOff />}
@@ -637,12 +613,12 @@ export function MxForceStudio() {
                 bufferRef={traceRef}
                 live={usingLive}
                 sheetHint={
-                  sheetCount
-                    ? `${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)}s · ${describeLesson(lesson)}`
-                    : "Ride to fill the spreadsheet"
+                  logMode === "off"
+                    ? sheetCount
+                      ? `Stopped · ${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)}s`
+                      : "Logging is off — Auto log or Start log"
+                    : `${logMode === "auto" ? "Auto" : "Recording"} · ${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)}s`
                 }
-                onDownload={exportSheet}
-                onLearn={() => runLearn()}
               />
             </div>
           ) : (
@@ -653,8 +629,6 @@ export function MxForceStudio() {
         <aside className="flex min-h-0 flex-col bg-card">
           <ScrollArea className="min-h-0 flex-1">
             <div className="flex flex-col gap-4 p-3">
-              <DofPicker dof={dof} onChange={setDof} />
-
               {liveState === "idle" ? (
                 <>
                   <p className="text-xs leading-4 text-muted-foreground">
@@ -673,10 +647,6 @@ export function MxForceStudio() {
                       poseRef.current = identityPose();
                       setHudTel(restTelemetry({ rpm: 0 }));
                       setPadOn(false);
-                      clearSheetBuffer(sheetRef.current);
-                      setSheetCount(0);
-                      setSheetSeconds(0);
-                      setLesson(emptyLesson());
                       void pollRef.current();
                     }}
                   >
@@ -753,47 +723,51 @@ export function MxForceStudio() {
                   Spreadsheet
                 </p>
                 <p className="text-xs leading-4 text-muted-foreground">
-                  {sheetCount
-                    ? `${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)} s logged`
-                    : "Ride or use the pad — every channel is written to a CSV."}
+                  {logMode === "off"
+                    ? sheetCount
+                      ? `Stopped · ${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)} s`
+                      : "Off until you press Auto log or Start log."
+                    : logMode === "auto"
+                      ? `Auto · ${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)} s`
+                      : `Recording · ${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)} s`}
                 </p>
+                <p className="text-[11px] leading-4 text-muted-foreground">
+                  Saves into the game plugins folder, next to the MX Bikes plugin.
+                  {logDir ? ` ${logDir}` : ""}
+                </p>
+                {saveMsg ? <p className="text-[11px] leading-4 text-emerald-300">{saveMsg}</p> : null}
                 <p className="text-[11px] leading-4 text-foreground/80">{describeLesson(lesson)}</p>
                 <div className="grid grid-cols-2 gap-1">
-                  <Button size="xs" variant="secondary" onClick={exportSheet} disabled={sheetCount < 2}>
-                    <Download />
-                    Download CSV
-                  </Button>
-                  <Button size="xs" variant="secondary" onClick={() => runLearn()} disabled={sheetCount < 16}>
-                    <Sparkles />
-                    Learn now
-                  </Button>
-                  <Button size="xs" variant="outline" onClick={() => sheetFileRef.current?.click()}>
-                    <Upload />
-                    Load CSV
+                  <Button
+                    size="xs"
+                    variant={logMode === "auto" ? "default" : "outline"}
+                    onClick={() => setLogMode("auto")}
+                  >
+                    <Radio />
+                    Auto log
                   </Button>
                   <Button
                     size="xs"
-                    variant={autoLearn ? "default" : "outline"}
-                    onClick={() => {
-                      const next = !autoLearn;
-                      setAutoLearn(next);
-                      saveAutoLearn(next);
-                    }}
+                    variant="outline"
+                    disabled={logMode === "off"}
+                    onClick={() => setLogMode("off")}
                   >
-                    {autoLearn ? "Auto-learn on" : "Auto-learn off"}
+                    <Square />
+                    Stop log
+                  </Button>
+                  <Button size="xs" variant="secondary" onClick={() => void saveSheet()} disabled={sheetCount < 2 || saving}>
+                    <Save />
+                    {saving ? "Saving…" : "Save"}
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant={logMode === "start" ? "default" : "outline"}
+                    onClick={() => setLogMode("start")}
+                  >
+                    <Play />
+                    Start log
                   </Button>
                 </div>
-                <input
-                  ref={sheetFileRef}
-                  type="file"
-                  accept=".csv,text/csv"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    event.target.value = "";
-                    if (file) void loadSheetFile(file);
-                  }}
-                />
               </div>
 
               <div className="grid gap-2">
@@ -863,50 +837,51 @@ export function MxForceStudio() {
                   display={`${((travel.limitPitch * 180) / Math.PI).toFixed(0)}°`}
                   onChange={(deg) => patchTravel({ limitPitch: (deg * Math.PI) / 180 })}
                 />
-                {axes.yaw ? (
-                  <NumberSlider
-                    label="Yaw · heading"
-                    value={(travel.limitYaw * 180) / Math.PI}
-                    min={0}
-                    max={60}
-                    step={1}
-                    display={`${((travel.limitYaw * 180) / Math.PI).toFixed(0)}°`}
-                    onChange={(deg) => patchTravel({ limitYaw: (deg * Math.PI) / 180 })}
-                  />
-                ) : null}
-                {axes.y ? (
-                  <NumberSlider
-                    label="Heave · up / down"
-                    value={travel.limitY}
-                    min={0}
-                    max={2}
-                    step={0.05}
-                    display={`${travel.limitY.toFixed(2)} m`}
-                    onChange={(limitY) => patchTravel({ limitY })}
-                  />
-                ) : null}
-                {axes.z ? (
-                  <NumberSlider
-                    label="Surge · fore / aft"
-                    value={travel.limitZ}
-                    min={0}
-                    max={2}
-                    step={0.05}
-                    display={`${travel.limitZ.toFixed(2)} m`}
-                    onChange={(limitZ) => patchTravel({ limitZ })}
-                  />
-                ) : null}
-                {axes.x ? (
-                  <NumberSlider
-                    label="Sway · left / right"
-                    value={travel.limitX}
-                    min={0}
-                    max={2}
-                    step={0.05}
-                    display={`${travel.limitX.toFixed(2)} m`}
-                    onChange={(limitX) => patchTravel({ limitX })}
-                  />
-                ) : null}
+                <NumberSlider
+                  label="Rod length"
+                  value={travel.rodLength}
+                  min={0.4}
+                  max={1.8}
+                  step={0.01}
+                  display={`${travel.rodLength.toFixed(2)} m`}
+                  onChange={(rodLength) => patchTravel({ rodLength })}
+                />
+                <NumberSlider
+                  label="Yaw · heading"
+                  value={(travel.limitYaw * 180) / Math.PI}
+                  min={0}
+                  max={60}
+                  step={1}
+                  display={`${((travel.limitYaw * 180) / Math.PI).toFixed(0)}°`}
+                  onChange={(deg) => patchTravel({ limitYaw: (deg * Math.PI) / 180 })}
+                />
+                <NumberSlider
+                  label="Heave · up / down"
+                  value={travel.limitY}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  display={`${travel.limitY.toFixed(2)} m`}
+                  onChange={(limitY) => patchTravel({ limitY })}
+                />
+                <NumberSlider
+                  label="Surge · fore / aft"
+                  value={travel.limitZ}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  display={`${travel.limitZ.toFixed(2)} m`}
+                  onChange={(limitZ) => patchTravel({ limitZ })}
+                />
+                <NumberSlider
+                  label="Sway · left / right"
+                  value={travel.limitX}
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  display={`${travel.limitX.toFixed(2)} m`}
+                  onChange={(limitX) => patchTravel({ limitX })}
+                />
                 <div className="grid grid-cols-2 gap-1">
                   <Button
                     size="xs"
@@ -960,50 +935,28 @@ function fmtDeg(rad: number) {
   return `${d >= 0 ? "+" : ""}${d.toFixed(0)}°`;
 }
 
-function PoseReadout({ poseRef, dof }: { poseRef: MutableRefObject<Pose6>; dof: DofLevel }) {
+function PoseReadout({ poseRef }: { poseRef: MutableRefObject<Pose6> }) {
   const el = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     let frame = 0;
     const tick = () => {
       const pose = poseRef.current;
-      const axes = dofAxes(dof);
       if (el.current) {
-        const parts = [`R ${fmtDeg(pose.roll)}`, `P ${fmtDeg(pose.pitch)}`];
-        if (axes.y) parts.push(`Y ${fmtM(pose.y)}`);
-        if (axes.z) parts.push(`Z ${fmtM(pose.z)}`);
-        if (axes.x) parts.push(`X ${fmtM(pose.x)}`);
-        if (axes.yaw) parts.push(`Yw ${fmtDeg(pose.yaw)}`);
-        el.current.textContent = parts.join("  ");
+        el.current.textContent = [
+          `R ${fmtDeg(pose.roll)}`,
+          `P ${fmtDeg(pose.pitch)}`,
+          `Y ${fmtM(pose.y)}`,
+          `Z ${fmtM(pose.z)}`,
+          `X ${fmtM(pose.x)}`,
+          `Yw ${fmtDeg(pose.yaw)}`,
+        ].join("  ");
       }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [poseRef, dof]);
+  }, [poseRef]);
   return <span ref={el}>R +0°  P +0°</span>;
-}
-
-function DofPicker({ dof, onChange }: { dof: DofLevel; onChange: (dof: DofLevel) => void }) {
-  return (
-    <div className="grid gap-2">
-      <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-        Motion axes · 6DOF on
-      </p>
-      <div className="grid grid-cols-5 gap-1">
-        {DOF_STEPS.map((item) => (
-          <Button
-            key={item.dof}
-            size="xs"
-            variant={item.dof === dof ? "default" : "outline"}
-            onClick={() => onChange(item.dof)}
-          >
-            {item.dof}
-          </Button>
-        ))}
-      </div>
-      <p className="text-[11px] leading-4 text-muted-foreground">{dofStep(dof).hint}</p>
-    </div>
-  );
 }
 
 function InputsOverlay({ telemetry }: { telemetry: Telemetry }) {

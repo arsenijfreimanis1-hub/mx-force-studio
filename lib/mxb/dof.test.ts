@@ -39,9 +39,9 @@ function sample(partial: Partial<Telemetry> = {}): Telemetry {
   };
 }
 
-function run(tel: Telemetry, seconds: number, dof: 2 | 3 | 4 | 5 | 6) {
+function run(tel: Telemetry, seconds: number) {
   const filter = createMotionFilter();
-  const travel = { ...DEFAULT_FRAME_TRAVEL, dof };
+  const travel = { ...DEFAULT_FRAME_TRAVEL, dof: 6 as const };
   let pose = stepMotion(filter, tel, 1 / 60, travel);
   for (let t = 1 / 60; t < seconds; t += 1 / 60) {
     pose = stepMotion(filter, tel, 1 / 60, travel);
@@ -49,44 +49,29 @@ function run(tel: Telemetry, seconds: number, dof: 2 | 3 | 4 | 5 | 6) {
   return pose;
 }
 
-test("clampDof stays on the 2–6 ladder", () => {
-  assert.equal(clampDof(1), 2);
-  assert.equal(clampDof(2.4), 2);
-  assert.equal(clampDof(4), 4);
+test("clampDof is always 6", () => {
+  assert.equal(clampDof(1), 6);
+  assert.equal(clampDof(2.4), 6);
+  assert.equal(clampDof(4), 6);
   assert.equal(clampDof(9), 6);
 });
 
-test("2DOF is lean and pitch only", () => {
-  const a = dofAxes(2);
-  assert.equal(a.roll && a.pitch, true);
-  assert.equal(a.x || a.y || a.z || a.yaw, false);
+test("6DOF keeps every axis", () => {
+  const a = dofAxes(6);
+  assert.equal(a.roll && a.pitch && a.yaw && a.x && a.y && a.z, true);
 });
 
-test("maskPose zeros axes the current DOF has not unlocked", () => {
+test("maskPose no longer zeros axes", () => {
   const raw = { x: 1, y: 1, z: 1, yaw: 1, pitch: 0.2, roll: 0.3 };
-  const two = maskPose(raw, 2);
-  assert.equal(two.x, 0);
-  assert.equal(two.y, 0);
-  assert.equal(two.z, 0);
-  assert.equal(two.yaw, 0);
-  assert.equal(two.pitch, 0.2);
-  assert.equal(two.roll, 0.3);
-  assert.ok(maskPose(raw, 3).y === 1);
-  assert.ok(maskPose(raw, 4).z === 1);
-  assert.ok(maskPose(raw, 5).x === 1);
-  assert.ok(maskPose(raw, 6).yaw === 1);
+  assert.deepEqual(maskPose(raw, 6), raw);
 });
 
-test("2DOF follows a berm lean and ignores surge", () => {
-  const pose = run(sample({ roll: -28, accelG: { x: 0, y: 1, z: 1 }, throttle: 1 }), 0.7, 2);
+test("6DOF follows a berm lean", () => {
+  const pose = run(sample({ roll: -28, accelG: { x: 0, y: 1, z: 1 }, throttle: 1 }), 0.7);
   assert.ok(pose.roll > 0.28, `roll ${pose.roll}`);
-  assert.ok(Math.abs(pose.x) < 0.02, `x ${pose.x}`);
-  assert.ok(Math.abs(pose.z) < 0.02, `z ${pose.z}`);
-  assert.ok(Math.abs(pose.y) < 0.02, `y ${pose.y}`);
-  assert.ok(Math.abs(pose.yaw) < 0.02, `yaw ${pose.yaw}`);
 });
 
-test("3DOF adds heave on a jump and still ignores surge", () => {
+test("6DOF heave on a jump", () => {
   const pose = run(
     sample({
       accelG: { x: 0, y: 0.05, z: 1 },
@@ -96,19 +81,16 @@ test("3DOF adds heave on a jump and still ignores surge", () => {
       pitch: 8,
     }),
     0.35,
-    3,
   );
   assert.ok(pose.y > 0.08, `y ${pose.y}`);
-  assert.ok(Math.abs(pose.z) < 0.02, `z ${pose.z}`);
 });
 
-test("4DOF unlocks surge washout", () => {
-  const pose = run(sample({ speedMs: 0, velocity: { x: 0, y: 0, z: 0 }, accelG: { x: 0, y: 1, z: 1 } }), 2.4, 4);
+test("6DOF surge washout", () => {
+  const pose = run(sample({ speedMs: 0, velocity: { x: 0, y: 0, z: 0 }, accelG: { x: 0, y: 1, z: 1 } }), 2.4);
   assert.ok(pose.z > 0.7, `z ${pose.z}`);
-  assert.ok(Math.abs(pose.x) < 0.05, `x ${pose.x}`);
 });
 
-test("6DOF keeps yaw after the rest of the ladder", () => {
-  const pose = run(sample({ yawRate: 90, speedMs: 12 }), 0.5, 6);
+test("6DOF keeps yaw", () => {
+  const pose = run(sample({ yawRate: 90, speedMs: 12 }), 0.5);
   assert.ok(Math.abs(pose.yaw) > 0.03, `yaw ${pose.yaw}`);
 });

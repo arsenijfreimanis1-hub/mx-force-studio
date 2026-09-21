@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { restRodAngleDeg, rodBaseCorner, rodDeckLocal, rodLength } from "./rods.ts";
-import { PLATFORM_HOME_Y } from "./motion.ts";
+import {
+  defaultRestRodLength,
+  restRodAngleDeg,
+  rodBaseCorner,
+  rodBaseOut,
+  rodDeckLocal,
+  rodLength,
+} from "./rods.ts";
+import { DEFAULT_ROD_LENGTH, PLATFORM_HOME_Y } from "./motion.ts";
 
 test("rest rods sit near 45 degrees to the base", () => {
   const deg = restRodAngleDeg();
@@ -13,5 +20,13 @@ test("each rod has a usable rest stroke", () => {
   const local = rodDeckLocal(-1, 1);
   const deck = { x: local.x, y: PLATFORM_HOME_Y + local.y, z: local.z };
   const len = rodLength(base, deck);
-  assert.ok(len > 0.8 && len < 2.0, `length ${len}`);
+  assert.ok(len > 0.6 && len < 1.6, `length ${len}`);
+  assert.ok(Math.abs(len - DEFAULT_ROD_LENGTH) < 0.08, `default ${len} vs ${DEFAULT_ROD_LENGTH}`);
+});
+
+test("longer rest length widens the base", () => {
+  const short = rodBaseOut(0.7);
+  const long = rodBaseOut(1.4);
+  assert.ok(long > short + 0.15, `out ${short} → ${long}`);
+  assert.ok(defaultRestRodLength() > 0.6);
 });

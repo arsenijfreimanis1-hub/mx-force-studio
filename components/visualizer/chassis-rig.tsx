@@ -22,7 +22,7 @@ import {
 import { buildForceModel } from "@/lib/mxb/forces";
 import type { BikeEvent, ForceModel, SandboxInputs, Telemetry } from "@/lib/mxb/types";
 
-/** Fallback when travel has no DOF yet. 2DOF uses a much shorter tau. */
+/** Fallback visual follow when travel has no tau yet. */
 export const VISUAL_POSE_TAU = 0.07;
 
 export function ChassisRig({

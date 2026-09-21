@@ -511,6 +511,7 @@ test("pad demo wheelie at standstill still pitches when park lock is off", () =>
 
 test("studio 6DOF travel unlocks heave surge sway and yaw", () => {
   assert.equal(STUDIO_TRAVEL.dof, 6);
+  assert.ok(STUDIO_TRAVEL.rodLength > 0.5);
   assert.ok(STUDIO_TRAVEL.limitX > 0.5 && STUDIO_TRAVEL.limitY > 0.5 && STUDIO_TRAVEL.limitZ > 0.5);
   assert.ok(STUDIO_TRAVEL.limitYaw > 0.2 && STUDIO_TRAVEL.rateLin > HUMAN_LIN_MS);
   const tilt = run(

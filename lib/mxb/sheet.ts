@@ -1,5 +1,5 @@
 /**
- * Session spreadsheet: every live game / pad / deck sample as CSV rows
+ * Session spreadsheet: CSV rows only while Auto log or Start log is on.
  * Excel and Google Sheets can open. The lesson module reads the same rows.
  */
 

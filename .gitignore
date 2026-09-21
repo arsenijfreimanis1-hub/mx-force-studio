@@ -43,3 +43,7 @@ next-env.d.ts
 # session scratch
 /agent-tools
 
+# live spreadsheets written next to the MX Bikes plugin
+/plugin/force_studio_logs/
+/plugin/mxb-plugins-dir.txt
+

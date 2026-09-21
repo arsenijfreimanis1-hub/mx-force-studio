@@ -145,14 +145,10 @@ export function TelemetryGraph({
   bufferRef,
   live,
   sheetHint,
-  onDownload,
-  onLearn,
 }: {
   bufferRef: MutableRefObject<TraceBuffer>;
   live: boolean;
   sheetHint?: string;
-  onDownload?: () => void;
-  onLearn?: () => void;
 }) {
   const lastHud = useRef(0);
   const [ids, setIds] = useState<string[]>(DEFAULT_TRACE_IDS);
@@ -204,16 +200,6 @@ export function TelemetryGraph({
           <span className="ml-2 text-white/35">15s ago → now</span>
         </p>
         <div className="flex flex-wrap items-center gap-1">
-          {onDownload ? (
-            <Button size="xs" variant="secondary" onClick={onDownload}>
-              Download CSV
-            </Button>
-          ) : null}
-          {onLearn ? (
-            <Button size="xs" variant="secondary" onClick={onLearn}>
-              Learn
-            </Button>
-          ) : null}
           <Button size="xs" variant={more ? "default" : "secondary"} onClick={() => setMore((v) => !v)}>
             {more ? "Hide extra channels" : "More channels"}
           </Button>

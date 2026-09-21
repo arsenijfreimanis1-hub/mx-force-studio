@@ -22,9 +22,11 @@ export const FRAME_BOTTOM: Vec3 = { x: 0, y: 0.09, z: 0.02 };
  * Stewart-platform mid-stroke. ±1 m heave then still clears the garage floor.
  * Rider-head washout (Barbagli / MORIS) is computed about this deck height.
  */
-export const PLATFORM_HOME_Y = 0.68;
+export const PLATFORM_HOME_Y = 0.38;
 /** Visual bike scale vs the original 1:1 tube drawing. */
-export const BIKE_SCALE = 0.7;
+export const BIKE_SCALE = 0.48;
+/** Rest actuator length (m) at ~45° with the current deck height. */
+export const DEFAULT_ROD_LENGTH = 0.98;
 
 /** Lowest remaining frame tube vs the rig origin (after FRAME_CENTER_Y pin). */
 export const FRAME_LOW_Y = (0.28 + 0.55) * BIKE_SCALE;
@@ -52,7 +54,7 @@ export type FrameTravel = {
   smoothTau: number;
   /** 1 = default cue strength. */
   response: number;
-  /** 2 = lean+pitch only. Tests default to 6 so washout identity stays. */
+  /** Always 6. Kept so older travel JSON still sanitizes. */
   dof: DofLevel;
   /** Max deck m/s. */
   rateLin: number;
@@ -66,6 +68,8 @@ export type FrameTravel = {
   visualPitch: number;
   /** Deck roll vs plugin Euler. Default −1 so in-game left is camera-left. */
   leanSign: number;
+  /** Rest support-rod length in meters. Wider splay as the rods grow. */
+  rodLength: number;
 };
 
 /**
@@ -139,6 +143,7 @@ export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
   parkLock: true,
   visualPitch: VISUAL_PITCH_SIGN,
   leanSign: LEAN_FOLLOW,
+  rodLength: DEFAULT_ROD_LENGTH,
 };
 
 /** Garage rig — 6DOF with calmer follow so the deck tracks the live bike. */
@@ -158,6 +163,7 @@ export const STUDIO_TRAVEL: FrameTravel = {
   parkLock: true,
   visualPitch: VISUAL_PITCH_SIGN,
   leanSign: LEAN_FOLLOW,
+  rodLength: DEFAULT_ROD_LENGTH,
 };
 
 export const TRAVEL_STORAGE_KEY = "mxb-force-studio.travel.v3";
@@ -188,6 +194,7 @@ export function sanitizeTravel(
     parkLock: src.parkLock !== false,
     visualPitch: finiteOr(src.visualPitch, fallback.visualPitch) < 0 ? -1 : 1,
     leanSign: finiteOr(src.leanSign, fallback.leanSign) < 0 ? -1 : 1,
+    rodLength: clamp(finiteOr(src.rodLength, fallback.rodLength), 0.35, 2.2),
   };
 }
 
@@ -465,14 +472,13 @@ export function stepMotion(
   const response = clamp(travelUse.response, 0.05, 4);
   const leanFollow = travelUse.leanSign < 0 ? -1 : 1;
   const parkLock = travelUse.parkLock !== false;
-  const limX = axes.x ? Math.max(0, travelUse.limitX) : 0;
-  const limY = axes.y ? Math.max(0, travelUse.limitY) : 0;
-  const limZ = axes.z ? Math.max(0, travelUse.limitZ) : 0;
+  const limX = Math.max(0, travelUse.limitX);
+  const limY = Math.max(0, travelUse.limitY);
+  const limZ = Math.max(0, travelUse.limitZ);
   const limRoll = Math.max(0, travelUse.limitRoll);
   const limPitch = Math.max(0, travelUse.limitPitch);
-  const limYaw = axes.yaw ? Math.max(0, travelUse.limitYaw) : 0;
-  const smoothTau =
-    dof <= 3 ? Math.max(0.03, travelUse.smoothTau * 0.45) : Math.max(0.06, travelUse.smoothTau);
+  const limYaw = Math.max(0, travelUse.limitYaw);
+  const smoothTau = Math.max(0.06, travelUse.smoothTau);
 
   const mag = Math.hypot(telemetry.accelG.x, telemetry.accelG.y, telemetry.accelG.z);
   filter.unitsMs2 = detectForceUnitsMs2(mag, filter.unitsMs2);
@@ -504,7 +510,7 @@ export function stepMotion(
   const cartMode = crashed ? "crash" : airborne ? "air" : stopped ? "stop" : "ground";
   if (airborne || telemetry.speedMs > 1.2) filter.cartOn = true;
   else if (!airborne && telemetry.speedMs < 0.35) filter.cartOn = false;
-  const wantCart = axes.x || axes.z || (axes.y && dof >= 4);
+  const wantCart = true;
   const useCart =
     wantCart && filter.cartOn && cartesianUseful(telemetry.position, telemetry.speedMs, airborne);
   const cart = useCart
@@ -704,11 +710,11 @@ export function limitShownPose(
   prev: Pose6,
   next: Pose6,
   dt: number,
-  dof: DofLevel = 6,
+  _dof: DofLevel = 6,
   travel?: Pick<FrameTravel, "rateLin" | "rateAng">,
 ): Pose6 {
-  const lin = travel?.rateLin ?? (dof <= 3 ? HUMAN_LIN_MS * 1.35 : HUMAN_LIN_MS);
-  const ang = travel?.rateAng ?? (dof <= 3 ? 2.15 : HUMAN_ANG_RS);
+  const lin = travel?.rateLin ?? HUMAN_LIN_MS;
+  const ang = travel?.rateAng ?? HUMAN_ANG_RS;
   return {
     x: rateLimit(prev.x, next.x, dt, lin),
     y: rateLimit(prev.y, next.y, dt, lin),
