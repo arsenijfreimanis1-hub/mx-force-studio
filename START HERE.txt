@@ -1,0 +1,45 @@
+MX Bikes Force Studio
+=====================
+
+This is the garage 6DOF for MX Bikes. You do not need to install Node,
+Git, or Visual Studio. Internet is only needed the first time.
+
+ON THE PC THAT RUNS MX BIKES
+----------------------------
+
+1. Double-click  MX Force Studio.bat
+
+2. If Windows says "Windows protected your PC":
+      More info  ->  Run anyway
+
+3. Leave the black window open.
+   First run downloads Node.js and builds the app (a few minutes).
+
+4. When the window says APP READY, a browser tab opens by itself.
+
+5. Start MX Bikes on THIS SAME PC and go on track.
+   If the game was already open, restart it so the plugin loads.
+
+6. In the browser, click Connect.
+   The deck follows the live bike. Parked stays still.
+
+NEXT TIME
+---------
+Use the MX Force Studio icon on your Desktop, or double-click
+the .bat again. Close the black window to stop.
+
+LOGGING
+-------
+Nothing is recorded until you press Auto log or Start log.
+Save writes a spreadsheet next to the MX Bikes plugin:
+
+  ...\MX Bikes\plugins\force_studio_logs\
+
+STUCK?
+------
+- Game and Force Studio must be on the same PC.
+- Click Connect only after you are on track.
+- Restart MX Bikes after the first Force Studio launch.
+- Keep the black window open while you ride.
+
+That is the whole install.

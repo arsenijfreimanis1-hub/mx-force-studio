@@ -56,32 +56,6 @@ STUB_BAT = "\r\n".join(
     ]
 )
 
-STUB_CMD = "\r\n".join(
-    [
-        "@echo off",
-        "setlocal EnableExtensions",
-        "title MX Bikes Force Studio",
-        'cd /d "%~dp0"',
-        'call "%~dp0MX Force Studio.bat"',
-        "",
-    ]
-)
-
-START_HERE = "\r\n".join(
-    [
-        "MX Bikes Force Studio",
-        "",
-        "1. Double-click  MX Force Studio.bat",
-        "2. If Windows SmartScreen appears: More info -> Run anyway",
-        "3. Keep the black window open. First run downloads Node.js and packages.",
-        "4. When it says APP READY, launch MX Bikes on THIS PC, go on track,",
-        "   switch the app to Live, click Connect.",
-        "",
-        "If the game was already open, restart it so the plugin loads.",
-        "",
-    ]
-)
-
 
 def should_skip(path: Path) -> bool:
     rel = path.relative_to(ROOT)
@@ -132,7 +106,6 @@ def build_zip() -> bytes:
             info.compress_type = zipfile.ZIP_DEFLATED
             zf.writestr(info, data)
         add_text(zf, "MX Force Studio.bat", STUB_BAT)
-        add_text(zf, "START HERE.txt", START_HERE)
     return buf.getvalue()
 
 
@@ -249,8 +222,7 @@ def write_folder_zip(path: Path, payload: bytes) -> None:
                     "Extract this whole folder, then double-click:",
                     "  MX Force Studio.bat",
                     "",
-                    "Or skip this zip and just download MX_Force_Studio.bat",
-                    "and double-click that one file.",
+                    "Read START HERE.txt if you want the same steps in plain English.",
                     "",
                 ]
             ),

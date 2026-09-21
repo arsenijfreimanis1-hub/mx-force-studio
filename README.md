@@ -1,72 +1,98 @@
 # MX Bikes Force Studio
 
-Garage 6DOF for [MX Bikes](https://www.mx-bikes.com/). The frame stays **upright on startup** and only moves when live UDP packets arrive or an Xbox pad is actually in use.
+A garage 6DOF that follows live [MX Bikes](https://www.mx-bikes.com/). The bike sits still until you are on track (or you pick up an Xbox pad). Then the deck leans, wheelies, jumps, and snaps home between hits.
 
-Every public chassis channel from the PiBoSo plugin is mapped onto the deck and the rider dummy:
+You do **not** need Node, Git, Visual Studio, or admin rights on the gaming PC.
 
-| In-game field | Garage |
-| --- | --- |
-| `m_fRoll` / `m_aafRot` (negative = left) | Frame + rider lean |
-| `m_fPitch` | Wheelie (negative) / stoppie (positive) |
-| `m_fYawVelocity`, `m_fSteer` | Yaw washout |
-| `m_fAcceleration` X/Y/Z | Sway / heave / surge |
-| `m_afSuspLength` + `m_afSuspVelocity` | Whoops / bumps vs rolling sag |
-| `m_aiWheelMaterial` + `position.y` / `velocity.y` | Jumps vs the live track surface |
-| `m_iCrashed` or a high-side Euler | Crash (bike stays down, Crash badge) |
-| throttle / brakes | Rider sit-back / sit-forward |
-| Xbox right stick (body weight) | Dummy lean / sit while live |
-| airborne / whoops | Rider stand |
+---
 
-A box under the frame holds a rod to the cradle. The dummy sits, stands, leans, and slides fore/aft with the same packet.
+## Install (Windows, the PC that runs MX Bikes)
 
-## Start here (any Windows PC)
+**Easiest:** double-click [`MX Force Studio.bat`](MX%20Force%20Studio.bat) in this folder. That is the whole installer.
 
-1. Copy this folder to the gaming PC (or clone it). You only need **`MX Force Studio.bat`** if you grabbed the packed launcher.
-2. Double-click **`MX Force Studio.bat`**. First run downloads portable Node (no admin), installs the plugin next to `mxbikes.exe`, and puts **MX Force Studio** on the Desktop.
-3. Leave the **MX Bikes Force Studio** window open. The garage opens with the bike **parked upright**.
-4. Launch MX Bikes **on the same PC**, go on track (plugin loads at game start — restart MX Bikes if it was already open).
-5. Click **Connect**. The frame follows the live bike.
+1. Copy this folder to the gaming PC (or clone this repo, or extract the GitHub zip).
+2. Double-click **MX Force Studio.bat**.
+3. If SmartScreen says *Windows protected your PC*, click **More info** → **Run anyway**.
+4. Leave the black window open. The first run downloads portable Node.js, installs packages, builds the app, copies the telemetry plugin next to `mxbikes.exe`, and puts **MX Force Studio** on your Desktop.
+5. When it prints **APP READY**, a browser tab opens at [http://127.0.0.1:43187](http://127.0.0.1:43187).
+6. Start **MX Bikes on this same PC** and go on track. If the game was already running, **restart it** so the plugin loads.
+7. In Force Studio, click **Connect**. The frame follows the live bike.
 
-Stock Xbox / XInput map (MX Bikes Controls + `Documents\PiBoSo\MX Bikes`): **RT** throttle, **LT** front brake, **LB** rear brake, **A** clutch, **left stick** steer, **right stick** body weight (the dummy — the plugin has no rider-skeleton channel). The live HUD also shows the session setup file (`.ssx`). MX Bikes track meshes are not in the plugin; heave follows live world `position.y` against a slow on-track surface so the garage uses the same jump the game just ran.
+Next sessions: use the Desktop icon, or the `.bat` again. Close the black window to stop.
 
-If Windows SmartScreen says “Windows protected your PC”, click **More info** → **Run anyway**. If the file opens as text, rename it so it ends in `.bat`.
+There is also a one-line reminder in [`START HERE.txt`](START%20HERE.txt) if you would rather not open this page.
 
-To stop, close the **MX Bikes Force Studio** window.
+### Xbox pad
 
-## Run it (macOS / Linux / WSL)
+Same map MX Bikes uses: **RT** throttle, **LT** front brake, **LB** rear brake, **A** clutch, left stick steer. Right stick is body weight for the dummy (the plugin has no rider skeleton). You can drive the garage with the pad while Connect is off. Live MX Bikes always uses **Connect**.
+
+### Spreadsheets
+
+Logging stays off until you press it. **Auto log** / **Start log** / **Stop log** / **Save**. Save writes a CSV next to the plugin:
+
+`MX Bikes\plugins\force_studio_logs\`
+
+### If Connect does nothing
+
+- Force Studio and MX Bikes must be on **the same PC**.
+- Click **Connect** only after you are **on track**.
+- Restart MX Bikes after the first Force Studio launch (plugins load at game start).
+- Keep the black window open. Closing it stops the app.
+- The plugin talks to `127.0.0.1:47387`. Nothing leaves your machine.
+
+---
+
+## Developers (macOS / Linux / WSL)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open [http://127.0.0.1:43187](http://127.0.0.1:43187). Click **Connect** after MX Bikes is on track, or drive the frame with an Xbox pad.
-
-While you ride, Force Studio writes every game, pad, and deck channel into a spreadsheet. **Download CSV** (Excel / Google Sheets). **Learn now** (or Auto-learn) reads that sheet and tightens follow, lag, bounce, and pitch/lean sign. You can also **Load CSV** from an earlier session.
+Open [http://127.0.0.1:43187](http://127.0.0.1:43187). Click **Connect** after MX Bikes is on track, or drive with an Xbox pad.
 
 ```bash
 npm test
 ```
 
+The Windows `.bat` is rebuilt with:
+
+```bash
+python3 windows/pack-standalone.py
+```
+
+---
+
+## What the deck follows
+
+| In MX Bikes | On the garage |
+| --- | --- |
+| Roll (negative = left) | Frame + dummy lean |
+| Pitch (negative = wheelie, positive = stoppie) | Nose up / nose down |
+| Yaw rate + steer | Heading washout |
+| Acceleration X / Y / Z | Sway / heave / surge |
+| Shock length + velocity | Whoops vs sag |
+| Wheels off the ground + world height | Jumps |
+| Crash flag or a high-side | Bike stays down |
+| Throttle / brakes | Dummy sit-back / sit-forward |
+
+Support rods keep a fixed steel base. The **Rod stroke** slider is how far each actuator may grow or shrink. Chest-belt tension is in the sidebar (front / rear / hug). No extra mesh yet.
+
+The garage will not invent a bike name. Live only follows a real MX Bikes session after **Connect**.
+
+---
+
 ## Plugin
 
-The desktop icon copies these next to `mxbikes.exe`:
+First launch copies these next to `mxbikes.exe`:
 
 - `plugin/mxb_force_studio.dlo`
 - `plugin/force_studio.ini` (`127.0.0.1:47387`)
 
-Primary path: `D:\New folder\steamapps\common\MX Bikes\plugins\`. Otherwise Steam library folders are searched. Rebuild with `npm run plugin:build` (MinGW-w64) or see `plugin/README.md`.
+Steam libraries are searched automatically. Rebuild with `npm run plugin:build` if you have MinGW-w64 — details in [`plugin/README.md`](plugin/README.md).
 
-Optional proxy fallback:
-
-```bash
-npm run bridge:proxy
-```
-
-## What this is not
-
-It does not replace the in-game camera. Tire Newtons are reconstructed from public plugin fields. Mass and travel are class defaults until a real bike packet arrives — the garage will not invent a YZF250 name.
+---
 
 ## Stack
 
-Next.js, React Three Fiber, Tailwind, shadcn/ui. Plugin interface matches PiBoSo `mxb_example.c` / MaxTM-v2.7.
+Next.js, React Three Fiber, Tailwind, shadcn/ui. Plugin layout matches PiBoSo `mxb_example.c` / MaxTM-v2.7.

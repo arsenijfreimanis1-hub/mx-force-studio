@@ -1,35 +1,27 @@
-# MX Bikes Force Studio output plugin
+# MX Bikes Force Studio plugin
 
-64-bit `.dlo` that MX Bikes loads from its `plugins` folder. Every physics tick (~100 Hz) it UDP-sends JSON Force Studio already accepts on port `47387`. The first packet (and each bike/session change) includes event + suspension travel so any selected bike works; later ticks are telemetry-only to cut latency.
+This is the 64-bit `.dlo` MX Bikes loads from its `plugins` folder. About 100 times a second it sends UDP JSON to Force Studio on port `47387`.
 
-## Install on the Windows gaming PC
+You normally never build this yourself. Double-click **MX Force Studio.bat** on the gaming PC. That copies `mxb_force_studio.dlo` and `force_studio.ini` next to `mxbikes.exe` and creates `plugins/force_studio_logs/` for spreadsheets.
 
-Double-click the **MX Force Studio** desktop icon (or `setup-windows.cmd`). It copies `mxb_force_studio.dlo` and `force_studio.ini` into:
+Restart MX Bikes after the first copy. Plugins only load at game start.
 
-`D:\New folder\steamapps\common\MX Bikes\plugins\`
+`force_studio.ini` stays at `127.0.0.1:47387` when the garage runs on the same PC. Spreadsheets from **Save** land in `plugins/force_studio_logs/`. Logging is off until Auto log or Start log.
 
-(or the `plugins` folder next to `mxbikes.exe` if Steam reports a different library). MX Bikes loads plugins at startup, so restart the game if it was already open.
+Output plugins do not need a PiBoSo license. If Force Studio is closed, the plugin still fires UDP and will not stall the sim.
 
-`force_studio.ini` stays at `127.0.0.1:47387` when the visualizer runs on the same PC.
+## Build (only if you change the C)
 
-Then wait for **APP READY**. The garage stays upright until you launch MX Bikes, go on track, and click **Connect**.
-
-Spreadsheets from **Save** go in `plugins/force_studio_logs/` next to this plugin. Logging stays off until you press **Auto log** or **Start log**.
-
-A license is not required for output plugins. The plugin is fire-and-forget UDP; it will not stall the sim if the bridge is down.
-
-## Build
-
-From this folder, with [MinGW-w64](https://www.mingw-w64.org/) or the bundled `plugin/build.sh`:
+From this folder, with [MinGW-w64](https://www.mingw-w64.org/) or `plugin/build.sh`:
 
 ```bash
 x86_64-w64-mingw32-gcc -shared -O2 -o mxb_force_studio.dlo mxb_force_studio.c -lws2_32
 ```
 
-Or on Windows with MSVC x64:
+Or MSVC x64:
 
 ```bat
 cl /LD /O2 /Fe:mxb_force_studio.dlo mxb_force_studio.c ws2_32.lib
 ```
 
-Then rename the `.dll` to `.dlo` if the compiler emitted a DLL.
+Rename the `.dll` to `.dlo` if the compiler emitted a DLL.
