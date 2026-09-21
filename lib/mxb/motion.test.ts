@@ -465,10 +465,35 @@ test("stopped IMU noise does not jitter the deck", () => {
   assert.ok(Math.abs(pose.pitch) < 0.05, `pitch ${pose.pitch}`);
 });
 
-test("a crash lays the bike over instead of snapping upright", () => {
-  const pose = run(sample({ crashed: true, roll: 86, pitch: -20, speedMs: 3 }), 0.45);
-  assert.ok(Math.abs(pose.roll) > 0.5, `crash roll ${pose.roll}`);
-  assert.ok(pose.y < -0.05, `crash y ${pose.y}`);
+test("a crash restores the deck to the parked pose", () => {
+  const filter = createMotionFilter();
+  const dt = 1 / 60;
+  for (let i = 0; i < 30; i++) {
+    stepMotion(filter, sample({ speedMs: 14, roll: -28, accelG: { x: 0.2, y: 1.05, z: 0.2 } }), dt);
+  }
+  let pose = identityPose();
+  for (let i = 0; i < 40; i++) {
+    pose = stepMotion(filter, sample({ crashed: true, roll: 86, pitch: -20, speedMs: 3 }), dt);
+  }
+  assert.ok(Math.abs(pose.roll) < 0.14, `crash roll ${pose.roll}`);
+  assert.ok(Math.abs(pose.pitch) < 0.14, `crash pitch ${pose.pitch}`);
+  assert.ok(Math.abs(pose.x) + Math.abs(pose.y) + Math.abs(pose.z) < 0.1, JSON.stringify(pose));
+});
+
+test("an airborne yaw rate scrubs the bike", () => {
+  const pose = run(
+    sample({
+      speedMs: 16,
+      wheelMaterial: [0, 0],
+      velocity: { x: 0, y: 5, z: 14 },
+      accelG: { x: 0, y: 0.2, z: 0.1 },
+      yawRate: 140,
+      steer: -16,
+    }),
+    0.4,
+    STUDIO_TRAVEL,
+  );
+  assert.ok(Math.abs(pose.yaw) > 0.1, `scrub yaw ${pose.yaw}`);
 });
 
 test("one-step pose change is capped like a rider is on the frame", () => {

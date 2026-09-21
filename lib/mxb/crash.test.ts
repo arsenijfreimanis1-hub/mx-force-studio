@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  crashRecovered,
   createRidePhaseFilter,
   detectCrash,
   describeRidePhase,
@@ -52,6 +53,20 @@ test("plugin crashed flag is a crash", () => {
 
 test("a high-side roll is a crash even if the flag lags", () => {
   assert.equal(detectCrash(sample({ roll: 80, speedMs: 8 })), true);
+});
+
+test("a fast roll-rate high-side is a crash", () => {
+  assert.equal(detectCrash(sample({ roll: 36, rollRate: 240, speedMs: 12 })), true);
+});
+
+test("a coordinated berm is not a crash", () => {
+  assert.equal(detectCrash(sample({ roll: -48, speedMs: 14, accelG: { x: -0.7, y: 1.3, z: 0.1 } })), false);
+});
+
+test("crash recovery waits for an upright bike and a clear plugin flag", () => {
+  assert.equal(crashRecovered(sample({ crashed: true, roll: 8 })), false);
+  assert.equal(crashRecovered(sample({ roll: 80, speedMs: 2 })), false);
+  assert.equal(crashRecovered(sample({ roll: 6, pitch: 4, speedMs: 1 })), true);
 });
 
 test("an upright bike is not a crash", () => {

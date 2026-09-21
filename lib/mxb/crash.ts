@@ -16,10 +16,31 @@ export function detectCrash(tel: Telemetry): boolean {
   if (tel.crashed) return true;
   const roll = Math.abs(tel.roll);
   const pitch = Math.abs(tel.pitch);
-  if (roll > 72 || pitch > 82) return true;
-  const g = Math.hypot(tel.accelG.x, tel.accelG.y, tel.accelG.z);
-  if (g > 7.5 && tel.speedMs < 4 && roll > 38) return true;
+  const rollRate = Math.abs(tel.rollRate);
+  const g = accelAsG(tel.accelG);
+  const gMag = Math.hypot(g.x, g.y, g.z);
+  if (roll > 62) return true;
+  if (pitch > 76) return true;
+  if (rollRate > 210 && roll > 30) return true;
+  if (gMag > 4.8 && roll > 40 && tel.speedMs < 7) return true;
+  if (tel.speedMs < 2.8 && roll > 46 && g.y < 0.5) return true;
+  if (
+    tel.wheelMaterial[0] === 0 &&
+    tel.wheelMaterial[1] === 0 &&
+    roll > 50 &&
+    Math.abs(tel.velocity.y) < 1.6 &&
+    tel.speedMs < 10
+  ) {
+    return true;
+  }
   return false;
+}
+
+/** Bike is back on its wheels after a crash — safe to leave the crash pose. */
+export function crashRecovered(tel: Telemetry): boolean {
+  if (tel.crashed) return false;
+  if (detectCrash(tel)) return false;
+  return Math.abs(tel.roll) < 24 && Math.abs(tel.pitch) < 20 && tel.speedMs < 8;
 }
 
 /**
@@ -50,8 +71,13 @@ export function createRidePhaseFilter(): RidePhaseFilter {
 export function stepRidePhase(filter: RidePhaseFilter, tel: Telemetry, dt: number): RidePhase {
   if (detectCrash(tel)) {
     filter.phase = "crash";
-    filter.landT = 0;
+    filter.landT = 0.75;
     return filter.phase;
+  }
+  if (filter.phase === "crash") {
+    filter.landT -= dt;
+    if (!crashRecovered(tel)) filter.landT = Math.max(filter.landT, 0.2);
+    if (filter.landT > 0) return "crash";
   }
   if (isAirborne(tel)) {
     filter.phase = "air";

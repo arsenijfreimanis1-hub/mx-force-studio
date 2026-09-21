@@ -576,9 +576,10 @@ export function stepMotion(
   if (crashed) {
     filter.airY = 0;
     filter.airVy = 0;
-    filter.landSink = follow(filter.landSink, -0.28 * response, step, 0.08);
-    heaveTarget = filter.landSink;
-    heaveTau = HEAVE_TAU_AIR;
+    filter.landSink = follow(filter.landSink, 0, step, 0.07);
+    filter.landSinkV = follow(filter.landSinkV, 0, step, 0.07);
+    heaveTarget = 0;
+    heaveTau = 0.07;
   } else if (airborne) {
     if (!filter.wasAir) {
       filter.airY = 0;
@@ -655,10 +656,15 @@ export function stepMotion(
   }
 
   if (stopped || crashed) {
-    filter.x = follow(filter.x, 0, step, 0.14);
-    filter.vx = follow(filter.vx, 0, step, 0.1);
-    filter.z = follow(filter.z, 0, step, 0.14);
-    filter.vz = follow(filter.vz, 0, step, 0.1);
+    const homeTau = crashed ? 0.07 : 0.14;
+    filter.x = follow(filter.x, 0, step, homeTau);
+    filter.vx = follow(filter.vx, 0, step, 0.08);
+    filter.z = follow(filter.z, 0, step, homeTau);
+    filter.vz = follow(filter.vz, 0, step, 0.08);
+    if (crashed) {
+      filter.yaw = follow(filter.yaw, 0, step, 0.07);
+      filter.vyaw = follow(filter.vyaw, 0, step, 0.07);
+    }
   }
 
   if (!axes.y) {
@@ -668,8 +674,14 @@ export function stepMotion(
   }
   filter.y = clamp(follow(filter.y, heaveTarget, step, heaveTau), -limY, limY);
 
-  const yawAccel = stopped || crashed ? 0 : (deg(filter.sYawRate) * 1.4 + deg(cues.steerDeg) * 0.12) * response;
-  const yaw = stepAxis(filter.yaw, filter.vyaw, yawAccel, step, limYaw, WASH_OMEGA_ANG);
+  const yawAccel = stopped || crashed
+    ? 0
+    : airborne
+      ? (deg(filter.sYawRate) * 2.6 + deg(cues.steerDeg) * 0.65 + deg(filter.sRollRate) * 0.12) * response
+      : (deg(filter.sYawRate) * 1.4 + deg(cues.steerDeg) * 0.12) * response;
+  const yawLim = crashed ? limYaw : airborne ? Math.max(limYaw, (34 * Math.PI) / 180) : limYaw;
+  const yawOmega = airborne ? WASH_OMEGA_ANG * 0.42 : WASH_OMEGA_ANG;
+  const yaw = stepAxis(filter.yaw, filter.vyaw, yawAccel, step, yawLim, yawOmega);
   filter.yaw = yaw.pos;
   filter.vyaw = yaw.vel;
 
@@ -684,8 +696,8 @@ export function stepMotion(
       ? 0
       : (cues.throttle * 0.24 - cues.frontBrake * 0.4 - cues.rearBrake * 0.1) * response;
   // Game Euler owns a real wheelie/stoppie. Pedals only fill in when Euler is late.
-  const tiltPitchTarget = restDeck ? 0 : pedalPitch;
-  const tiltRollTarget = restDeck ? 0 : Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
+  const tiltPitchTarget = restDeck || crashed ? 0 : pedalPitch;
+  const tiltRollTarget = restDeck || crashed ? 0 : Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
   const tiltRate = (70 * Math.PI) / 180;
   const tiltTau = 0.1;
   filter.tiltPitch = rateLimit(filter.tiltPitch, tiltPitchTarget, step, tiltRate);
@@ -693,16 +705,16 @@ export function stepMotion(
   filter.tiltPitch = follow(filter.tiltPitch, tiltPitchTarget, step, tiltTau);
   filter.tiltRoll = follow(filter.tiltRoll, tiltRollTarget, step, tiltTau);
 
-  const rollCmd = restDeck ? 0 : attitude.roll;
-  const pitchCmd = restDeck ? 0 : attitude.pitch;
+  const rollCmd = restDeck || crashed ? 0 : attitude.roll;
+  const pitchCmd = restDeck || crashed ? 0 : attitude.pitch;
   const busyPitch =
     Math.abs(attitude.pitch) > 8 || Math.abs(telemetry.pitchRate) > 36 || cues.frontBrake > 0.55 || cues.throttle > 0.75;
   const attitudeTau = restDeck ? ATTITUDE_TAU_REST : busyPitch ? 0.018 : ATTITUDE_TAU;
   filter.followRoll = follow(filter.followRoll, deg(rollCmd) * leanFollow, step, attitudeTau);
   filter.followPitch = follow(filter.followPitch, deg(pitchCmd) * PITCH_FOLLOW, step, attitudeTau);
 
-  const rollLimit = crashed ? Math.max(limRoll, (82 * Math.PI) / 180) : limRoll;
-  const pitchLimit = crashed ? Math.max(limPitch, (70 * Math.PI) / 180) : limPitch;
+  const rollLimit = limRoll;
+  const pitchLimit = limPitch;
 
   if (hasWorld) filter.prevWorldY = worldY;
 
@@ -718,10 +730,7 @@ export function stepMotion(
     dof,
   );
   const limited = limitShownPose(filter.shown, rawShown, step, dof, travelUse);
-  // Crash dummys still lay over; rods do not pin a high-side to rest.
-  filter.shown = crashed
-    ? limited
-    : clampPoseToRodStroke(limited, travelUse.rodStroke, PLATFORM_HOME_Y, travelUse.visualPitch);
+  filter.shown = clampPoseToRodStroke(limited, travelUse.rodStroke, PLATFORM_HOME_Y, travelUse.visualPitch);
 
   return filter.shown;
 }
