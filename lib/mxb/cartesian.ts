@@ -125,12 +125,12 @@ export function stepCartesian(
     // Lip Y stays put so the jump is Cartesian ΔY. Walk XZ with speed so a
     // 20 m table does not pin surge at the travel limit.
     if (movedXZ) {
-      state.ovx = follow(state.ovx, vx, step, 0.22);
-      state.ovz = follow(state.ovz, vz, step, 0.22);
+      state.ovx = follow(state.ovx, vx, step, 0.16);
+      state.ovz = follow(state.ovz, vz, step, 0.16);
       state.ox += state.ovx * step;
       state.oz += state.ovz * step;
       const velErr = Math.hypot(vx - state.ovx, vz - state.ovz);
-      const snap = velErr < 0.85 ? 0.22 : 0.9;
+      const snap = velErr < 0.85 ? 0.12 : 0.48;
       state.ox = follow(state.ox, world.x, step, snap);
       state.oz = follow(state.oz, world.z, step, snap);
     }
@@ -145,12 +145,13 @@ export function stepCartesian(
     // Walk the origin at low-passed velocity so constant speed does not pin,
     // but a burst still leaves a Cartesian surge / sway / whoop.
     if (movedXZ) {
-      state.ovx = follow(state.ovx, vx, step, 0.28);
-      state.ovz = follow(state.ovz, vz, step, 0.28);
+      state.ovx = follow(state.ovx, vx, step, 0.16);
+      state.ovz = follow(state.ovz, vz, step, 0.16);
       state.ox += state.ovx * step;
       state.oz += state.ovz * step;
       const velErr = Math.hypot(vx - state.ovx, vz - state.ovz);
-      const snap = velErr < 0.85 ? 0.22 : 1.05;
+      // Accel used to snap at 1.05s — origin lagged and the deck sat on +Z.
+      const snap = velErr < 0.85 ? 0.12 : 0.48;
       state.ox = follow(state.ox, world.x, step, snap);
       state.oz = follow(state.oz, world.z, step, snap);
     }

@@ -280,7 +280,39 @@ test("moving world XYZ drives the deck on the Cartesian frame", () => {
     );
     surge = Math.max(surge, pose.z);
   }
-  assert.ok(surge > 0.04, `cartesian surge ${surge}`);
+  assert.ok(surge > 0.025, `cartesian surge ${surge}`);
+  for (let i = 0; i < 50; i++) {
+    v += 6 * dt;
+    z += v * dt;
+    pose = stepMotion(
+      filter,
+      sample({
+        speedMs: v,
+        throttle: 1,
+        position: { x: 6, y: 3.2, z },
+        velocity: { x: 0, y: 0, z: v },
+        accelG: { x: 0, y: 1, z: 0.4 },
+      }),
+      dt,
+    );
+  }
+  const held = pose.z;
+  for (let i = 0; i < 36; i++) {
+    z += v * dt;
+    pose = stepMotion(
+      filter,
+      sample({
+        speedMs: v,
+        throttle: 0.2,
+        position: { x: 6, y: 3.2, z },
+        velocity: { x: 0, y: 0, z: v },
+        accelG: { x: 0, y: 1, z: 0.04 },
+      }),
+      dt,
+    );
+  }
+  assert.ok(Math.abs(held) < 0.22, `held gas still forward ${held}`);
+  assert.ok(Math.abs(pose.z) < 0.08, `off gas home ${pose.z}`);
 });
 
 test("m/s² accelerometer readings are converted to G", () => {

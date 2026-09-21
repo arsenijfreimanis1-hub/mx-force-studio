@@ -121,7 +121,7 @@ test("a forward burst leaves Cartesian surge, then washes out", () => {
     const cart = stepCartesian(state, world(0, 1, z), { x: 0, y: 0, z: v }, 0, dt, "ground");
     surge = Math.max(surge, cart.z);
   }
-  assert.ok(surge > 0.25, `surge ${surge}`);
+  assert.ok(surge > 0.12, `surge ${surge}`);
   let quick = { x: 0, y: 0, z: 0 };
   for (let i = 0; i < 48; i++) {
     z += v * dt;

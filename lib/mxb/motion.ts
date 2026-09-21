@@ -560,7 +560,7 @@ export function stepMotion(
   const pedalSurge =
     restDeck || crashed
       ? 0
-      : (cues.throttle * 2.4 - cues.frontBrake * 4.8 - cues.rearBrake * 1.8) * GRAVITY * response * 0.32;
+      : (cues.throttle * 1.1 - cues.frontBrake * 2.2 - cues.rearBrake * 0.85) * GRAVITY * response * 0.14;
   const aSurge = crashed ? 0 : gForce.z * scale + pedalSurge;
   let heaveTarget: number;
   let heaveTau = HEAVE_TAU_GROUND;
@@ -633,12 +633,17 @@ export function stepMotion(
     filter.z = follow(filter.z, 0, step, 0.06);
     filter.vz = follow(filter.vz, 0, step, 0.05);
   } else if (useCart && !stopped && !crashed) {
-    const tx = clamp(cart.x / CART_XZ_M, -1, 1) * limX * response;
-    const tz = clamp(cart.z / CART_XZ_M, -1, 1) * limZ * response;
-    filter.x = follow(filter.x, tx, step, 0.09);
-    filter.z = follow(filter.z, tz, step, 0.09);
-    filter.vx = follow(filter.vx, 0, step, 0.1);
-    filter.vz = follow(filter.vz, 0, step, 0.1);
+    const cartGain = 0.5;
+    const tx = clamp(cart.x / CART_XZ_M, -1, 1) * limX * response * cartGain;
+    const tz = clamp(cart.z / CART_XZ_M, -1, 1) * limZ * response * cartGain;
+    filter.x = follow(filter.x, tx, step, 0.07);
+    filter.z = follow(filter.z, tz, step, 0.07);
+    // Held gas / coast must not park the frame at the surge stop.
+    if (Math.abs(gForce.z) < 0.16) {
+      filter.z = follow(filter.z, 0, step, 0.1);
+    }
+    filter.vx = follow(filter.vx, 0, step, 0.08);
+    filter.vz = follow(filter.vz, 0, step, 0.08);
   } else {
     const sway = stepAxis(filter.x, filter.vx, aSway, step, limX, washOmega);
     filter.x = sway.pos;
