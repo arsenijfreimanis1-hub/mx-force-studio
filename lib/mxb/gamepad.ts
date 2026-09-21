@@ -158,15 +158,105 @@ export function padTraceActive(pad: PadTrace) {
   );
 }
 
+export type PadKind = "xbox" | "standard" | "wheel" | "other";
+
+const LAST_PAD_KEY = "mxfs-last-pad-id";
+let stickyPadId: string | null = null;
+
+export function classifyPad(id: string, mapping = ""): PadKind {
+  const n = id.toLowerCase();
+  if (
+    /wheel|g27|g29|g920|g923|t150|t248|t300|tx racing|fanatec|thrustmaster|simagic|moza|csl.?dd|logitech.*racing|racing wheel|steering/.test(
+      n,
+    )
+  ) {
+    return "wheel";
+  }
+  if (/xbox|xinput|045e-|microsoft.*controller/.test(n)) return "xbox";
+  if (mapping === "standard" || /standard gamepad/.test(n)) return "standard";
+  return "other";
+}
+
+export function isRiderPad(gp: Gamepad | null): boolean {
+  return Boolean(gp && classifyPad(gp.id, gp.mapping) !== "wheel");
+}
+
+export function describePad(gp: Pick<Gamepad, "id" | "mapping">): string {
+  const kind = classifyPad(gp.id, gp.mapping);
+  const n = gp.id.toLowerCase();
+  if (kind === "xbox") return "Xbox";
+  if (kind === "wheel") return "Wheel";
+  if (kind === "standard") {
+    if (/dualsense|dualshock|wireless controller|playstation|ps5|ps4/.test(n)) return "PlayStation";
+    if (/switch|pro controller/.test(n)) return "Switch";
+    return "Gamepad";
+  }
+  const short = gp.id.split("(")[0]?.trim() ?? "";
+  return short.slice(0, 22) || "Controller";
+}
+
+export function scorePad(gp: Gamepad, lastId: string | null): number {
+  if (!gp.connected) return -1000;
+  const kind = classifyPad(gp.id, gp.mapping);
+  if (kind === "wheel") return -80;
+  let score = 1;
+  if (kind === "xbox") score += 50;
+  else if (kind === "standard") score += 32;
+  if (gp.mapping === "standard") score += 8;
+  if (lastId && gp.id === lastId) score += 20;
+  if (gamepadActive(gp)) score += 40;
+  if (/steam virtual|online/.test(gp.id.toLowerCase())) score -= 6;
+  return score;
+}
+
+export function pickRiderGamepadFrom(
+  pads: Array<Gamepad | null | undefined>,
+  lastId: string | null = null,
+): Gamepad | null {
+  const connected = pads.filter((p): p is Gamepad => Boolean(p && p.connected));
+  if (connected.length === 0) return null;
+  const ranked = connected
+    .map((p) => ({ p, score: scorePad(p, lastId) }))
+    .sort((a, b) => b.score - a.score || a.p.index - b.p.index);
+  const best = ranked[0];
+  if (classifyPad(best.p.id, best.p.mapping) === "wheel") {
+    const rider = ranked.find((row) => classifyPad(row.p.id, row.p.mapping) !== "wheel");
+    if (rider) return rider.p;
+  }
+  return best.p;
+}
+
+function loadLastPadId(): string | null {
+  if (stickyPadId) return stickyPadId;
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(LAST_PAD_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveLastPadId(id: string) {
+  stickyPadId = id;
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LAST_PAD_KEY, id);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+export function rememberPadId(id: string | null) {
+  stickyPadId = id;
+}
+
 export function readFirstGamepad(): Gamepad | null {
   if (typeof window !== "undefined") {
     const fake = (window as Window & { __mxbFakePad?: Gamepad | null }).__mxbFakePad;
     if (fake) return fake;
   }
   if (typeof navigator === "undefined" || !navigator.getGamepads) return null;
-  const pads = navigator.getGamepads();
-  for (const pad of pads) {
-    if (pad && pad.connected) return pad;
-  }
-  return null;
+  const pick = pickRiderGamepadFrom([...navigator.getGamepads()], loadLastPadId());
+  if (pick) saveLastPadId(pick.id);
+  return pick;
 }

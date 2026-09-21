@@ -16,7 +16,16 @@ import {
 } from "@/lib/mxb/adapt";
 import { DEFAULT_EVENT, DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
 import { formatG, speedKph } from "@/lib/mxb/forces";
-import { gamepadActive, padTraceActive, readFirstGamepad, readPadTrace } from "@/lib/mxb/gamepad";
+import {
+  describePad,
+  gamepadActive,
+  isRiderPad,
+  padTraceActive,
+  readBodyStick,
+  readFirstGamepad,
+  readPadTrace,
+} from "@/lib/mxb/gamepad";
+import { riderFromTelemetry } from "@/lib/mxb/rider";
 import { createRidePhaseFilter, describeRidePhase, detectCrash, type RidePhase } from "@/lib/mxb/crash";
 import { setupLabel } from "@/lib/mxb/inputs";
 import { dofStep, saveStoredDof } from "@/lib/mxb/dof";
@@ -130,6 +139,7 @@ export function MxForceStudio() {
   const [travel, setTravel] = useState<FrameTravel>(STUDIO_TRAVEL);
   const [hudEvent, setHudEvent] = useState<BikeEvent>(DEFAULT_EVENT);
   const [padOn, setPadOn] = useState(false);
+  const [padName, setPadName] = useState("");
   const [driving, setDriving] = useState(false);
   const [graphOpen, setGraphOpen] = useState(false);
   const [logMode, setLogMode] = useState<"off" | "auto" | "start">("off");
@@ -163,6 +173,7 @@ export function MxForceStudio() {
   const userTravelRef = useRef(STUDIO_TRAVEL);
   const drivingRef = useRef(false);
   const padOnRef = useRef(false);
+  const padNameRef = useRef("");
   const lastPublishedLiveRef = useRef(false);
   const traceRef = useRef(createTraceBuffer(900));
   const lastTraceMs = useRef(0);
@@ -247,10 +258,11 @@ export function MxForceStudio() {
   useEffect(() => {
     const id = window.setInterval(() => {
       const gp = readFirstGamepad();
-      const padTrace = readPadTrace(gp);
+      const riderGp = isRiderPad(gp) ? gp : null;
+      const padTrace = readPadTrace(riderGp);
       let pad = padActiveRef.current;
       if (!liveRef.current && !connectRef.current) {
-        pad = Boolean(gp && gamepadActive(gp)) || pad;
+        pad = Boolean(riderGp && gamepadActive(riderGp)) || pad;
       } else {
         pad = false;
         padActiveRef.current = false;
@@ -258,6 +270,11 @@ export function MxForceStudio() {
       if (pad !== padOnRef.current) {
         padOnRef.current = pad;
         setPadOn(pad);
+      }
+      const nextPadName = riderGp ? describePad(riderGp) : "";
+      if (nextPadName !== padNameRef.current) {
+        padNameRef.current = nextPadName;
+        setPadName(nextPadName);
       }
       const nextDriving = liveRef.current;
       if (nextDriving !== drivingRef.current) {
@@ -472,7 +489,7 @@ export function MxForceStudio() {
   const bikeLabel = usingLive
     ? liveName || "MX Bikes"
     : padOn
-      ? "Xbox pad"
+      ? padName || "Xbox pad"
       : liveState === "waiting"
         ? "Waiting for MX Bikes"
         : "Awaiting game";
@@ -521,10 +538,10 @@ export function MxForceStudio() {
           <Radio />
           Live
         </Button>
-        {padOn ? (
-          <Badge variant="outline" className="gap-1">
+        {padOn || padName ? (
+          <Badge variant="outline" className="gap-1 max-w-[9rem]">
             <Gamepad2 className="size-3" />
-            Pad
+            <span className="truncate">{padName || "Pad"}</span>
           </Badge>
         ) : null}
         {crashed || hudPhase === "crash" ? (
@@ -550,8 +567,8 @@ export function MxForceStudio() {
         </Badge>
       </header>
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[10.5rem_minmax(0,1fr)_16.5rem]">
-        <InputsColumn telemetry={telemetry} />
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[8.75rem_minmax(0,1fr)_16.5rem]">
+        <InputsColumn telemetry={telemetry} padName={padName} />
         <section className="relative min-h-[52vh] border-b border-border lg:border-r lg:border-b-0">
           <BikeCanvas
             telemetryRef={telemetryRef}
@@ -1003,33 +1020,36 @@ function PoseReadout({ poseRef }: { poseRef: MutableRefObject<Pose6> }) {
   return <span ref={el}>R +0°  P +0°</span>;
 }
 
-function InputsColumn({ telemetry }: { telemetry: Telemetry }) {
+function InputsColumn({ telemetry, padName }: { telemetry: Telemetry; padName: string }) {
+  const gp = readFirstGamepad();
+  const rider = riderFromTelemetry(telemetry, readBodyStick(isRiderPad(gp) ? gp : null));
   const steerMax = 40;
   const steerT = Math.min(1, Math.max(-1, telemetry.steer / steerMax));
+  const leanT = Math.min(1, Math.max(-1, rider.lean / 0.7));
+  const leanDeg = (rider.lean * 180) / Math.PI;
   return (
-    <aside className="flex min-h-0 flex-col gap-3 border-b border-border bg-card px-3 py-3 lg:border-b-0 lg:border-r">
-      <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Inputs</p>
+    <aside className="flex min-h-0 flex-col gap-1.5 border-b border-border bg-card px-2.5 py-2 lg:border-b-0 lg:border-r">
+      <div className="flex items-baseline justify-between gap-1">
+        <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Inputs</p>
+        {padName ? <p className="truncate text-[9px] text-muted-foreground">{padName}</p> : null}
+      </div>
       <InputBar label="Thr" value={telemetry.throttle} fillClass="bg-emerald-400" />
       <InputBar label="F brk" value={telemetry.frontBrake} fillClass="bg-rose-500" />
       <InputBar label="R brk" value={telemetry.rearBrake} fillClass="bg-pink-400" />
       <InputBar label="Clh" value={telemetry.clutch} fillClass="bg-slate-300" />
-      <div className="grid gap-1">
-        <div className="flex items-center justify-between text-[10px] tracking-wide text-muted-foreground uppercase">
-          <span>Str</span>
-          <span className="font-mono text-foreground">{telemetry.steer.toFixed(0)}°</span>
-        </div>
-        <div className="relative h-24 overflow-hidden rounded-sm bg-muted">
-          <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
-          <div
-            className="absolute inset-x-1 rounded-sm bg-violet-400"
-            style={
-              steerT >= 0
-                ? { top: `${50 - Math.abs(steerT) * 50}%`, height: `${Math.abs(steerT) * 50}%` }
-                : { top: "50%", height: `${Math.abs(steerT) * 50}%` }
-            }
-          />
-        </div>
-      </div>
+      <SignedBar label="Str" value={steerT} display={`${telemetry.steer.toFixed(0)}°`} fillClass="bg-violet-400" />
+      <InputBar
+        label="Seat"
+        value={rider.stand}
+        fillClass="bg-amber-300"
+        display={rider.stand > 0.45 ? "Stand" : "Sit"}
+      />
+      <SignedBar
+        label="Lean"
+        value={leanT}
+        display={`${leanDeg >= 0 ? "+" : ""}${leanDeg.toFixed(0)}°`}
+        fillClass="bg-sky-400"
+      />
     </aside>
   );
 }
@@ -1038,20 +1058,55 @@ function InputBar({
   label,
   value,
   fillClass,
+  display,
 }: {
   label: string;
   value: number;
   fillClass: string;
+  display?: string;
 }) {
   const pct = Math.round(Math.min(1, Math.max(0, value)) * 100);
   return (
-    <div className="grid gap-1">
+    <div className="grid gap-0.5">
       <div className="flex items-center justify-between text-[10px] tracking-wide text-muted-foreground uppercase">
         <span>{label}</span>
-        <span className="font-mono text-foreground">{pct}</span>
+        <span className="font-mono text-foreground">{display ?? pct}</span>
       </div>
-      <div className="relative h-24 overflow-hidden rounded-sm bg-muted">
+      <div className="relative h-7 overflow-hidden rounded-sm bg-muted">
         <div className={`absolute inset-x-1 bottom-0 rounded-sm ${fillClass}`} style={{ height: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function SignedBar({
+  label,
+  value,
+  display,
+  fillClass,
+}: {
+  label: string;
+  value: number;
+  display: string;
+  fillClass: string;
+}) {
+  const t = Math.min(1, Math.max(-1, value));
+  return (
+    <div className="grid gap-0.5">
+      <div className="flex items-center justify-between text-[10px] tracking-wide text-muted-foreground uppercase">
+        <span>{label}</span>
+        <span className="font-mono text-foreground">{display}</span>
+      </div>
+      <div className="relative h-7 overflow-hidden rounded-sm bg-muted">
+        <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
+        <div
+          className={`absolute inset-x-1 rounded-sm ${fillClass}`}
+          style={
+            t >= 0
+              ? { top: `${50 - Math.abs(t) * 50}%`, height: `${Math.abs(t) * 50}%` }
+              : { top: "50%", height: `${Math.abs(t) * 50}%` }
+          }
+        />
       </div>
     </div>
   );

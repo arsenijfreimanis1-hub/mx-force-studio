@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { gamepadActive, readBodyStick, readPadTrace, sandboxFromGamepad, trigger } from "./gamepad.ts";
+import {
+  classifyPad,
+  describePad,
+  gamepadActive,
+  pickRiderGamepadFrom,
+  readBodyStick,
+  readPadTrace,
+  rememberPadId,
+  sandboxFromGamepad,
+  scorePad,
+  trigger,
+} from "./gamepad.ts";
 import type { SandboxInputs } from "./types.ts";
 
 const IDLE_SANDBOX: SandboxInputs = {
@@ -18,7 +29,13 @@ const IDLE_SANDBOX: SandboxInputs = {
   gear: 0,
 };
 
-function fakePad(partial: { buttons?: { pressed?: boolean; value?: number }[]; axes?: number[] }): Gamepad {
+function fakePad(partial: {
+  buttons?: { pressed?: boolean; value?: number }[];
+  axes?: number[];
+  id?: string;
+  mapping?: GamepadMappingType;
+  index?: number;
+}): Gamepad {
   const buttons = (partial.buttons ?? []).map((b) => ({
     pressed: Boolean(b.pressed ?? (b.value ?? 0) > 0.5),
     touched: false,
@@ -29,9 +46,9 @@ function fakePad(partial: { buttons?: { pressed?: boolean; value?: number }[]; a
     axes: partial.axes ?? [0, 0, 0, 0],
     buttons,
     connected: true,
-    id: "test-pad",
-    index: 0,
-    mapping: "standard",
+    id: partial.id ?? "test-pad",
+    index: partial.index ?? 0,
+    mapping: partial.mapping ?? "standard",
     timestamp: 0,
     hapticActuators: [],
     vibrationActuator: null,
@@ -93,4 +110,56 @@ test("pulling the stick back is a nose-up wheelie, not a stoppie", () => {
   const right = sandboxFromGamepad(fakePad({ axes: [0, 0, 0, 1] }), { ...IDLE_SANDBOX }, 0.016);
   assert.ok(left.pitch > 16, `left-stick pull-back ${left.pitch}`);
   assert.ok(right.pitch > 20, `right-stick pull-back ${right.pitch}`);
+});
+
+test("an Xbox pad is preferred over a racing wheel", () => {
+  rememberPadId(null);
+  const wheel = fakePad({
+    id: "Logitech G29 Racing Wheel",
+    mapping: "",
+    index: 0,
+  });
+  const xbox = fakePad({
+    id: "Xbox 360 Controller (XInput STANDARD GAMEPAD)",
+    mapping: "standard",
+    index: 1,
+  });
+  assert.equal(classifyPad(wheel.id, wheel.mapping), "wheel");
+  assert.equal(classifyPad(xbox.id, xbox.mapping), "xbox");
+  assert.equal(describePad(xbox), "Xbox");
+  assert.equal(pickRiderGamepadFrom([wheel, xbox], null)?.id, xbox.id);
+  assert.ok(scorePad(xbox, null) > scorePad(wheel, null));
+});
+
+test("an active DualSense wins over an idle Xbox", () => {
+  const xbox = fakePad({
+    id: "Xbox Wireless Controller",
+    mapping: "standard",
+    index: 0,
+  });
+  const ps = fakePad({
+    id: "DualSense Wireless Controller (STANDARD GAMEPAD)",
+    mapping: "standard",
+    index: 1,
+    buttons: [{}, {}, {}, {}, {}, {}, {}, { value: 0.8 }],
+  });
+  assert.equal(describePad(ps), "PlayStation");
+  assert.equal(pickRiderGamepadFrom([xbox, ps], null)?.id, ps.id);
+});
+
+test("the last used pad is kept when both rider pads are idle", () => {
+  const first = fakePad({ id: "Xbox Wireless Controller", mapping: "standard", index: 0 });
+  const second = fakePad({
+    id: "Wireless Controller (STANDARD GAMEPAD)",
+    mapping: "standard",
+    index: 1,
+  });
+  assert.equal(pickRiderGamepadFrom([first, second], second.id)?.id, second.id);
+});
+
+test("a wheel is used only when no rider pad is connected", () => {
+  const wheel = fakePad({ id: "Thrustmaster T300RS", mapping: "", index: 0 });
+  assert.equal(pickRiderGamepadFrom([wheel], null)?.id, wheel.id);
+  const xbox = fakePad({ id: "Xbox One Controller", mapping: "standard", index: 1 });
+  assert.equal(pickRiderGamepadFrom([wheel, xbox], wheel.id)?.id, xbox.id);
 });
