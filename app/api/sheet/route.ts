@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveSheetLogDir, writeSheetCsv } from "@/lib/mxb/plugin-logs";
+import { readLatestSheet, resolveSheetLogDir, writeSheetCsv } from "@/lib/mxb/plugin-logs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,11 +7,15 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const info = resolveSheetLogDir();
+    const latest = readLatestSheet();
     return NextResponse.json({
       ok: true,
       dir: info.dir,
       pluginsDir: info.pluginsDir,
       kind: info.kind,
+      latestName: latest?.name ?? "",
+      latestFile: latest?.file ?? "",
+      latestCsv: latest?.csv ?? "",
     });
   } catch (err) {
     return NextResponse.json(

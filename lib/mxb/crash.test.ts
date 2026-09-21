@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { detectCrash, isAirborne, isParked, isStopped } from "./crash.ts";
+import {
+  createRidePhaseFilter,
+  detectCrash,
+  describeRidePhase,
+  isAirborne,
+  isParked,
+  isStopped,
+  stepRidePhase,
+} from "./crash.ts";
 import type { Telemetry } from "./types.ts";
 
 function sample(partial: Partial<Telemetry> = {}): Telemetry {
@@ -76,4 +84,19 @@ test("holding the brake while parked is still parked", () => {
 test("parked wheels reporting air are not a jump", () => {
   assert.equal(isAirborne(sample({ wheelMaterial: [0, 0], speedMs: 0 })), false);
   assert.equal(isAirborne(sample({ wheelMaterial: [0, 0], velocity: { x: 0, y: 6, z: 12 } })), true);
+});
+
+test("ride phase walks parked → ground → air → land", () => {
+  const filter = createRidePhaseFilter();
+  assert.equal(stepRidePhase(filter, sample({ speedMs: 0 }), 0.02), "parked");
+  assert.equal(describeRidePhase("parked"), "Parked");
+  assert.equal(stepRidePhase(filter, sample({ speedMs: 14, wheelMaterial: [3, 3] }), 0.02), "ground");
+  assert.equal(
+    stepRidePhase(filter, sample({ speedMs: 16, wheelMaterial: [0, 0], velocity: { x: 0, y: 5, z: 14 } }), 0.02),
+    "air",
+  );
+  assert.equal(stepRidePhase(filter, sample({ speedMs: 13, wheelMaterial: [3, 3], accelG: { x: 0, y: 1.8, z: 0 } }), 0.02), "land");
+  assert.equal(describeRidePhase("land"), "Landing");
+  assert.equal(describeRidePhase("air"), "In air");
+  assert.equal(describeRidePhase("ground"), "On ground");
 });

@@ -82,6 +82,27 @@ export function safeSheetName(name: unknown) {
   return trimmed.toLowerCase().endsWith(".csv") ? trimmed : `${trimmed}.csv`;
 }
 
+export function readLatestSheet(): { name: string; file: string; csv: string } | null {
+  const info = resolveSheetLogDir();
+  let latest: { file: string; mtime: number } | null = null;
+  try {
+    for (const name of fs.readdirSync(info.dir)) {
+      if (!name.toLowerCase().endsWith(".csv")) continue;
+      const file = path.join(/*turbopackIgnore: true*/ info.dir, name);
+      const st = fs.statSync(file);
+      if (!latest || st.mtimeMs > latest.mtime) latest = { file, mtime: st.mtimeMs };
+    }
+  } catch {
+    return null;
+  }
+  if (!latest) return null;
+  return {
+    name: path.basename(latest.file),
+    file: latest.file,
+    csv: fs.readFileSync(latest.file, "utf8"),
+  };
+}
+
 export function writeSheetCsv(csv: string, filename: string) {
   if (typeof csv !== "string" || csv.length === 0) {
     throw new Error("CSV body is empty.");

@@ -5,11 +5,10 @@ import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { Group } from "three";
 import type { MutableRefObject, ReactNode } from "react";
-import { telemetryFromSandbox } from "@/lib/mxb/demo";
 import { DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
-import { gamepadActive, readFirstGamepad, sandboxFromGamepad } from "@/lib/mxb/gamepad";
 import { visualPoseTau } from "@/lib/mxb/dof";
 import { idleHarness, stepHarness, type HarnessState } from "@/lib/mxb/harness";
+import { createRidePhaseFilter, stepRidePhase, type RidePhaseFilter } from "@/lib/mxb/crash";
 import { riderFromTelemetry } from "@/lib/mxb/rider";
 import {
   PLATFORM_HOME_Y,
@@ -39,6 +38,7 @@ export function ChassisRig({
   eventRef,
   forcesRef,
   harnessRef,
+  ridePhaseRef,
   children,
 }: {
   poseRef: MutableRefObject<Pose6>;
@@ -52,6 +52,7 @@ export function ChassisRig({
   eventRef: MutableRefObject<BikeEvent>;
   forcesRef: MutableRefObject<ForceModel>;
   harnessRef?: MutableRefObject<HarnessState>;
+  ridePhaseRef?: MutableRefObject<RidePhaseFilter>;
   children: ReactNode;
 }) {
   const group = useRef<Group>(null);
@@ -73,23 +74,8 @@ export function ChassisRig({
       : 1 / 60;
     lastMs.current = now;
 
-    const connecting = connectRef?.current === true;
-    // Same Xbox pad MX Bikes uses. Never invent throttle/brake while Live is on.
-    if (!connecting && !liveRef.current) {
-      const gp = readFirstGamepad();
-      if (gp && gamepadActive(gp)) {
-        sandboxRef.current = sandboxFromGamepad(gp, sandboxRef.current, dt);
-        clockRef.current += dt;
-        telemetryRef.current = telemetryFromSandbox(sandboxRef.current, clockRef.current);
-        padActiveRef.current = true;
-      } else {
-        padActiveRef.current = false;
-      }
-    } else {
-      padActiveRef.current = false;
-    }
-
-    const driving = liveRef.current || padActiveRef.current;
+    padActiveRef.current = false;
+    const driving = liveRef.current === true;
     const wasPrimed = motionRef.current.primed;
     if (driving) {
       parked.current = false;
@@ -101,7 +87,7 @@ export function ChassisRig({
         dt,
         {
           ...travel,
-          parkLock: liveRef.current ? travel.parkLock !== false : false,
+          parkLock: travel.parkLock !== false,
         },
       );
       forcesRef.current = buildForceModel(telemetryRef.current, eventRef.current);
@@ -109,11 +95,8 @@ export function ChassisRig({
         const rider = riderFromTelemetry(telemetryRef.current);
         harnessRef.current = stepHarness(telemetryRef.current, rider, undefined, harnessRef.current, dt);
       }
-    } else if (
-      lastDriveMs.current > 0 &&
-      now - lastDriveMs.current > 1500 &&
-      (!parked.current || wasPrimed)
-    ) {
+      if (ridePhaseRef) stepRidePhase(ridePhaseRef.current, telemetryRef.current, dt);
+    } else if (!parked.current || wasPrimed) {
       resetMotionFilter(motionRef.current);
       poseRef.current = identityPose();
       telemetryRef.current = restTelemetry({ rpm: 0 });
@@ -123,6 +106,7 @@ export function ChassisRig({
       lastDriveMs.current = 0;
       forcesRef.current = buildForceModel(telemetryRef.current, eventRef.current);
       if (harnessRef) harnessRef.current = idleHarness();
+      if (ridePhaseRef) ridePhaseRef.current = createRidePhaseFilter();
     }
 
     const pose = poseRef.current;

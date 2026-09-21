@@ -557,7 +557,11 @@ export function stepMotion(
   const scale = GRAVITY * response;
 
   const aSway = crashed ? 0 : gForce.x * scale;
-  const aSurge = crashed ? 0 : gForce.z * scale;
+  const pedalSurge =
+    restDeck || crashed
+      ? 0
+      : (cues.throttle * 2.4 - cues.frontBrake * 4.8 - cues.rearBrake * 1.8) * GRAVITY * response * 0.32;
+  const aSurge = crashed ? 0 : gForce.z * scale + pedalSurge;
   let heaveTarget: number;
   let heaveTau = HEAVE_TAU_GROUND;
   const climb = Number.isFinite(telemetry.velocity.y) ? telemetry.velocity.y : filter.airVy;
@@ -670,12 +674,12 @@ export function stepMotion(
   filter.vpitch = 0;
 
   const gameOwnsPitch = Math.abs(attitude.pitch) >= GAME_PITCH_DEG;
-  const inputPitch =
+  const pedalPitch =
     restDeck || gameOwnsPitch
       ? 0
-      : (cues.throttle * 0.16 - cues.frontBrake * 0.22 - cues.rearBrake * 0.06) * response;
-  // Game Euler already has the wheelie. Do not add IMU G nod on top of it.
-  const tiltPitchTarget = restDeck ? 0 : inputPitch;
+      : (cues.throttle * 0.24 - cues.frontBrake * 0.4 - cues.rearBrake * 0.1) * response;
+  // Game Euler owns a real wheelie/stoppie. Pedals only fill in when Euler is late.
+  const tiltPitchTarget = restDeck ? 0 : pedalPitch;
   const tiltRollTarget = restDeck ? 0 : Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
   const tiltRate = (70 * Math.PI) / 180;
   const tiltTau = 0.1;
@@ -686,7 +690,9 @@ export function stepMotion(
 
   const rollCmd = restDeck ? 0 : attitude.roll;
   const pitchCmd = restDeck ? 0 : attitude.pitch;
-  const attitudeTau = restDeck ? ATTITUDE_TAU_REST : ATTITUDE_TAU;
+  const busyPitch =
+    Math.abs(attitude.pitch) > 8 || Math.abs(telemetry.pitchRate) > 36 || cues.frontBrake > 0.55 || cues.throttle > 0.75;
+  const attitudeTau = restDeck ? ATTITUDE_TAU_REST : busyPitch ? 0.018 : ATTITUDE_TAU;
   filter.followRoll = follow(filter.followRoll, deg(rollCmd) * leanFollow, step, attitudeTau);
   filter.followPitch = follow(filter.followPitch, deg(pitchCmd) * PITCH_FOLLOW, step, attitudeTau);
 

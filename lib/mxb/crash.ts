@@ -35,6 +35,55 @@ export function isAirborne(tel: Telemetry): boolean {
   return false;
 }
 
+/** Parked / rolling / jump / landing / crash — same idea as detectCrash. */
+export type RidePhase = "parked" | "ground" | "air" | "land" | "crash";
+
+export type RidePhaseFilter = {
+  phase: RidePhase;
+  landT: number;
+};
+
+export function createRidePhaseFilter(): RidePhaseFilter {
+  return { phase: "parked", landT: 0 };
+}
+
+export function stepRidePhase(filter: RidePhaseFilter, tel: Telemetry, dt: number): RidePhase {
+  if (detectCrash(tel)) {
+    filter.phase = "crash";
+    filter.landT = 0;
+    return filter.phase;
+  }
+  if (isAirborne(tel)) {
+    filter.phase = "air";
+    filter.landT = 0;
+    return filter.phase;
+  }
+  if (filter.phase === "air") {
+    filter.phase = "land";
+    filter.landT = 0.55;
+  }
+  if (filter.phase === "land") {
+    const slam = accelAsG(tel.accelG).y > 1.45;
+    filter.landT -= dt;
+    if (slam) filter.landT = Math.max(filter.landT, 0.35);
+    if (filter.landT > 0) return "land";
+  }
+  if (isParked(tel) || isStopped(tel)) {
+    filter.phase = "parked";
+    return filter.phase;
+  }
+  filter.phase = "ground";
+  return filter.phase;
+}
+
+export function describeRidePhase(phase: RidePhase): string {
+  if (phase === "crash") return "Crash";
+  if (phase === "air") return "In air";
+  if (phase === "land") return "Landing";
+  if (phase === "ground") return "On ground";
+  return "Parked";
+}
+
 /** Below this, brake / gas / IMU must not invent deck tilt. */
 export const PARKED_SPEED_MS = 0.8;
 

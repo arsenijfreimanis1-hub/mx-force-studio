@@ -6,6 +6,7 @@ import { ContactShadows, OrbitControls, PerspectiveCamera } from "@react-three/d
 import { MotocrossBike } from "@/components/visualizer/motocross-bike";
 import { ForceArrows } from "@/components/visualizer/force-arrows";
 import { ChassisRig } from "@/components/visualizer/chassis-rig";
+import { RiderPov } from "@/components/visualizer/rider-pov";
 import { Paddock, WorldMotionCues } from "@/components/visualizer/world-motion";
 import { MotionPedestal } from "@/components/visualizer/support-rod";
 import {
@@ -15,6 +16,7 @@ import {
   type Pose6,
 } from "@/lib/mxb/motion";
 import type { HarnessState } from "@/lib/mxb/harness";
+import type { RidePhaseFilter } from "@/lib/mxb/crash";
 import type { BikeEvent, ForceId, ForceModel, SandboxInputs, Telemetry } from "@/lib/mxb/types";
 
 export function BikeCanvas({
@@ -34,6 +36,8 @@ export function BikeCanvas({
   driving,
   showPadLabels = true,
   harnessRef,
+  ridePhaseRef,
+  pov = false,
 }: {
   telemetryRef: MutableRefObject<Telemetry>;
   hideForces: boolean;
@@ -51,6 +55,8 @@ export function BikeCanvas({
   driving: boolean;
   showPadLabels?: boolean;
   harnessRef?: MutableRefObject<HarnessState>;
+  ridePhaseRef?: MutableRefObject<RidePhaseFilter>;
+  pov?: boolean;
 }) {
   return (
     <Canvas
@@ -66,7 +72,7 @@ export function BikeCanvas({
         <sphereGeometry args={[22, 24, 16]} />
         <meshBasicMaterial color="#8eb7d9" side={1} />
       </mesh>
-      <PerspectiveCamera makeDefault position={[1.38, 0.98, -1.72]} fov={38} />
+      <PerspectiveCamera makeDefault={!pov} position={[1.38, 0.98, -1.72]} fov={38} />
       <hemisphereLight color="#fff1d6" groundColor="#7a5a3c" intensity={0.85} />
       <directionalLight position={[8, 10, 4]} intensity={1.7} color="#ffe7c2" />
 
@@ -94,21 +100,25 @@ export function BikeCanvas({
           eventRef={eventRef}
           forcesRef={forcesRef}
           harnessRef={harnessRef}
+          ridePhaseRef={ridePhaseRef}
         >
+          <RiderPov enabled={pov} telemetryRef={telemetryRef} />
           <MotocrossBike telemetryRef={telemetryRef} liveRef={liveRef} padActiveRef={padActiveRef} />
           {hideForces ? null : <ForceArrows forcesRef={forcesRef} hiddenRef={hiddenRef} />}
         </ChassisRig>
       </group>
 
-      <OrbitControls
-        enablePan={inspect}
-        enableZoom
-        enableRotate={inspect}
-        maxPolarAngle={Math.PI / 2 - 0.04}
-        minDistance={0.7}
-        maxDistance={4.2}
-        target={[0, PLATFORM_HOME_Y + 0.28, 0]}
-      />
+      {pov ? null : (
+        <OrbitControls
+          enablePan={inspect}
+          enableZoom
+          enableRotate={inspect}
+          maxPolarAngle={Math.PI / 2 - 0.04}
+          minDistance={0.7}
+          maxDistance={4.2}
+          target={[0, PLATFORM_HOME_Y + 0.28, 0]}
+        />
+      )}
     </Canvas>
   );
 }

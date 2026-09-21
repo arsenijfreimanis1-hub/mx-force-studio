@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { Eye, EyeOff, Gamepad2, LineChart, Loader2, Radio, Unplug } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff, Gamepad2, LineChart, Loader2, Radio, Unplug, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -17,7 +17,7 @@ import {
 import { DEFAULT_EVENT, DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
 import { formatG, speedKph } from "@/lib/mxb/forces";
 import { gamepadActive, padTraceActive, readFirstGamepad, readPadTrace } from "@/lib/mxb/gamepad";
-import { detectCrash } from "@/lib/mxb/crash";
+import { createRidePhaseFilter, describeRidePhase, detectCrash, type RidePhase } from "@/lib/mxb/crash";
 import { setupLabel } from "@/lib/mxb/inputs";
 import { dofStep, saveStoredDof } from "@/lib/mxb/dof";
 import { displayBikeName, holdLive, isPlaceholderBikeName, stabilizeBikeEvent } from "@/lib/mxb/live-store";
@@ -47,6 +47,7 @@ import { applyLesson, describeLesson, emptyLesson, learnFromRows, type SheetLess
 import { describeHarness, idleHarness, type HarnessState } from "@/lib/mxb/harness";
 import {
   createSheetBuffer,
+  parseSheetCsv,
   pushSheetRow,
   readSheetRows,
   sheetDurationS,
@@ -139,6 +140,9 @@ export function MxForceStudio() {
   const [saving, setSaving] = useState(false);
   const [logDir, setLogDir] = useState("");
   const [hudHarness, setHudHarness] = useState<HarnessState>(() => idleHarness());
+  const [hudPhase, setHudPhase] = useState<RidePhase>("parked");
+  const [pov, setPov] = useState(false);
+  const [devOpen, setDevOpen] = useState(false);
 
   const pollRef = useRef<() => Promise<void>>(async () => {});
   const motionRef = useRef(createMotionFilter());
@@ -165,6 +169,7 @@ export function MxForceStudio() {
   const graphOpenRef = useRef(false);
   const sheetRef = useRef(createSheetBuffer(24000));
   const harnessRef = useRef(idleHarness());
+  const ridePhaseRef = useRef(createRidePhaseFilter());
   const lastSheetMs = useRef(0);
   const lastLearnMs = useRef(0);
   const lastSignFlipMs = useRef(0);
@@ -177,8 +182,23 @@ export function MxForceStudio() {
     setGraphOpen(loadTraceOpen(false));
     void fetch("/api/sheet")
       .then((res) => res.json())
-      .then((data: { dir?: string }) => {
+      .then((data: { dir?: string; latestCsv?: string; latestName?: string }) => {
         if (data.dir) setLogDir(data.dir);
+        if (data.latestCsv && data.latestCsv.length > 20) {
+          const rows = parseSheetCsv(data.latestCsv);
+          const nextLesson = learnFromRows(rows, {
+            visualPitch: stored.visualPitch,
+            leanSign: stored.leanSign,
+          });
+          lessonRef.current = nextLesson;
+          setLesson(nextLesson);
+          const patched = applyLesson(stored, nextLesson, { allowSignFlip: false, slew: 0.55 });
+          setTravel(patched);
+          travelRef.current = patched;
+          userTravelRef.current = patched;
+          saveStoredTravel(patched);
+          if (data.latestName) setSaveMsg(`Learned from ${data.latestName}`);
+        }
       })
       .catch(() => {});
   }, []);
@@ -239,7 +259,7 @@ export function MxForceStudio() {
         padOnRef.current = pad;
         setPadOn(pad);
       }
-      const nextDriving = liveRef.current || pad;
+      const nextDriving = liveRef.current;
       if (nextDriving !== drivingRef.current) {
         drivingRef.current = nextDriving;
         setDriving(nextDriving);
@@ -262,6 +282,7 @@ export function MxForceStudio() {
       if (now - lastHarnessHud.current >= HUD_MS) {
         lastHarnessHud.current = now;
         setHudHarness(harnessRef.current);
+        setHudPhase(ridePhaseRef.current.phase);
       }
       const mode = logModeRef.current;
       const shouldLog = mode === "start" || (mode === "auto" && nextDriving);
@@ -317,6 +338,7 @@ export function MxForceStudio() {
       setSheetCount(sheetRef.current.len);
       setSheetSeconds(sheetDurationS(sheetRef.current));
       setHudHarness(harnessRef.current);
+      setHudPhase(ridePhaseRef.current.phase);
     }, 16);
     return () => window.clearInterval(id);
   }, []);
@@ -375,7 +397,8 @@ export function MxForceStudio() {
         setHudTel(telemetryRef.current);
         setHudEvent(eventRef.current);
         setHudHarness(harnessRef.current);
-        drivingRef.current = liveNow || padOnRef.current;
+        setHudPhase(ridePhaseRef.current.phase);
+        drivingRef.current = liveNow;
         setDriving(drivingRef.current);
         lastHudRef.current = performance.now();
         return;
@@ -390,6 +413,7 @@ export function MxForceStudio() {
       setHudTel(telemetryRef.current);
       setHudEvent(eventRef.current);
       setHudHarness(harnessRef.current);
+      setHudPhase(ridePhaseRef.current.phase);
     };
 
     const poll = async () => {
@@ -503,11 +527,15 @@ export function MxForceStudio() {
             Pad
           </Badge>
         ) : null}
-        {crashed ? (
+        {crashed || hudPhase === "crash" ? (
           <Badge variant="destructive" className="gap-1">
             Crash
           </Badge>
-        ) : null}
+        ) : (
+          <Badge variant={hudPhase === "air" || hudPhase === "land" ? "default" : "outline"} className="gap-1">
+            {describeRidePhase(hudPhase)}
+          </Badge>
+        )}
         <Badge variant={usingLive ? "default" : "outline"} className="gap-1 max-w-[14rem]">
           {usingLive ? (
             <Radio className="size-3" />
@@ -522,7 +550,8 @@ export function MxForceStudio() {
         </Badge>
       </header>
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_16.5rem]">
+      <div className="grid min-h-0 flex-1 lg:grid-cols-[10.5rem_minmax(0,1fr)_16.5rem]">
+        <InputsColumn telemetry={telemetry} />
         <section className="relative min-h-[52vh] border-b border-border lg:border-r lg:border-b-0">
           <BikeCanvas
             telemetryRef={telemetryRef}
@@ -539,8 +568,10 @@ export function MxForceStudio() {
             forcesRef={forcesRef}
             hiddenRef={hiddenRef}
             driving={driving}
-            showPadLabels={!graphOpen}
+            showPadLabels={!graphOpen && !pov}
             harnessRef={harnessRef}
+            ridePhaseRef={ridePhaseRef}
+            pov={pov}
           />
 
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-2">
@@ -575,25 +606,15 @@ export function MxForceStudio() {
           </div>
 
           <div className="absolute top-11 right-2 z-20 flex gap-1">
-            <Button
-              size="xs"
-              variant={graphOpen ? "default" : "secondary"}
-              onClick={() => {
-                const next = !graphOpen;
-                setGraphOpen(next);
-                saveTraceOpen(next);
-              }}
-            >
-              <LineChart />
-              {graphOpen ? "Hide graph" : "Graph"}
+            <Button size="xs" variant={pov ? "default" : "secondary"} onClick={() => setPov((v) => !v)}>
+              <User />
+              {pov ? "Garage" : "POV"}
             </Button>
-            <Button size="xs" variant={hideForces ? "default" : "secondary"} onClick={() => setHideForces((v) => !v)}>
-              {hideForces ? <Eye /> : <EyeOff />}
-              {hideForces ? "Show arrows" : "Hide arrows"}
-            </Button>
-            <Button size="xs" variant="secondary" onClick={() => setInspect((v) => !v)}>
-              {inspect ? "Orbit" : "Lock"}
-            </Button>
+            {pov ? null : (
+              <Button size="xs" variant="secondary" onClick={() => setInspect((v) => !v)}>
+                {inspect ? "Orbit" : "Lock"}
+              </Button>
+            )}
           </div>
 
           <div className="pointer-events-none absolute top-11 left-2 z-10 hidden font-mono text-[10px] text-white/70 sm:grid gap-1">
@@ -608,8 +629,8 @@ export function MxForceStudio() {
                 <p className="font-medium text-amber-100">New here?</p>
                 <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-white/80">
                   <li>Start MX Bikes on this PC and go on track.</li>
-                  <li>Press Connect. The pad stays with the game.</li>
-                  <li>6DOF is on. Use the sliders if the deck feels small.</li>
+                  <li>Press Connect. The bike stays parked until the game is live.</li>
+                  <li>POV is first-person dynamic, same idea as MX Bikes.</li>
                 </ol>
               </div>
             </div>
@@ -629,9 +650,7 @@ export function MxForceStudio() {
                 }
               />
             </div>
-          ) : (
-            <InputsOverlay telemetry={telemetry} />
-          )}
+          ) : null}
         </section>
 
         <aside className="flex min-h-0 flex-col bg-card">
@@ -641,7 +660,7 @@ export function MxForceStudio() {
                 <>
                   <p className="text-xs leading-4 text-muted-foreground">
                     {step.hint} Amber edge is the front of the deck. Start MX Bikes, go on track,
-                    then Connect. Xbox: RT gas, LT front brake, LB rear, pull stick back to wheelie.
+                    then Connect. The deck stays parked until MX Bikes is live.
                   </p>
                   <Button
                     size="sm"
@@ -720,12 +739,24 @@ export function MxForceStudio() {
                 </>
               ) : null}
 
-              {padOn && !usingLive ? (
-                <p className="text-[11px] text-muted-foreground">
-                  Xbox pad driving the frame — RT throttle, LT front brake, LB rear, left stick steer/lean
-                </p>
-              ) : null}
+              <p className="font-mono text-[11px] leading-4 text-muted-foreground">{describeHarness(hudHarness)}</p>
+              <NumberSlider
+                label="Rod stroke"
+                value={travel.rodStroke}
+                min={0.08}
+                max={0.55}
+                step={0.01}
+                display={`±${travel.rodStroke.toFixed(2)} m`}
+                onChange={(rodStroke) => patchTravel({ rodStroke })}
+              />
 
+              <Button size="sm" variant={devOpen ? "default" : "outline"} onClick={() => setDevOpen((v) => !v)}>
+                {devOpen ? <ChevronDown /> : <ChevronRight />}
+                Dev
+              </Button>
+
+              {devOpen ? (
+              <>
               <div className="grid gap-2">
                 <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
                   Spreadsheet
@@ -745,8 +776,23 @@ export function MxForceStudio() {
                 </p>
                 {saveMsg ? <p className="text-[11px] leading-4 text-emerald-300">{saveMsg}</p> : null}
                 <p className="text-[11px] leading-4 text-foreground/80">{describeLesson(lesson)}</p>
-                <p className="font-mono text-[11px] leading-4 text-muted-foreground">{describeHarness(hudHarness)}</p>
                 <div className="grid grid-cols-2 gap-1">
+                  <Button
+                    size="xs"
+                    variant={graphOpen ? "default" : "outline"}
+                    onClick={() => {
+                      const next = !graphOpen;
+                      setGraphOpen(next);
+                      saveTraceOpen(next);
+                    }}
+                  >
+                    <LineChart />
+                    {graphOpen ? "Hide graph" : "Graph"}
+                  </Button>
+                  <Button size="xs" variant={hideForces ? "outline" : "default"} onClick={() => setHideForces((v) => !v)}>
+                    {hideForces ? <Eye /> : <EyeOff />}
+                    {hideForces ? "Show arrows" : "Hide arrows"}
+                  </Button>
                   <Button
                     size="xs"
                     variant={logMode === "auto" ? "default" : "outline"}
@@ -843,15 +889,6 @@ export function MxForceStudio() {
                   onChange={(deg) => patchTravel({ limitPitch: (deg * Math.PI) / 180 })}
                 />
                 <NumberSlider
-                  label="Rod stroke"
-                  value={travel.rodStroke}
-                  min={0.08}
-                  max={0.55}
-                  step={0.01}
-                  display={`±${travel.rodStroke.toFixed(2)} m`}
-                  onChange={(rodStroke) => patchTravel({ rodStroke })}
-                />
-                <NumberSlider
                   label="Yaw · heading"
                   value={(travel.limitYaw * 180) / Math.PI}
                   min={0}
@@ -923,6 +960,8 @@ export function MxForceStudio() {
                   </Button>
                 </div>
               </div>
+              </>
+              ) : null}
             </div>
           </ScrollArea>
         </aside>
@@ -964,38 +1003,34 @@ function PoseReadout({ poseRef }: { poseRef: MutableRefObject<Pose6> }) {
   return <span ref={el}>R +0°  P +0°</span>;
 }
 
-function InputsOverlay({ telemetry }: { telemetry: Telemetry }) {
+function InputsColumn({ telemetry }: { telemetry: Telemetry }) {
   const steerMax = 40;
   const steerT = Math.min(1, Math.max(-1, telemetry.steer / steerMax));
-  const steerLeft = steerT > 0;
-  const steerWidth = Math.abs(steerT) * 50;
-
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 p-2 pl-14">
-      <div className="grid grid-cols-5 gap-x-2 rounded-md border border-white/10 bg-black/55 px-2.5 py-1.5 backdrop-blur-sm">
-        <InputBar label="Thr" value={telemetry.throttle} fillClass="bg-emerald-400" />
-        <InputBar label="F brk" value={telemetry.frontBrake} fillClass="bg-rose-500" />
-        <InputBar label="R brk" value={telemetry.rearBrake} fillClass="bg-pink-400" />
-        <InputBar label="Clh" value={telemetry.clutch} fillClass="bg-slate-300" />
-        <div className="grid gap-1">
-          <div className="flex items-center justify-between text-[10px] tracking-wide text-white/55 uppercase">
-            <span>Str</span>
-            <span className="font-mono text-white">{telemetry.steer.toFixed(0)}°</span>
-          </div>
-          <div className="relative h-1 overflow-hidden rounded-full bg-white/15">
-            <div className="absolute inset-y-0 left-1/2 w-px bg-white/50" />
-            <div
-              className="absolute inset-y-0 bg-violet-400"
-              style={
-                steerLeft
-                  ? { left: `${50 - steerWidth}%`, width: `${steerWidth}%` }
-                  : { left: "50%", width: `${steerWidth}%` }
-              }
-            />
-          </div>
+    <aside className="flex min-h-0 flex-col gap-3 border-b border-border bg-card px-3 py-3 lg:border-b-0 lg:border-r">
+      <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Inputs</p>
+      <InputBar label="Thr" value={telemetry.throttle} fillClass="bg-emerald-400" />
+      <InputBar label="F brk" value={telemetry.frontBrake} fillClass="bg-rose-500" />
+      <InputBar label="R brk" value={telemetry.rearBrake} fillClass="bg-pink-400" />
+      <InputBar label="Clh" value={telemetry.clutch} fillClass="bg-slate-300" />
+      <div className="grid gap-1">
+        <div className="flex items-center justify-between text-[10px] tracking-wide text-muted-foreground uppercase">
+          <span>Str</span>
+          <span className="font-mono text-foreground">{telemetry.steer.toFixed(0)}°</span>
+        </div>
+        <div className="relative h-24 overflow-hidden rounded-sm bg-muted">
+          <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
+          <div
+            className="absolute inset-x-1 rounded-sm bg-violet-400"
+            style={
+              steerT >= 0
+                ? { top: `${50 - Math.abs(steerT) * 50}%`, height: `${Math.abs(steerT) * 50}%` }
+                : { top: "50%", height: `${Math.abs(steerT) * 50}%` }
+            }
+          />
         </div>
       </div>
-    </div>
+    </aside>
   );
 }
 
@@ -1011,12 +1046,12 @@ function InputBar({
   const pct = Math.round(Math.min(1, Math.max(0, value)) * 100);
   return (
     <div className="grid gap-1">
-      <div className="flex items-center justify-between text-[10px] tracking-wide text-white/55 uppercase">
+      <div className="flex items-center justify-between text-[10px] tracking-wide text-muted-foreground uppercase">
         <span>{label}</span>
-        <span className="font-mono text-white">{pct}</span>
+        <span className="font-mono text-foreground">{pct}</span>
       </div>
-      <div className="h-1 overflow-hidden rounded-full bg-white/15">
-        <div className={`h-full ${fillClass}`} style={{ width: `${pct}%` }} />
+      <div className="relative h-24 overflow-hidden rounded-sm bg-muted">
+        <div className={`absolute inset-x-1 bottom-0 rounded-sm ${fillClass}`} style={{ height: `${pct}%` }} />
       </div>
     </div>
   );

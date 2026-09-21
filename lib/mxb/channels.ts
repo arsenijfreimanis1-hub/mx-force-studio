@@ -44,6 +44,13 @@ function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
 
+function pedalOrPressure(pedal: number, kpa: number): number {
+  const p = Number.isFinite(pedal) ? pedal : 0;
+  if (p > 0.04) return clamp(p, 0, 1);
+  if (!Number.isFinite(kpa) || kpa < 80) return clamp(p, 0, 1);
+  return clamp(kpa / 1600, 0, 1);
+}
+
 export function chassisCues(tel: Telemetry, sagF: number, sagR: number): ChassisCues {
   const frontContact = tel.wheelMaterial[0] > 0;
   const rearContact = tel.wheelMaterial[1] > 0;
@@ -62,9 +69,9 @@ export function chassisCues(tel: Telemetry, sagF: number, sagR: number): Chassis
     pitchDeg: tel.pitch,
     yawRateDeg: tel.yawRate,
     steerDeg: tel.steer,
-    throttle: tel.throttle,
-    frontBrake: tel.frontBrake,
-    rearBrake: tel.rearBrake,
+    throttle: clamp(tel.throttle, 0, 1),
+    frontBrake: pedalOrPressure(tel.frontBrake, tel.brakePressureKpa[0]),
+    rearBrake: pedalOrPressure(tel.rearBrake, tel.brakePressureKpa[1]),
   };
 }
 

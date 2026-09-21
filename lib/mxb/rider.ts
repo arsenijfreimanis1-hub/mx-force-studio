@@ -40,9 +40,9 @@ export function riderFromTelemetry(tel: Telemetry, stick: BodyStick = idleBodySt
     0.7,
   );
   const foreAft = clamp(
-    tel.throttle * 0.06 - tel.frontBrake * 0.1 - tel.rearBrake * 0.04 - tel.pitch * 0.004 + stick.foreAft,
-    -0.12,
-    0.1,
+    tel.throttle * 0.09 - tel.frontBrake * 0.16 - tel.rearBrake * 0.06 - tel.pitch * 0.005 + stick.foreAft,
+    -0.14,
+    0.12,
   );
   return { stand: Math.max(stand, stick.stand), lean, foreAft };
 }
