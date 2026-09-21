@@ -98,6 +98,12 @@ test("landing pulls both belts down after air", () => {
   assert.ok(held.frontBelt > 0.55 && held.rearBelt > 0.55, JSON.stringify(held));
 });
 
+test("a hard vertical G is a land pull even without a prior air sample", () => {
+  const h = stepHarness(sample({ speedMs: 12, accelG: { x: 0, y: 1.7, z: 0 } }));
+  assert.equal(h.mode, "land");
+  assert.ok(h.frontBelt > 0.7 && h.rearBelt > 0.7, JSON.stringify(h));
+});
+
 test("crash dumps the hug", () => {
   const h = stepHarness(sample({ crashed: true, roll: 90 }));
   assert.equal(h.mode, "crash");
