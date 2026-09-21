@@ -14,6 +14,31 @@ function Write-Step($msg) {
   Write-Host "==> $msg" -ForegroundColor Cyan
 }
 
+function Same-Path($a, $b) {
+  try {
+    return ([IO.Path]::GetFullPath($a).TrimEnd('\') -ieq [IO.Path]::GetFullPath($b).TrimEnd('\'))
+  } catch {
+    return $false
+  }
+}
+
+# Copy-Item throws "Cannot overwrite the item ... with itself" when the
+# extracted GitHub folder already contains Uninstall Force Studio.bat.
+function Copy-IfDifferent($src, $dest) {
+  if (-not (Test-Path -LiteralPath $src)) { return }
+  $destDir = Split-Path -Parent $dest
+  if ($destDir -and -not (Test-Path -LiteralPath $destDir)) {
+    New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+  }
+  if (Same-Path $src $dest) { return }
+  try {
+    Copy-Item -LiteralPath $src -Destination $dest -Force -ErrorAction Stop
+  } catch {
+    if ("$($_.Exception.Message)" -match 'with itself') { return }
+    throw
+  }
+}
+
 function Get-AppRoot {
   if ($PSScriptRoot) {
     $fromScript = Split-Path -Parent $PSScriptRoot
@@ -180,16 +205,8 @@ try {
 
   if ($env:MXFS_BAT -and (Test-Path -LiteralPath $env:MXFS_BAT)) {
     $batDir = Split-Path -Parent $env:MXFS_BAT
-    $srcUninstall = Join-Path $root "Uninstall Force Studio.bat"
-    $srcUninstallPs = Join-Path $root "windows\uninstall.ps1"
-    if (Test-Path -LiteralPath $srcUninstall) {
-      Copy-Item -LiteralPath $srcUninstall -Destination (Join-Path $batDir "Uninstall Force Studio.bat") -Force
-    }
-    if (Test-Path -LiteralPath $srcUninstallPs) {
-      $destWin = Join-Path $batDir "windows"
-      New-Item -ItemType Directory -Force -Path $destWin | Out-Null
-      Copy-Item -LiteralPath $srcUninstallPs -Destination (Join-Path $destWin "uninstall.ps1") -Force
-    }
+    Copy-IfDifferent (Join-Path $root "Uninstall Force Studio.bat") (Join-Path $batDir "Uninstall Force Studio.bat")
+    Copy-IfDifferent (Join-Path $root "windows\uninstall.ps1") (Join-Path $batDir "windows\uninstall.ps1")
   }
 
   $plugin = Join-Path $root "windows\install-plugin.ps1"
