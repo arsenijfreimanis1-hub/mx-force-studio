@@ -25,7 +25,7 @@ export function isRotMatrix(rot: number[] | undefined): rot is number[] {
   return upN > 0.5 && upN < 1.5 && fwdN > 0.5 && fwdN < 1.5;
 }
 
-/** Degrees. PiBoSo Euler / lean: negative roll = left, +pitch = nose up. */
+/** Degrees. PiBoSo Euler: negative roll = left. Positive pitch is nose-down (front drops); a wheelie is negative. */
 export function attitudeFromRot(rot: number[]): AttitudeDeg | null {
   if (!isRotMatrix(rot)) return null;
   const [upX, upY, upZ] = col(rot, 1);

@@ -51,7 +51,7 @@ export function telemetryFromSandbox(inputs: SandboxInputs, time: number): Telem
       y: vertG,
       z: longG,
     },
-    pitch: inputs.pitch,
+    pitch: -inputs.pitch,
     roll: inputs.lean,
     yawRate: inputs.steer * 0.4,
     rollRate: inputs.lean * 0.15,

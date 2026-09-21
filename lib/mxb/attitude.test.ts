@@ -9,7 +9,7 @@ test("MaxTM +Z rotation extracts a matching Euler roll", () => {
   assert.ok(Math.abs(att.pitch) < 0.05, `pitch ${att.pitch}`);
 });
 
-test("MaxTM rotation matrix +12° is a nose-up pitch", () => {
+test("MaxTM rotation matrix +12° is a nose-down pitch", () => {
   const att = attitudeFromRot(rxPitch(12));
   assert.ok(att);
   assert.ok(Math.abs(att.pitch - 12) < 0.05, `pitch ${att.pitch}`);

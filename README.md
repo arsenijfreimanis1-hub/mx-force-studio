@@ -7,7 +7,7 @@ Every public chassis channel from the PiBoSo plugin is mapped onto the deck and 
 | In-game field | Garage |
 | --- | --- |
 | `m_fRoll` / `m_aafRot` (negative = left) | Frame + rider lean |
-| `m_fPitch` | Wheelie / brake pitch |
+| `m_fPitch` | Wheelie (negative) / stoppie (positive) |
 | `m_fYawVelocity`, `m_fSteer` | Yaw washout |
 | `m_fAcceleration` X/Y/Z | Sway / heave / surge |
 | `m_afSuspLength` + `m_afSuspVelocity` | Whoops / bumps vs rolling sag |

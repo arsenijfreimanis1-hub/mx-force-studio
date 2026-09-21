@@ -18,8 +18,8 @@ const WHEELIE: SandboxInputs = {
   gear: 2,
 };
 
-test("sandbox wheelie pitch is nose-up in PiBoSo degrees", () => {
+test("sandbox wheelie pitch is a PiBoSo nose-up (negative Euler)", () => {
   const tel = telemetryFromSandbox(WHEELIE, 1);
-  assert.equal(tel.pitch, 20);
+  assert.equal(tel.pitch, -20);
   assert.ok(tel.wheelSpeed[1] > tel.wheelSpeed[0], "rear spins up on a wheelie");
 });

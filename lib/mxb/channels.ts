@@ -7,7 +7,7 @@
  *
  *   accelG        G, chassis X right / Y up / Z forward
  *   roll          deg, plugin negative = in-game left (deck mirrors it)
- *   pitch         deg, positive = nose up
+ *   pitch         deg, positive = nose down / stoppie, negative = wheelie
  *   yaw / yawRate heading + deg/s
  *   rot[9]        row-major 3×3 (heading lives here; lean uses Euler)
  *   suspLength    m, longer = more extended (0 front, 1 rear)
@@ -76,7 +76,7 @@ export function chassisCues(tel: Telemetry, sagF: number, sagR: number): Chassis
  */
 export function heaveFromCues(cues: ChassisCues, response: number): number {
   if (cues.airborne) return 0;
-  const bump = clamp(cues.bumpM * 1.55 + cues.suspV * 0.07, -0.4, 0.5);
-  const unload = cues.heaveG < 0 ? cues.heaveG * 0.35 : 0;
+  const bump = clamp(cues.bumpM * 0.9 + cues.suspV * 0.04, -0.25, 0.3);
+  const unload = cues.heaveG < 0 ? cues.heaveG * 0.18 : 0;
   return clamp((bump + unload) * response, -1, 1);
 }

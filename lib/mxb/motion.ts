@@ -69,8 +69,9 @@ export type FrameTravel = {
 };
 
 /**
- * Three.js +X pitch with +Z-forward is nose-down. PiBoSo / MX Bikes +pitch is
- * nose-up, so the garage multiplies by −1 unless the rider flips it.
+ * Three.js +X with +Z-forward is nose-down. Plugin Euler +pitch is also
+ * nose-down; `PITCH_FOLLOW` already maps a wheelie to pose.pitch > 0
+ * (lean back). Multiply by −1 so that lean-back draws nose-up in the garage.
  */
 export const VISUAL_PITCH_SIGN = -1;
 
@@ -91,28 +92,26 @@ export const WASH_ZETA = 1;
 /** Faster rotational washout — MX rates are much quicker than aircraft. */
 export const WASH_OMEGA_ANG = 6.4;
 const INTEGRATOR_HZ = 120;
-/**
- * Motorcycle tilt-coordination. Cars use ~3°/s so the otoliths don't see the
- * tilt; MX needs a faster channel or brake/accel cues arrive after the jump.
- */
-const TILT_RATE_LIMIT = (55 * Math.PI) / 180;
-const TILT_TAU = 0.22;
 /** Follow plugin Euler. Rest uses a longer tau so parked IMU noise dies. */
-const ATTITUDE_TAU = 0.14;
-const ATTITUDE_TAU_REST = 0.28;
+const ATTITUDE_TAU = 0.032;
+const ATTITUDE_TAU_REST = 0.22;
 /** Linear m/s a strapped rider can take without being thrown. */
 export const HUMAN_LIN_MS = 1.15;
 /** Angular rad/s. ~77°/s — a berm lean, not a twitch. */
 export const HUMAN_ANG_RS = 1.35;
 /** Grounded whoops stay on the shocks. Air tracks the ballistic arc. */
-const HEAVE_TAU_GROUND = 0.1;
-const HEAVE_TAU_AIR = 0.035;
+const HEAVE_TAU_GROUND = 0.22;
+const HEAVE_TAU_AIR = 0.08;
 /**
  * Chase-cam deck roll. Plugin m_fRoll negative is in-game left, but that
  * Euler draws the opposite way on the +Z-forward garage.
  */
 export const LEAN_FOLLOW = -1;
-const PITCH_FOLLOW = 1;
+/**
+ * Plugin / rxPitch positive is nose-down (front drops). An in-game wheelie
+ * is negative m_fPitch. Flip so pose.pitch > 0 leans the garage back.
+ */
+const PITCH_FOLLOW = -1;
 /** World jump height (m) that fills ±heave travel — typical MX table. */
 const JUMP_WORLD_M = CART_Y_M;
 const REST_SUSP_F = 0.205;
@@ -121,8 +120,7 @@ const SAG_TAU_QUIET = 3.5;
 const SAG_TAU_BUSY = 8;
 /** Residual lateral tilt only — lean-follow owns the berm. */
 const TILT_ROLL_BLEND = 0.04;
-/** Brake / accel pitch so gas lifts the front and the brakes drop it. */
-const TILT_PITCH_BLEND = 0.42;
+const GAME_PITCH_DEG = 1.5;
 const HEAD_ACCEL_CLAMP = 14;
 
 export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
@@ -143,26 +141,26 @@ export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
   leanSign: LEAN_FOLLOW,
 };
 
-/** Garage rig — full 6DOF, wide travel, every axis on a slider. */
+/** Garage rig — 6DOF with calmer follow so the deck tracks the live bike. */
 export const STUDIO_TRAVEL: FrameTravel = {
-  limitX: 1,
-  limitY: 1,
-  limitZ: 1,
-  limitRoll: (45 * Math.PI) / 180,
-  limitPitch: (35 * Math.PI) / 180,
-  limitYaw: (22 * Math.PI) / 180,
-  smoothTau: 0.05,
-  response: 1.15,
+  limitX: 0.7,
+  limitY: 0.55,
+  limitZ: 0.7,
+  limitRoll: (40 * Math.PI) / 180,
+  limitPitch: (32 * Math.PI) / 180,
+  limitYaw: (16 * Math.PI) / 180,
+  smoothTau: 0.07,
+  response: 1,
   dof: 6,
-  rateLin: 2.8,
-  rateAng: 2.6,
-  visualTau: 0.032,
+  rateLin: 1.4,
+  rateAng: 1.55,
+  visualTau: 0.055,
   parkLock: true,
   visualPitch: VISUAL_PITCH_SIGN,
   leanSign: LEAN_FOLLOW,
 };
 
-export const TRAVEL_STORAGE_KEY = "mxb-force-studio.travel.v2";
+export const TRAVEL_STORAGE_KEY = "mxb-force-studio.travel.v3";
 
 function finiteOr(n: unknown, fallback: number) {
   const v = Number(n);
@@ -592,25 +590,24 @@ export function stepMotion(
   } else {
     if (filter.wasAir) {
       const impact = Math.max(0, -filter.airVy, -climb);
-      filter.landSink = -clamp(0.12 + impact * 0.06, 0.1, 0.55) * response;
+      filter.landSink = -clamp(0.08 + impact * 0.04, 0.06, 0.28) * response;
       filter.landSinkV = 0;
       filter.airY = 0;
       filter.y = Math.min(0, filter.y);
     }
     filter.airVy = follow(filter.airVy, 0, step, 0.06);
-    if (hasWorld) filter.groundY = follow(filter.groundY, worldY, step, 2.2);
-    const sink = stepAxis(filter.landSink, filter.landSinkV, 0, step, limY, WASH_OMEGA * 1.35);
+    if (hasWorld) filter.groundY = follow(filter.groundY, worldY, step, 0.85);
+    const sink = stepAxis(filter.landSink, filter.landSinkV, 0, step, limY, WASH_OMEGA * 1.05);
     filter.landSink = sink.pos;
     filter.landSinkV = sink.vel;
     const ride = useCart
-      ? clamp(cart.y / JUMP_WORLD_M, -1, 1) * limY
+      ? clamp(cart.y / JUMP_WORLD_M, -1, 1) * limY * 0.22
       : hasWorld && filter.groundPrimed
-        ? clamp((worldY - filter.groundY) / JUMP_WORLD_M, -1, 1) * limY
+        ? clamp((worldY - filter.groundY) / JUMP_WORLD_M, -1, 1) * limY * 0.22
         : 0;
-    const whoop = Math.abs(filter.landSink) > 0.03 ? 0 : heaveFromCues(cues, response) * limY;
-    const surface = Math.abs(ride) > 0.03 ? ride : whoop;
-    heaveTarget = surface + filter.landSink;
-    if (Math.abs(filter.landSink) > 0.03) heaveTau = HEAVE_TAU_AIR;
+    const whoop = heaveFromCues(cues, response) * limY * 0.38;
+    heaveTarget = ride + whoop + filter.landSink;
+    if (Math.abs(filter.landSink) > 0.03) heaveTau = 0.1;
   }
   filter.wasAir = airborne;
 
@@ -622,8 +619,8 @@ export function stepMotion(
   } else if (useCart && !stopped && !crashed) {
     const tx = clamp(cart.x / CART_XZ_M, -1, 1) * limX * response;
     const tz = clamp(cart.z / CART_XZ_M, -1, 1) * limZ * response;
-    filter.x = follow(filter.x, tx, step, 0.12);
-    filter.z = follow(filter.z, tz, step, 0.12);
+    filter.x = follow(filter.x, tx, step, 0.18);
+    filter.z = follow(filter.z, tz, step, 0.18);
     filter.vx = follow(filter.vx, 0, step, 0.1);
     filter.vz = follow(filter.vz, 0, step, 0.1);
   } else {
@@ -660,13 +657,16 @@ export function stepMotion(
   filter.pitchHp = follow(filter.pitchHp, 0, step, 0.12);
   filter.vpitch = 0;
 
-  const inputPitch = restDeck
-    ? 0
-    : (cues.throttle * 0.18 - cues.frontBrake * 0.26 - cues.rearBrake * 0.08) * response;
-  const tiltPitchTarget = restDeck ? 0 : Math.atan(gForce.z) * TILT_PITCH_BLEND * response + inputPitch;
+  const gameOwnsPitch = Math.abs(attitude.pitch) >= GAME_PITCH_DEG;
+  const inputPitch =
+    restDeck || gameOwnsPitch
+      ? 0
+      : (cues.throttle * 0.16 - cues.frontBrake * 0.22 - cues.rearBrake * 0.06) * response;
+  // Game Euler already has the wheelie. Do not add IMU G nod on top of it.
+  const tiltPitchTarget = restDeck ? 0 : inputPitch;
   const tiltRollTarget = restDeck ? 0 : Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
-  const tiltRate = dof <= 3 ? (80 * Math.PI) / 180 : TILT_RATE_LIMIT;
-  const tiltTau = dof <= 3 ? 0.08 : TILT_TAU;
+  const tiltRate = (70 * Math.PI) / 180;
+  const tiltTau = 0.1;
   filter.tiltPitch = rateLimit(filter.tiltPitch, tiltPitchTarget, step, tiltRate);
   filter.tiltRoll = rateLimit(filter.tiltRoll, tiltRollTarget, step, tiltRate);
   filter.tiltPitch = follow(filter.tiltPitch, tiltPitchTarget, step, tiltTau);
@@ -674,13 +674,7 @@ export function stepMotion(
 
   const rollCmd = restDeck ? 0 : attitude.roll;
   const pitchCmd = restDeck ? 0 : attitude.pitch;
-  const attitudeTau = restDeck
-    ? dof <= 3
-      ? 0.12
-      : ATTITUDE_TAU_REST
-    : dof <= 3
-      ? 0.05
-      : ATTITUDE_TAU;
+  const attitudeTau = restDeck ? ATTITUDE_TAU_REST : ATTITUDE_TAU;
   filter.followRoll = follow(filter.followRoll, deg(rollCmd) * leanFollow, step, attitudeTau);
   filter.followPitch = follow(filter.followPitch, deg(pitchCmd) * PITCH_FOLLOW, step, attitudeTau);
 

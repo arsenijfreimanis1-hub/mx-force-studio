@@ -65,5 +65,5 @@ test("landing G is absorbed — no upward punch", () => {
 test("compressed shocks lift without a G spike", () => {
   const c = chassisCues(sample({ suspLength: [0.12, 0.12], speedMs: 14 }), 0.205, 0.208);
   assert.ok(c.bumpM > 0.08);
-  assert.ok(heaveFromCues(c, 1) > 0.1);
+  assert.ok(heaveFromCues(c, 1) > 0.06);
 });
