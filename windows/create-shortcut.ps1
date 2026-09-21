@@ -1,15 +1,25 @@
 # Creates a clickable "MX Force Studio" icon on the Desktop, Start Menu,
-# and in this repo folder. Safe to run repeatedly.
+# and in this folder. Always points at the .bat you just launched.
 
 $ErrorActionPreference = "Continue"
 
 $root = Split-Path -Parent $PSScriptRoot
-$launcher = Join-Path $root "MX Force Studio.bat"
-if (-not (Test-Path -LiteralPath $launcher)) {
-  $launcher = Join-Path $root "Force Studio.cmd"
+$launcher = $null
+if ($env:MXFS_BAT -and (Test-Path -LiteralPath $env:MXFS_BAT)) {
+  $launcher = $env:MXFS_BAT
+} else {
+  $launcher = Join-Path $root "MX Force Studio.bat"
 }
+if (-not (Test-Path -LiteralPath $launcher)) {
+  Write-Host "No MX Force Studio.bat found to pin."
+  exit 1
+}
+
+$workDir = Split-Path -Parent $launcher
 $icon = Join-Path $root "force-studio.ico"
-$cmd = Join-Path $env:SystemRoot "System32\cmd.exe"
+if (-not (Test-Path -LiteralPath $icon)) {
+  $icon = Join-Path $workDir "force-studio.ico"
+}
 
 $shell = New-Object -ComObject WScript.Shell
 
@@ -22,7 +32,8 @@ foreach ($p in @(
   (Join-Path $env:USERPROFILE "Desktop"),
   (Join-Path $env:USERPROFILE "OneDrive\Desktop"),
   (Join-Path $env:USERPROFILE "OneDrive - Personal\Desktop"),
-  $root
+  $root,
+  $workDir
 )) {
   if ($p) { $desktops.Add($p) | Out-Null }
 }
@@ -36,12 +47,19 @@ foreach ($dir in $desktops) {
   if ($seen.ContainsKey($key)) { continue }
   $seen[$key] = $true
 
+  foreach ($staleName in @("Force Studio.lnk")) {
+    $stale = Join-Path $dir $staleName
+    if (Test-Path -LiteralPath $stale) {
+      Remove-Item -LiteralPath $stale -Force -ErrorAction SilentlyContinue
+    }
+  }
+
   $linkPath = Join-Path $dir "MX Force Studio.lnk"
   try {
     $shortcut = $shell.CreateShortcut($linkPath)
-    $shortcut.TargetPath = $cmd
-    $shortcut.Arguments = "/c `"$launcher`""
-    $shortcut.WorkingDirectory = $root
+    $shortcut.TargetPath = $launcher
+    $shortcut.Arguments = ""
+    $shortcut.WorkingDirectory = $workDir
     $shortcut.WindowStyle = 1
     $shortcut.Description = "MX Bikes Force Studio"
     if (Test-Path -LiteralPath $icon) { $shortcut.IconLocation = "$icon,0" }
@@ -54,7 +72,7 @@ foreach ($dir in $desktops) {
 }
 
 if ($written -eq 0) {
-  Write-Host "No Desktop shortcut was created. Double-click 'MX Force Studio.bat' in this folder instead:"
+  Write-Host "No Desktop shortcut was created. Double-click this file instead:"
   Write-Host "  $launcher"
   exit 1
 }

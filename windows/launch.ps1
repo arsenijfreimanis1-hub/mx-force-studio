@@ -25,8 +25,6 @@ function Get-AppRoot {
   }
   $here = (Get-Location).Path
   if (Test-Path -LiteralPath (Join-Path $here "package.json")) { return $here }
-  $installed = Join-Path $env:LOCALAPPDATA "MXForceStudio\app"
-  if (Test-Path -LiteralPath (Join-Path $installed "package.json")) { return $installed }
   return $null
 }
 
@@ -89,6 +87,41 @@ function Install-Node {
   Write-Host "Using portable Node $nodeHome"
 }
 
+function Stop-ListeningPort([int]$Port) {
+  $ids = New-Object System.Collections.Generic.List[int]
+  try {
+    Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+      ForEach-Object {
+        if ($_.OwningProcess) { [void]$ids.Add([int]$_.OwningProcess) }
+      }
+  } catch {}
+  if ($ids.Count -eq 0) {
+    try {
+      $pattern = ":$Port\s+.*LISTENING"
+      netstat -ano | Select-String -Pattern $pattern | ForEach-Object {
+        $procId = ($_.ToString().Trim() -split '\s+')[-1]
+        if ($procId -match '^\d+$') { [void]$ids.Add([int]$procId) }
+      }
+    } catch {}
+  }
+  foreach ($procId in ($ids | Select-Object -Unique)) {
+    if (-not $procId -or $procId -eq 0) { continue }
+    Write-Host "Closing leftover Force Studio process $procId on port $Port"
+    Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Clear-StaleStudio($keepRoot) {
+  $legacy = Join-Path $env:LOCALAPPDATA "MXForceStudio\app"
+  if (-not (Test-Path -LiteralPath $legacy)) { return }
+  $legacyFull = [IO.Path]::GetFullPath($legacy).TrimEnd('\')
+  $keep = ""
+  if ($keepRoot) { $keep = [IO.Path]::GetFullPath($keepRoot).TrimEnd('\') }
+  if ($keep -and ($legacyFull -ieq $keep)) { return }
+  Write-Host "Removing leftover app at $legacyFull (old garage with wheels will not start)"
+  Remove-Item -LiteralPath $legacy -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 try {
   Write-Host ""
   Write-Host "MX Bikes Force Studio" -ForegroundColor White
@@ -96,11 +129,15 @@ try {
 
   $root = Get-AppRoot
   if (-not $root) {
-    throw "App files are missing. Double-click the MX Force Studio.bat that unpacks itself, or extract MX_Force_Studio_Windows.zip and run the .bat inside the folder."
+    throw "App files are missing. Double-click the MX Force Studio.bat that unpacks itself, or extract the GitHub zip and run the .bat inside that folder."
   }
   Set-Location -LiteralPath $root
   Unblock-Tree $root
   Write-Host "App folder: $root"
+
+  Clear-StaleStudio $root
+  Stop-ListeningPort 43187
+  Stop-ListeningPort 47387
 
   Install-Node
   Write-Host "node $(node -v)   npm $(cmd.exe /c npm.cmd -v)"
@@ -121,9 +158,18 @@ try {
   $haveBuild = Test-Path -LiteralPath (Join-Path $root ".next\BUILD_ID")
   if (-not $haveBuild -or $builtRev -ne $rev) {
     Write-Step "Building Force Studio"
+    $nextDir = Join-Path $root ".next"
+    if (Test-Path -LiteralPath $nextDir) {
+      Remove-Item -LiteralPath $nextDir -Recurse -Force
+    }
     Invoke-Npm "run build"
     New-Item -ItemType Directory -Force -Path (Join-Path $root ".next") | Out-Null
     Set-Content -LiteralPath $builtRevFile -Value $rev -NoNewline
+  }
+
+  if (-not $env:MXFS_BAT) {
+    $guess = Join-Path $root "MX Force Studio.bat"
+    if (Test-Path -LiteralPath $guess) { $env:MXFS_BAT = $guess }
   }
 
   $shortcut = Join-Path $root "windows\create-shortcut.ps1"
@@ -160,7 +206,7 @@ try {
 
   $opener = Start-Process -FilePath "powershell.exe" -ArgumentList @(
     "-NoProfile", "-Command",
-    "`$u='http://127.0.0.1:43187'; for(`$i=0;`$i -lt 120;`$i++){ try{ `$null = Invoke-WebRequest -UseBasicParsing `$u -TimeoutSec 1; Start-Process `$u; break } catch { Start-Sleep -Milliseconds 500 } }"
+    "`$u='http://127.0.0.1:43187/?v=$rev'; for(`$i=0;`$i -lt 120;`$i++){ try{ `$null = Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:43187' -TimeoutSec 1; Start-Process `$u; break } catch { Start-Sleep -Milliseconds 500 } }"
   ) -PassThru -WindowStyle Hidden
 
   try {

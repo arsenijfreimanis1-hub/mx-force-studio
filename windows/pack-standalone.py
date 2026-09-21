@@ -26,9 +26,24 @@ SKIP_DIRS = {
     "coverage",
     "out",
     "build",
+    "force_studio_logs",
 }
-SKIP_FILES = {
+SKIP_NAMES = {
     "MX Force Studio.bat",  # replaced by a small stub inside the zip
+    "AGENTS.md",
+    "CLAUDE.md",
+    "Force Studio.cmd",
+    "setup-windows.cmd",
+    "eslint.config.mjs",
+    "pack-standalone.py",
+    ".gitignore",
+    ".gitattributes",
+    "mxb-plugins-dir.txt",
+}
+SKIP_PLUGIN_DEV = {
+    "plugin/build.sh",
+    "plugin/mxb_force_studio.c",
+    "plugin/README.md",
 }
 
 STUB_BAT = "\r\n".join(
@@ -59,10 +74,12 @@ STUB_BAT = "\r\n".join(
 
 def should_skip(path: Path) -> bool:
     rel = path.relative_to(ROOT)
-    if rel.name in SKIP_FILES:
+    if rel.name in SKIP_NAMES:
         return True
-    if rel.name == "pack-standalone.py":
-        return False
+    if rel.name.endswith(".test.ts") or rel.name.endswith(".tsbuildinfo"):
+        return True
+    if rel.as_posix() in SKIP_PLUGIN_DEV:
+        return True
     parts = set(rel.parts)
     return bool(parts & SKIP_DIRS)
 
@@ -136,10 +153,11 @@ function Unpack-Payload($dest) {
   $stage = Join-Path $env:TEMP ('MXForceStudio-unpack-' + [guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Force -Path $stage | Out-Null
   Expand-Archive -LiteralPath $zip -DestinationPath $stage -Force
-  $oldNext = Join-Path $dest '.next'
-  if (Test-Path -LiteralPath $oldNext) {
-    Write-Host "Replacing previous build so this pack's source is what you run"
-    Remove-Item -LiteralPath $oldNext -Recurse -Force
+  if (Test-Path -LiteralPath $dest) {
+    Write-Host "Replacing previous unpack so leftover files (old wheels) cannot stay"
+    Get-ChildItem -LiteralPath $dest -Force -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -ne 'node_modules' } |
+      ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
   }
   Get-ChildItem -LiteralPath $stage -Recurse -File | ForEach-Object {
     $rel = $_.FullName.Substring($stage.Length).TrimStart('\')
@@ -154,6 +172,15 @@ $localLaunch = Join-Path $here 'windows\launch.ps1'
 $localPkg = Join-Path $here 'package.json'
 if ((Test-Path -LiteralPath $localLaunch) -and (Test-Path -LiteralPath $localPkg)) {
   Write-Host "Using app files next to the .bat"
+  $legacy = Join-Path $env:LOCALAPPDATA 'MXForceStudio\app'
+  if (Test-Path -LiteralPath $legacy) {
+    $hereFull = [IO.Path]::GetFullPath($here)
+    $legacyFull = [IO.Path]::GetFullPath($legacy)
+    if ($hereFull -ne $legacyFull) {
+      Write-Host "Removing leftover app at $legacyFull so an old garage cannot start"
+      Remove-Item -LiteralPath $legacy -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  }
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $localLaunch
   exit $LASTEXITCODE
 }
