@@ -2,7 +2,7 @@
 
 This is the 64-bit `.dlo` MX Bikes loads from its `plugins` folder. About 100 times a second it sends UDP JSON to Force Studio on port `47387`.
 
-You normally never build this yourself. Double-click **MX Force Studio.bat** on the gaming PC. That copies `mxb_force_studio.dlo` and `force_studio.ini` next to `mxbikes.exe` and creates `plugins/force_studio_logs/` for spreadsheets.
+You normally never build this yourself. Double-click **Installer.bat** on the gaming PC. That copies `mxb_force_studio.dlo` and `force_studio.ini` next to `mxbikes.exe` and creates `plugins/force_studio_logs/` for spreadsheets.
 
 Restart MX Bikes after the first copy. Plugins only load at game start.
 

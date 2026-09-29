@@ -115,7 +115,7 @@ foreach ($p in @(
 
 foreach ($dir in $linkDirs) {
   if (-not (Test-Path -LiteralPath $dir)) { continue }
-  foreach ($name in @("MX Force Studio.lnk", "Force Studio.lnk")) {
+  foreach ($name in @("MX Force Studio.lnk", "Force Studio.lnk", "Select.lnk", "Select Folder.lnk")) {
     $link = Join-Path $dir $name
     if (Test-Path -LiteralPath $link) {
       Remove-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue

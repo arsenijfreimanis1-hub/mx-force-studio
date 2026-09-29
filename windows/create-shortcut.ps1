@@ -8,10 +8,13 @@ $launcher = $null
 if ($env:MXFS_BAT -and (Test-Path -LiteralPath $env:MXFS_BAT)) {
   $launcher = $env:MXFS_BAT
 } else {
-  $launcher = Join-Path $root "MX Force Studio.bat"
+  foreach ($name in @("Installer.bat", "Updater.bat")) {
+    $candidate = Join-Path $root $name
+    if (Test-Path -LiteralPath $candidate) { $launcher = $candidate; break }
+  }
 }
-if (-not (Test-Path -LiteralPath $launcher)) {
-  Write-Host "No MX Force Studio.bat found to pin."
+if (-not $launcher -or -not (Test-Path -LiteralPath $launcher)) {
+  Write-Host "No Installer.bat found to pin."
   exit 1
 }
 
@@ -47,7 +50,7 @@ foreach ($dir in $desktops) {
   if ($seen.ContainsKey($key)) { continue }
   $seen[$key] = $true
 
-  foreach ($staleName in @("Force Studio.lnk")) {
+  foreach ($staleName in @("Force Studio.lnk", "Select.lnk", "Select Folder.lnk")) {
     $stale = Join-Path $dir $staleName
     if (Test-Path -LiteralPath $stale) {
       Remove-Item -LiteralPath $stale -Force -ErrorAction SilentlyContinue

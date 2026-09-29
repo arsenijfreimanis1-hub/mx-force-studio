@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-title Uninstall MX Bikes Force Studio
+title MX Force Studio - Uninstaller
 cd /d "%~dp0"
 echo.
 echo This removes Force Studio from this PC:
@@ -17,6 +17,7 @@ if not exist "%~dp0windows\uninstall.ps1" (
   pause
   exit /b 1
 )
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "try { Unblock-File -LiteralPath '%~dp0windows\uninstall.ps1' -ErrorAction SilentlyContinue } catch {}"
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0windows\uninstall.ps1"
 set "MXFS_ERR=%ERRORLEVEL%"
 echo.

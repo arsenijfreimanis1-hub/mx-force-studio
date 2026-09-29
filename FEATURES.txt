@@ -1,0 +1,22 @@
+MX Force Studio - features
+==========================
+
+- Live 6DOF garage that follows MX Bikes (same PC only)
+- Frame lean / wheelie / stoppie / jumps / whoops / crash down
+- Dummy body weight from the pad right stick
+- Auto Xbox / Standard pad pick (ignores racing wheels)
+- Chest-belt + rod-stroke sliders
+- Optional CSV logging next to the MX Bikes plugin
+- One-click Installer / Updater / Uninstaller (no Node/Git/admin)
+
+How it works
+------------
+1. Double-click Installer.bat (or Updater.bat after a new download).
+2. It installs portable Node if needed, builds the app, copies the
+   telemetry plugin next to mxbikes.exe, and opens the browser UI.
+3. Start MX Bikes on this PC, go on track, click Connect.
+4. The plugin sends local UDP telemetry; the garage deck follows it.
+5. Close the black window to stop. Uninstaller.bat removes icons,
+   cache, and the plugin. Spreadsheets in force_studio_logs stay.
+
+Riders only need: Installer.bat, Updater.bat, Uninstaller.bat.

@@ -43,6 +43,17 @@ next-env.d.ts
 # session scratch
 /agent-tools
 
+# never ship the old packed launcher or a folder picker
+/Select/
+/select/
+/MX Force Studio.bat
+/MX Force Studio.lnk
+/START HERE.txt
+/Uninstall Force Studio.bat
+
+# local shortcuts (absolute paths; not for GitHub)
+*.lnk
+
 # live spreadsheets written next to the MX Bikes plugin
 /plugin/force_studio_logs/
 /plugin/mxb-plugins-dir.txt

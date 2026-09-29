@@ -1,6 +1,6 @@
 # Downloads Node if needed, installs packages, builds, installs the MX Bikes
 # plugin, creates the Desktop icon, starts the bridge, and runs the app.
-# Called from "MX Force Studio.bat". Keep this window open while you ride.
+# Called from Installer.bat / Updater.bat. Keep this window open while you ride.
 
 $ErrorActionPreference = "Stop"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -23,7 +23,7 @@ function Same-Path($a, $b) {
 }
 
 # Copy-Item throws "Cannot overwrite the item ... with itself" when the
-# extracted GitHub folder already contains Uninstall Force Studio.bat.
+# extracted GitHub folder already contains Uninstaller.bat.
 function Copy-IfDifferent($src, $dest) {
   if (-not (Test-Path -LiteralPath $src)) { return }
   $destDir = Split-Path -Parent $dest
@@ -106,7 +106,7 @@ function Install-Node {
     Expand-Archive -LiteralPath $zip -DestinationPath $tools -Force
   }
   if (-not (Test-Path -LiteralPath $nodeExe)) {
-    throw "Failed to install Node.js. Download the LTS installer from https://nodejs.org/en/download , keep Add to PATH checked, then double-click MX Force Studio.bat again."
+    throw "Failed to install Node.js. Download the LTS installer from https://nodejs.org/en/download , keep Add to PATH checked, then double-click Installer.bat again."
   }
   $env:PATH = "$nodeHome;$env:PATH"
   Write-Host "Using portable Node $nodeHome"
@@ -154,11 +154,19 @@ try {
 
   $root = Get-AppRoot
   if (-not $root) {
-    throw "App files are missing. Double-click the MX Force Studio.bat that unpacks itself, or extract the GitHub zip and run the .bat inside that folder."
+    throw "App files are missing. Double-click Installer.bat (or Updater.bat), or extract the GitHub zip and run Installer.bat inside that folder."
   }
   Set-Location -LiteralPath $root
   Unblock-Tree $root
   Write-Host "App folder: $root"
+
+  foreach ($stale in @("Select", "select", "MX Force Studio.bat", "MX Force Studio.lnk", "START HERE.txt", "Uninstall Force Studio.bat")) {
+    $stalePath = Join-Path $root $stale
+    if (Test-Path -LiteralPath $stalePath) {
+      Write-Host "Removing leftover $stale"
+      Remove-Item -LiteralPath $stalePath -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  }
 
   Clear-StaleStudio $root
   Stop-ListeningPort 43187
@@ -167,8 +175,17 @@ try {
   Install-Node
   Write-Host "node $(node -v)   npm $(cmd.exe /c npm.cmd -v)"
 
-  if (-not (Test-Path -LiteralPath (Join-Path $root "node_modules\next"))) {
-    Write-Step "Installing packages (first run only, a minute or two - needs internet)"
+  $forceUpdate = ($env:MXFS_FORCE_UPDATE -eq "1")
+  if ($forceUpdate) {
+    Write-Step "Updater: clean rebuild requested"
+    $nextDir = Join-Path $root ".next"
+    if (Test-Path -LiteralPath $nextDir) {
+      Remove-Item -LiteralPath $nextDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+  if ($forceUpdate -or -not (Test-Path -LiteralPath (Join-Path $root "node_modules\next"))) {
+    Write-Step "Installing packages (needs internet)"
     if (Test-Path -LiteralPath (Join-Path $root "package-lock.json")) {
       Invoke-Npm "ci"
     } else {
@@ -181,7 +198,7 @@ try {
   $rev = if (Test-Path -LiteralPath $revFile) { (Get-Content -LiteralPath $revFile -Raw).Trim() } else { "unknown" }
   $builtRev = if (Test-Path -LiteralPath $builtRevFile) { (Get-Content -LiteralPath $builtRevFile -Raw).Trim() } else { "" }
   $haveBuild = Test-Path -LiteralPath (Join-Path $root ".next\BUILD_ID")
-  if (-not $haveBuild -or $builtRev -ne $rev) {
+  if ($forceUpdate -or -not $haveBuild -or $builtRev -ne $rev) {
     Write-Step "Building Force Studio"
     $nextDir = Join-Path $root ".next"
     if (Test-Path -LiteralPath $nextDir) {
@@ -193,8 +210,10 @@ try {
   }
 
   if (-not $env:MXFS_BAT) {
-    $guess = Join-Path $root "MX Force Studio.bat"
-    if (Test-Path -LiteralPath $guess) { $env:MXFS_BAT = $guess }
+    foreach ($name in @("Installer.bat", "Updater.bat")) {
+      $guess = Join-Path $root $name
+      if (Test-Path -LiteralPath $guess) { $env:MXFS_BAT = $guess; break }
+    }
   }
 
   $shortcut = Join-Path $root "windows\create-shortcut.ps1"
@@ -205,8 +224,11 @@ try {
 
   if ($env:MXFS_BAT -and (Test-Path -LiteralPath $env:MXFS_BAT)) {
     $batDir = Split-Path -Parent $env:MXFS_BAT
-    Copy-IfDifferent (Join-Path $root "Uninstall Force Studio.bat") (Join-Path $batDir "Uninstall Force Studio.bat")
+    foreach ($name in @("Installer.bat", "Updater.bat", "Uninstaller.bat", "FEATURES.txt")) {
+      Copy-IfDifferent (Join-Path $root $name) (Join-Path $batDir $name)
+    }
     Copy-IfDifferent (Join-Path $root "windows\uninstall.ps1") (Join-Path $batDir "windows\uninstall.ps1")
+    Copy-IfDifferent (Join-Path $root "windows\launch.ps1") (Join-Path $batDir "windows\launch.ps1")
   }
 
   $plugin = Join-Path $root "windows\install-plugin.ps1"

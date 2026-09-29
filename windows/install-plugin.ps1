@@ -130,7 +130,7 @@ if (-not (Test-Path -LiteralPath $srcDlo) -or -not (Test-Path -LiteralPath $srcI
 $games = Find-MxBikesRoots
 if ($null -eq $games -or $games.Count -eq 0) {
   Write-Host "MX Bikes was not found on this PC (no mxbikes.exe)."
-  Write-Host "Install MX Bikes, then double-click MX Force Studio.bat again."
+  Write-Host "Install MX Bikes, then double-click Installer.bat again."
   Write-Host "Or copy plugin\mxb_force_studio.dlo and plugin\force_studio.ini into the game plugins folder yourself."
   exit 0
 }
