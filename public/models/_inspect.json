@@ -1,0 +1,383 @@
+{
+  "materials": [
+    "Glass",
+    "Orange_Plastics",
+    "Radiator",
+    "Dull_Aluminium",
+    "Dark_Metal",
+    "Dark_Plastics",
+    "Tyres",
+    "Shock_Metal",
+    "Black",
+    "Red_Reflector",
+    "Shiny_Aluminium",
+    "Rims",
+    "Exhaust",
+    "Orange_Metal",
+    "Steel",
+    "Chain",
+    "Fuel_Tank",
+    "Black_Seat"
+  ],
+  "nodes": [
+    {
+      "name": "Sketchfab_model",
+      "children": [
+        1
+      ]
+    },
+    {
+      "name": "root",
+      "children": [
+        2
+      ]
+    },
+    {
+      "name": "GLTF_SceneRootNode",
+      "children": [
+        3,
+        5,
+        7,
+        9,
+        11,
+        13,
+        15,
+        17,
+        19,
+        21,
+        23,
+        25,
+        27,
+        29,
+        31,
+        33,
+        35,
+        37
+      ]
+    },
+    {
+      "name": "38238B9F2B435831.002_0",
+      "children": [
+        4
+      ]
+    },
+    {
+      "name": "Object_4",
+      "mesh": 0
+    },
+    {
+      "name": "38238B9F2B435831.001_1",
+      "children": [
+        6
+      ]
+    },
+    {
+      "name": "Object_6",
+      "mesh": 1
+    },
+    {
+      "name": "38238B9F2B435831.003_2",
+      "children": [
+        8
+      ]
+    },
+    {
+      "name": "Object_8",
+      "mesh": 2
+    },
+    {
+      "name": "38238B9F2B435831.004_3",
+      "children": [
+        10
+      ]
+    },
+    {
+      "name": "Object_10",
+      "mesh": 3
+    },
+    {
+      "name": "38238B9F2B435831.005_4",
+      "children": [
+        12
+      ]
+    },
+    {
+      "name": "Object_12",
+      "mesh": 4
+    },
+    {
+      "name": "38238B9F2B435831.006_5",
+      "children": [
+        14
+      ]
+    },
+    {
+      "name": "Object_14",
+      "mesh": 5
+    },
+    {
+      "name": "38238B9F2B435831.007_6",
+      "children": [
+        16
+      ]
+    },
+    {
+      "name": "Object_16",
+      "mesh": 6
+    },
+    {
+      "name": "38238B9F2B435831.008_7",
+      "children": [
+        18
+      ]
+    },
+    {
+      "name": "Object_18",
+      "mesh": 7
+    },
+    {
+      "name": "38238B9F2B435831.009_8",
+      "children": [
+        20
+      ]
+    },
+    {
+      "name": "Object_20",
+      "mesh": 8
+    },
+    {
+      "name": "38238B9F2B435831.010_9",
+      "children": [
+        22
+      ]
+    },
+    {
+      "name": "Object_22",
+      "mesh": 9
+    },
+    {
+      "name": "38238B9F2B435831.011_10",
+      "children": [
+        24
+      ]
+    },
+    {
+      "name": "Object_24",
+      "mesh": 10
+    },
+    {
+      "name": "38238B9F2B435831.012_11",
+      "children": [
+        26
+      ]
+    },
+    {
+      "name": "Object_26",
+      "mesh": 11
+    },
+    {
+      "name": "38238B9F2B435831.013_12",
+      "children": [
+        28
+      ]
+    },
+    {
+      "name": "Object_28",
+      "mesh": 12
+    },
+    {
+      "name": "38238B9F2B435831.014_13",
+      "children": [
+        30
+      ]
+    },
+    {
+      "name": "Object_30",
+      "mesh": 13
+    },
+    {
+      "name": "38238B9F2B435831.015_14",
+      "children": [
+        32
+      ]
+    },
+    {
+      "name": "Object_32",
+      "mesh": 14
+    },
+    {
+      "name": "38238B9F2B435831.016_15",
+      "children": [
+        34
+      ]
+    },
+    {
+      "name": "Object_34",
+      "mesh": 15
+    },
+    {
+      "name": "38238B9F2B435831.017_16",
+      "children": [
+        36
+      ]
+    },
+    {
+      "name": "Object_36",
+      "mesh": 16
+    },
+    {
+      "name": "38238B9F2B435831.018_17",
+      "children": [
+        38
+      ]
+    },
+    {
+      "name": "Object_38",
+      "mesh": 17
+    }
+  ],
+  "meshes": [
+    {
+      "i": 0,
+      "name": "Object_0",
+      "prims": 1
+    },
+    {
+      "i": 1,
+      "name": "Object_1",
+      "prims": 1
+    },
+    {
+      "i": 2,
+      "name": "Object_2",
+      "prims": 1
+    },
+    {
+      "i": 3,
+      "name": "Object_3",
+      "prims": 1
+    },
+    {
+      "i": 4,
+      "name": "Object_4",
+      "prims": 1
+    },
+    {
+      "i": 5,
+      "name": "Object_5",
+      "prims": 1
+    },
+    {
+      "i": 6,
+      "name": "Object_6",
+      "prims": 1
+    },
+    {
+      "i": 7,
+      "name": "Object_7",
+      "prims": 1
+    },
+    {
+      "i": 8,
+      "name": "Object_8",
+      "prims": 1
+    },
+    {
+      "i": 9,
+      "name": "Object_9",
+      "prims": 1
+    },
+    {
+      "i": 10,
+      "name": "Object_10",
+      "prims": 1
+    },
+    {
+      "i": 11,
+      "name": "Object_11",
+      "prims": 1
+    },
+    {
+      "i": 12,
+      "name": "Object_12",
+      "prims": 1
+    },
+    {
+      "i": 13,
+      "name": "Object_13",
+      "prims": 1
+    },
+    {
+      "i": 14,
+      "name": "Object_14",
+      "prims": 1
+    },
+    {
+      "i": 15,
+      "name": "Object_15",
+      "prims": 1
+    },
+    {
+      "i": 16,
+      "name": "Object_16",
+      "prims": 1
+    },
+    {
+      "i": 17,
+      "name": "Object_17",
+      "prims": 1
+    }
+  ],
+  "images": [
+    {
+      "bufferView": 3,
+      "mimeType": "image/png"
+    },
+    {
+      "bufferView": 4,
+      "mimeType": "image/png"
+    },
+    {
+      "bufferView": 5,
+      "mimeType": "image/png"
+    },
+    {
+      "bufferView": 6,
+      "mimeType": "image/png"
+    },
+    {
+      "bufferView": 7,
+      "mimeType": "image/png"
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987,
+      "wrapS": 10497,
+      "wrapT": 10497
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    },
+    {
+      "sampler": 0,
+      "source": 1
+    },
+    {
+      "sampler": 0,
+      "source": 2
+    },
+    {
+      "sampler": 0,
+      "source": 3
+    },
+    {
+      "sampler": 0,
+      "source": 4
+    }
+  ]
+}

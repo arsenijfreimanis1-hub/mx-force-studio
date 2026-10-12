@@ -7,3 +7,5 @@
 *.dlo binary
 *.ico binary
 *.zip binary
+*.glb binary
+*.blend binary
