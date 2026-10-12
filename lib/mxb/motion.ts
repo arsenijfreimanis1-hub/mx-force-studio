@@ -9,27 +9,41 @@ import {
 } from "./cartesian.ts";
 import { chassisCues, heaveFromCues } from "./channels.ts";
 import { detectCrash, isAirborne, isParked, isStopped } from "./crash.ts";
-import { BIKE_SCALE, DEFAULT_ROD_LENGTH, DEFAULT_ROD_STROKE, PLATFORM_HOME_Y } from "./dims.ts";
+import {
+  BIKE_SCALE,
+  DECK_HALF_L_DRAW,
+  DECK_HALF_W_DRAW,
+  DECK_PLATE_Y,
+  DEFAULT_ROD_LENGTH,
+  DEFAULT_ROD_STROKE,
+  FRAME_ORIGIN_Y,
+  PLATFORM_HOME_Y,
+} from "./dims.ts";
 import { clampDof, dofAxes, maskPose, type DofLevel } from "./dof.ts";
 import { clampPoseToRodStroke } from "./rods.ts";
+import { STAGE_TRAVEL_X, STAGE_TRAVEL_Z } from "./stage.ts";
 import type { Telemetry, Vec3 } from "./types";
 
 export { worldToChassis } from "./cartesian.ts";
 export { CART_XZ_M, CART_Y_M };
-export { BIKE_SCALE, DEFAULT_ROD_LENGTH, DEFAULT_ROD_STROKE, PLATFORM_HOME_Y };
+export {
+  BIKE_SCALE,
+  DECK_PLATE_Y,
+  DEFAULT_ROD_LENGTH,
+  DEFAULT_ROD_STROKE,
+  FRAME_ORIGIN_Y,
+  PLATFORM_HOME_Y,
+};
 
 /** Bottom-middle of the main cradle, bike-local meters. */
 export const FRAME_BOTTOM: Vec3 = { x: 0, y: 0.09, z: 0.02 };
 
-/**
- * Stewart-platform mid-stroke. ±1 m heave then still clears the garage floor.
- * Rider-head washout (Barbagli / MORIS) is computed about this deck height.
- */
-
-/** Lowest remaining frame tube vs the rig origin (after FRAME_CENTER_Y pin). */
-export const FRAME_LOW_Y = (0.28 + 0.55) * BIKE_SCALE;
-/** Half-length used to keep rolled/pitched tubes off the pad. */
-export const FRAME_HALF_SPAN = 0.72 * BIKE_SCALE;
+/** Underside of the load plate vs the carrier — the lowest moving steel on the rig. */
+export const FRAME_LOW_Y = (FRAME_ORIGIN_Y + DECK_PLATE_Y - 0.05) * BIKE_SCALE;
+/** Roll lever: plate half width plus the side rail, the corner that dips first. */
+export const FRAME_HALF_SPAN = (DECK_HALF_W_DRAW + 0.04) * BIKE_SCALE;
+/** Pitch lever: plate half length plus the toe board. */
+export const FRAME_HALF_LENGTH = (DECK_HALF_L_DRAW + 0.06) * BIKE_SCALE;
 export const FLOOR_CLEAR_Y = 0.12;
 
 /** Rider vestibular point above the cradle, bike-local meters (seat → inner ear). */
@@ -146,14 +160,19 @@ export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
   rodStroke: DEFAULT_ROD_STROKE,
 };
 
-/** Garage rig — 6DOF with calmer follow so the deck tracks the live bike. */
+/**
+ * The garage machine as built: a compact 3DOF plate plus an XY/yaw stage.
+ * Linear limits are the real carriage and actuator travel, not a wish — sway
+ * and surge equal STAGE_TRAVEL_X / STAGE_TRAVEL_Z, and heave is what 0.2 m of
+ * actuator stroke buys. Angles are where the small footprint pays off.
+ */
 export const STUDIO_TRAVEL: FrameTravel = {
-  limitX: 0.7,
-  limitY: 0.55,
-  limitZ: 0.7,
-  limitRoll: (40 * Math.PI) / 180,
-  limitPitch: (32 * Math.PI) / 180,
-  limitYaw: (16 * Math.PI) / 180,
+  limitX: STAGE_TRAVEL_X,
+  limitY: 0.22,
+  limitZ: STAGE_TRAVEL_Z,
+  limitRoll: (42 * Math.PI) / 180,
+  limitPitch: (38 * Math.PI) / 180,
+  limitYaw: (25 * Math.PI) / 180,
   smoothTau: 0.07,
   response: 1,
   dof: 6,
@@ -415,7 +434,7 @@ function rateLimit(current: number, target: number, dt: number, limit: number) {
 export function clearPoseFromFloor(pose: Pose6, homeY = PLATFORM_HOME_Y): Pose6 {
   const drop =
     FRAME_HALF_SPAN * Math.abs(Math.sin(pose.roll)) +
-    FRAME_HALF_SPAN * 0.65 * Math.abs(Math.sin(pose.pitch));
+    FRAME_HALF_LENGTH * Math.abs(Math.sin(pose.pitch));
   const lowest = homeY + pose.y + FRAME_LOW_Y - drop;
   if (lowest >= FLOOR_CLEAR_Y) return pose;
   return { ...pose, y: pose.y + (FLOOR_CLEAR_Y - lowest) };
@@ -745,10 +764,18 @@ export function limitShownPose(
 ): Pose6 {
   const lin = travel?.rateLin ?? HUMAN_LIN_MS;
   const ang = travel?.rateAng ?? HUMAN_ANG_RS;
+  // Carriage speed is the magnitude of the step, not each axis on its own:
+  // three axes each just inside their own cap still throws the rider.
+  const dx = next.x - prev.x;
+  const dy = next.y - prev.y;
+  const dz = next.z - prev.z;
+  const span = Math.hypot(dx, dy, dz);
+  const reach = lin * dt;
+  const k = span > reach ? reach / span : 1;
   return {
-    x: rateLimit(prev.x, next.x, dt, lin),
-    y: rateLimit(prev.y, next.y, dt, lin),
-    z: rateLimit(prev.z, next.z, dt, lin),
+    x: prev.x + dx * k,
+    y: prev.y + dy * k,
+    z: prev.z + dz * k,
     yaw: rateLimit(prev.yaw, next.yaw, dt, ang),
     pitch: rateLimit(prev.pitch, next.pitch, dt, ang),
     roll: rateLimit(prev.roll, next.roll, dt, ang),

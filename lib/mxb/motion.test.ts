@@ -23,6 +23,7 @@ import {
   type FrameTravel,
 } from "./motion.ts";
 import { rzRoll } from "./attitude.ts";
+import { STAGE_TRAVEL_X, STAGE_TRAVEL_Z } from "./stage.ts";
 import { GRAVITY } from "./bike.ts";
 import type { Telemetry } from "./types.ts";
 
@@ -575,7 +576,14 @@ test("pad demo wheelie at standstill still pitches when park lock is off", () =>
 test("studio 6DOF travel unlocks heave surge sway and yaw", () => {
   assert.equal(STUDIO_TRAVEL.dof, 6);
   assert.ok(STUDIO_TRAVEL.rodStroke > 0.1);
-  assert.ok(STUDIO_TRAVEL.limitX > 0.5 && STUDIO_TRAVEL.limitY > 0.5 && STUDIO_TRAVEL.limitZ > 0.5);
+  // Linear limits are the real carriage / actuator travel on the compact rig,
+  // so they match STAGE_TRAVEL_* rather than the old metre-scale wish list.
+  assert.equal(STUDIO_TRAVEL.limitX, STAGE_TRAVEL_X);
+  assert.equal(STUDIO_TRAVEL.limitZ, STAGE_TRAVEL_Z);
+  assert.ok(STUDIO_TRAVEL.limitY > 0.2, `heave ${STUDIO_TRAVEL.limitY}`);
+  // Angles are the point of the compact plate: well past the old 40/32.
+  assert.ok(STUDIO_TRAVEL.limitRoll >= (42 * Math.PI) / 180, `roll ${STUDIO_TRAVEL.limitRoll}`);
+  assert.ok(STUDIO_TRAVEL.limitPitch >= (38 * Math.PI) / 180, `pitch ${STUDIO_TRAVEL.limitPitch}`);
   assert.ok(STUDIO_TRAVEL.limitYaw > 0.2 && STUDIO_TRAVEL.rateLin > HUMAN_LIN_MS);
   const tilt = run(
     sample({
@@ -597,8 +605,8 @@ test("studio 6DOF travel unlocks heave surge sway and yaw", () => {
     1.2,
     STUDIO_TRAVEL,
   );
-  assert.ok(shove.z > 0.2, `surge ${shove.z}`);
-  assert.ok(shove.x < -0.15, `sway ${shove.x}`);
+  assert.ok(shove.z > 0.12, `surge ${shove.z}`);
+  assert.ok(shove.x < -0.1, `sway ${shove.x}`);
 });
 
 test("demo 6DOF at speed still surges when world XYZ is a zero placeholder", () => {

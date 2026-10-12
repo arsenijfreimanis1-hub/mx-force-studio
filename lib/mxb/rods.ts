@@ -1,12 +1,22 @@
-import { BIKE_SCALE, DEFAULT_ROD_LENGTH, DEFAULT_ROD_STROKE, PLATFORM_HOME_Y } from "./dims.ts";
+import {
+  BIKE_SCALE,
+  DECK_HALF_L_DRAW,
+  DECK_HALF_W_DRAW,
+  DECK_PLATE_Y,
+  DEFAULT_ROD_LENGTH,
+  DEFAULT_ROD_STROKE,
+  FRAME_ORIGIN_Y,
+  PLATFORM_HOME_Y,
+} from "./dims.ts";
 
 type Pose6 = { x: number; y: number; z: number; yaw: number; pitch: number; roll: number };
 
-/** Matches MotionDeck under the lowest tubes (FRAME_CENTER_Y = 0.55). */
-export const DECK_ATTACH_Y = (0.55 + 0.26) * BIKE_SCALE;
-export const DECK_HALF_W = 0.21 * BIKE_SCALE;
-export const DECK_HALF_L = 0.36 * BIKE_SCALE;
-export const ROD_BASE_Y = 0.075;
+/** Where the rod ends meet the load plate, above the chassis origin. */
+export const DECK_ATTACH_Y = (FRAME_ORIGIN_Y + DECK_PLATE_Y) * BIKE_SCALE;
+export const DECK_HALF_W = DECK_HALF_W_DRAW * BIKE_SCALE;
+export const DECK_HALF_L = DECK_HALF_L_DRAW * BIKE_SCALE;
+/** Foot pivot height. Low feet keep the plinth thin. */
+export const ROD_BASE_Y = 0.07;
 
 export function restRise(homeY = PLATFORM_HOME_Y) {
   return homeY + DECK_ATTACH_Y - ROD_BASE_Y;
@@ -85,17 +95,23 @@ function rotateYxz(local: { x: number; y: number; z: number }, pitch: number, ya
   };
 }
 
+/** Four vertical actuators only. Surge, sway, and yaw belong to the inner stage. */
+function pistonPose(pose: Pose6): Pose6 {
+  return { x: 0, y: pose.y, z: 0, yaw: 0, pitch: pose.pitch, roll: pose.roll };
+}
+
 export function poseRodLengths(pose: Pose6, homeY = PLATFORM_HOME_Y, pitchSign = -1): number[] {
-  const pitch = pose.pitch * (pitchSign < 0 ? -1 : 1);
+  const use = pistonPose(pose);
+  const pitch = use.pitch * (pitchSign < 0 ? -1 : 1);
   const out: number[] = [];
   for (const c of ROD_CORNERS) {
     const base = rodBaseCorner(c.x, c.z, homeY);
     const local = rodDeckLocal(c.x, c.z);
-    const rot = rotateYxz(local, pitch, pose.yaw, pose.roll);
+    const rot = rotateYxz(local, pitch, use.yaw, use.roll);
     const deck = {
-      x: rot.x + pose.x,
-      y: rot.y + homeY + pose.y,
-      z: rot.z + pose.z,
+      x: rot.x + use.x,
+      y: rot.y + homeY + use.y,
+      z: rot.z + use.z,
     };
     out.push(rodLength(base, deck));
   }
@@ -109,20 +125,13 @@ export function rodsInStroke(lengths: number[], stroke = DEFAULT_ROD_STROKE, hom
   return lengths.every((len) => len >= min - 1e-4 && len <= max + 1e-4);
 }
 
-function scalePose(pose: Pose6, s: number): Pose6 {
-  return {
-    x: pose.x * s,
-    y: pose.y * s,
-    z: pose.z * s,
-    yaw: pose.yaw * s,
-    pitch: pose.pitch * s,
-    roll: pose.roll * s,
-  };
+function scalePistons(pose: Pose6, s: number): Pose6 {
+  return { ...pose, y: pose.y * s, pitch: pose.pitch * s, roll: pose.roll * s };
 }
 
 /**
- * Shrink a 6DOF pose toward rest until every rod is inside [L0−stroke, L0+stroke].
- * Short stroke = small deck motion. The steel base never moves.
+ * Shrink heave, pitch, and roll until every piston is inside [L0−stroke, L0+stroke].
+ * Surge, sway, and yaw stay put — the inner stage carries those.
  */
 export function clampPoseToRodStroke(
   pose: Pose6,
@@ -134,10 +143,10 @@ export function clampPoseToRodStroke(
   if (rodsInStroke(poseRodLengths(pose, homeY, pitchSign), band, homeY)) return pose;
   let lo = 0;
   let hi = 1;
-  let best: Pose6 = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0 };
+  let best = scalePistons(pose, 0);
   for (let i = 0; i < 16; i++) {
     const mid = (lo + hi) * 0.5;
-    const scaled = scalePose(pose, mid);
+    const scaled = scalePistons(pose, mid);
     if (rodsInStroke(poseRodLengths(scaled, homeY, pitchSign), band, homeY)) {
       best = scaled;
       lo = mid;
