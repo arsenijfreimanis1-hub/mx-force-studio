@@ -32,6 +32,10 @@ export function getLivePacket(): LivePacket | null {
   return g.__mxbLivePacket ?? null;
 }
 
+export function replaceLivePacket(packet: LivePacket | null) {
+  g.__mxbLivePacket = packet;
+}
+
 export function packetAgeMs(packet: LivePacket | null, now = Date.now()): number | null {
   if (!packet) return null;
   return now - packet.receivedAt;

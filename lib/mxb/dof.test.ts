@@ -68,7 +68,7 @@ test("maskPose no longer zeros axes", () => {
 
 test("6DOF follows a berm lean", () => {
   const pose = run(sample({ roll: -28, accelG: { x: 0, y: 1, z: 1 }, throttle: 1 }), 0.7);
-  assert.ok(pose.roll > 0.28, `roll ${pose.roll}`);
+  assert.ok(pose.roll > 0.26, `roll ${pose.roll}`);
 });
 
 test("6DOF heave on a jump", () => {

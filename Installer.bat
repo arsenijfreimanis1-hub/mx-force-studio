@@ -4,7 +4,8 @@ title MX Force Studio - Installer
 cd /d "%~dp0"
 echo.
 echo MX Force Studio - Installer
-echo Keep this window open. Close it to stop.
+echo A Force Studio window will open on this PC.
+echo Close that window to stop.
 echo.
 echo If Windows SmartScreen appears: More info, then Run anyway.
 echo First run needs internet (Node.js + packages).

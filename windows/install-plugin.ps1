@@ -154,6 +154,23 @@ foreach ($game in $games) {
 
 if ($pointer) {
   Set-Content -LiteralPath (Join-Path $root "plugin\mxb-plugins-dir.txt") -Value $pointer -NoNewline
+  $shell = New-Object -ComObject WScript.Shell
+  foreach ($dir in @(
+    [Environment]::GetFolderPath("Desktop"),
+    (Join-Path $env:USERPROFILE "Desktop"),
+    $root
+  )) {
+    if (-not $dir -or -not (Test-Path -LiteralPath $dir)) { continue }
+    $linkPath = Join-Path $dir "MX Bikes plugins.lnk"
+    try {
+      $shortcut = $shell.CreateShortcut($linkPath)
+      $shortcut.TargetPath = $pointer
+      $shortcut.WorkingDirectory = $pointer
+      $shortcut.Description = "MX Bikes plugins folder"
+      $shortcut.Save()
+      Write-Host "Shortcut to plugins: $linkPath"
+    } catch {}
+  }
 }
 
 Write-Host "MX Bikes loads plugins at startup - if the game is already open, restart it."

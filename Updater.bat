@@ -4,14 +4,22 @@ title MX Force Studio - Updater
 cd /d "%~dp0"
 echo.
 echo MX Force Studio - Updater
-echo Forces a clean rebuild, reinstalls the plugin, then starts the app.
-echo Keep this window open. Close it to stop.
+echo Downloads / rebuilds. Does not start the app.
 echo.
 set "MXFS_FORCE_UPDATE=1"
-if exist "%~dp0Installer.bat" (
-  call "%~dp0Installer.bat"
-  exit /b %ERRORLEVEL%
+set "MXFS_UPDATE_ONLY=1"
+if not exist "%~dp0windows\launch.ps1" (
+  echo Missing windows\launch.ps1
+  pause
+  exit /b 1
 )
-echo Missing Installer.bat next to this file.
-pause
-exit /b 1
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0windows\launch.ps1"
+set "MXFS_ERR=%ERRORLEVEL%"
+if not "%MXFS_ERR%"=="0" (
+  echo.
+  echo Updater did not finish. The message above is the reason.
+  echo.
+  pause
+  exit /b %MXFS_ERR%
+)
+exit /b 0

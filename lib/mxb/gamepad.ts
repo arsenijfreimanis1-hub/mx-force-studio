@@ -1,4 +1,15 @@
-import type { SandboxInputs } from "./types";
+import type { SandboxInputs } from "./types.ts";
+import { DEFAULT_PAD_MAP, type PadMap } from "./mxb-binds.ts";
+
+let activePadMap: PadMap = { ...DEFAULT_PAD_MAP };
+
+export function setActivePadMap(map: PadMap | null) {
+  activePadMap = map ? { ...DEFAULT_PAD_MAP, ...map } : { ...DEFAULT_PAD_MAP };
+}
+
+export function getActivePadMap(): PadMap {
+  return activePadMap;
+}
 
 /** Pedal 0–1 from the Standard Gamepad button, or a dedicated trigger axis. */
 export function trigger(gp: Gamepad, button: number, axis: number) {
@@ -18,7 +29,6 @@ function stick(gp: Gamepad, axis: number, dead = 0.2) {
   return Math.abs(v) < dead ? 0 : v;
 }
 
-/** MX Bikes body-weight / rider hang — right stick, plus left-stick Y. */
 export type BodyStick = {
   lean: number;
   foreAft: number;
@@ -29,15 +39,18 @@ export function idleBodyStick(): BodyStick {
   return { lean: 0, foreAft: 0, stand: 0 };
 }
 
-export function readBodyStick(gp: Gamepad | null): BodyStick {
+/** MX Bikes body-weight — right stick only. Left stick is steer. Click-in (R3) sits. */
+export function readBodyStick(gp: Gamepad | null, map: PadMap = activePadMap): BodyStick {
   if (!gp) return idleBodyStick();
-  const rx = stick(gp, 2, 0.12);
-  const ry = stick(gp, 3, 0.12);
-  const ly = stick(gp, 1, 0.18);
+  const leanRaw = stick(gp, map.leanAxis, 0.12) * (map.invertLean ? 1 : -1);
+  const sitRaw = stick(gp, map.sitAxis, 0.12) * (map.invertSit ? -1 : 1);
+  const clickSit = map.sitButton != null && gp.buttons[map.sitButton]?.pressed;
+  const analogSit = sitRaw > 0.28;
+  const analogStand = sitRaw < -0.28 ? Math.min(1, (-sitRaw - 0.28) * 1.5) : 0;
   return {
-    lean: -rx * 0.55,
-    foreAft: clamp(-ry * 0.11 - ly * 0.04, -0.12, 0.1),
-    stand: ry < -0.35 ? Math.min(1, (-ry - 0.35) * 1.45) : 0,
+    lean: leanRaw * 0.55,
+    foreAft: clamp(-sitRaw * 0.11, -0.12, 0.1),
+    stand: clickSit || analogSit ? 0 : analogStand,
   };
 }
 
@@ -53,34 +66,35 @@ function clamp(n: number, min: number, max: number) {
  * True only when the rider is clearly on the sticks/triggers.
  * Rest noise and a connected-but-idle pad must not drive the frame.
  */
-export function gamepadActive(gp: Gamepad) {
-  if (trigger(gp, 7, 5) > 0.22 || trigger(gp, 6, 2) > 0.22) return true;
-  if (Math.abs(stick(gp, 0)) > 0.28 || Math.abs(stick(gp, 1)) > 0.28) return true;
-  if (Math.abs(stick(gp, 2)) > 0.28 || Math.abs(stick(gp, 3)) > 0.28) return true;
-  if (gp.buttons[4]?.pressed) return true;
-  if (gp.buttons[0]?.pressed) return true;
+export function gamepadActive(gp: Gamepad, map: PadMap = activePadMap) {
+  if (trigger(gp, map.throttleBtn, 5) > 0.22 || trigger(gp, map.frontBrakeBtn, 4) > 0.22) return true;
+  if (Math.abs(stick(gp, map.steerAxis)) > 0.28) return true;
+  if (Math.abs(stick(gp, map.leanAxis)) > 0.28 || Math.abs(stick(gp, map.sitAxis)) > 0.28) return true;
+  if (gp.buttons[map.rearBrakeBtn]?.pressed) return true;
+  if (gp.buttons[map.clutchBtn]?.pressed) return true;
+  if (map.sitButton != null && gp.buttons[map.sitButton]?.pressed) return true;
   return false;
 }
 
 /**
  * Xbox / Standard Gamepad mapping used by MX Bikes:
  * RT throttle, LT front brake, LB rear brake, A clutch,
- * left stick steer + lean, right stick extra lean / pitch.
+ * left stick steer only, right stick body weight (lean / sit / stand).
  */
 export function sandboxFromGamepad(
   gp: Gamepad,
   prev: SandboxInputs,
   dt: number,
   steerLock = 40,
+  map: PadMap = activePadMap,
 ): SandboxInputs {
-  const throttle = trigger(gp, 7, 5);
-  const frontBrake = trigger(gp, 6, 4);
-  const rearBrake = gp.buttons[4]?.pressed ? 0.7 : 0;
-  const clutch = gp.buttons[0]?.pressed ? 1 : 0;
-  const steer = -stick(gp, 0) * steerLock;
-  const lean = stick(gp, 0) * 38 + stick(gp, 2) * 28;
-  // Standard Gamepad: +Y is pull-back. Sandbox pitch > 0 is a wheelie; demo.ts writes PiBoSo negative Euler.
-  const pitch = stick(gp, 1) * 22 + stick(gp, 3) * 28;
+  const throttle = trigger(gp, map.throttleBtn, 5);
+  const frontBrake = trigger(gp, map.frontBrakeBtn, 4);
+  const rearBrake = gp.buttons[map.rearBrakeBtn]?.pressed ? 0.7 : 0;
+  const clutch = gp.buttons[map.clutchBtn]?.pressed ? 1 : 0;
+  const steer = -stick(gp, map.steerAxis) * steerLock;
+  const lean = stick(gp, map.leanAxis) * 38 * (map.invertLean ? -1 : 1);
+  const pitch = stick(gp, map.sitAxis) * 28 * (map.invertSit ? -1 : 1);
   const accel = throttle * 38 - frontBrake * 42 - rearBrake * 18;
   const speedKph = clamp(prev.speedKph + accel * dt, 0, 95);
   const rpm = clamp(1800 + throttle * 11000 + speedKph * 40, 900, 13200);
@@ -109,6 +123,10 @@ export type PadTrace = {
   ly: number;
   rx: number;
   ry: number;
+  sit: number;
+  lean: number;
+  stand: number;
+  connected: boolean;
 };
 
 export function idlePadTrace(): PadTrace {
@@ -121,6 +139,10 @@ export function idlePadTrace(): PadTrace {
     ly: 0,
     rx: 0,
     ry: 0,
+    sit: 0,
+    lean: 0,
+    stand: 0,
+    connected: false,
   };
 }
 
@@ -131,22 +153,29 @@ function rawAxis(gp: Gamepad, axis: number) {
 }
 
 /** Live analog snapshot. Does not drive the deck — graph / log only. */
-export function readPadTrace(gp: Gamepad | null): PadTrace {
+export function readPadTrace(gp: Gamepad | null, map: PadMap = activePadMap): PadTrace {
   if (!gp) return idlePadTrace();
+  const body = readBodyStick(gp, map);
+  const sitAxis = rawAxis(gp, map.sitAxis) * (map.invertSit ? -1 : 1);
   return {
-    throttle: trigger(gp, 7, 5),
-    frontBrake: trigger(gp, 6, 4),
-    rearBrake: gp.buttons[4]?.pressed || (gp.buttons[4]?.value ?? 0) > 0.35 ? 1 : 0,
-    clutch: (gp.buttons[0]?.value ?? 0) > 0.02 ? Math.min(1, gp.buttons[0]!.value) : 0,
-    lx: rawAxis(gp, 0),
+    throttle: trigger(gp, map.throttleBtn, 5),
+    frontBrake: trigger(gp, map.frontBrakeBtn, 4),
+    rearBrake: gp.buttons[map.rearBrakeBtn]?.pressed || (gp.buttons[map.rearBrakeBtn]?.value ?? 0) > 0.35 ? 1 : 0,
+    clutch: (gp.buttons[map.clutchBtn]?.value ?? 0) > 0.02 ? Math.min(1, gp.buttons[map.clutchBtn]!.value) : 0,
+    lx: rawAxis(gp, map.steerAxis),
     ly: rawAxis(gp, 1),
-    rx: rawAxis(gp, 2),
-    ry: rawAxis(gp, 3),
+    rx: rawAxis(gp, map.leanAxis),
+    ry: rawAxis(gp, map.sitAxis),
+    sit: sitAxis,
+    lean: body.lean,
+    stand: body.stand,
+    connected: Boolean(gp.connected),
   };
 }
 
 export function padTraceActive(pad: PadTrace) {
   return (
+    pad.connected ||
     pad.throttle > 0.04 ||
     pad.frontBrake > 0.04 ||
     pad.rearBrake > 0.04 ||
@@ -154,7 +183,9 @@ export function padTraceActive(pad: PadTrace) {
     Math.abs(pad.lx) > 0.08 ||
     Math.abs(pad.ly) > 0.08 ||
     Math.abs(pad.rx) > 0.08 ||
-    Math.abs(pad.ry) > 0.08
+    Math.abs(pad.ry) > 0.08 ||
+    Math.abs(pad.lean) > 0.04 ||
+    pad.stand > 0.08
   );
 }
 

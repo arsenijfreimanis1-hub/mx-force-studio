@@ -56,9 +56,9 @@ socket.on("message", (msg) => {
   void flush();
 });
 
-socket.bind(port, "0.0.0.0", () => {
+socket.bind({ port, address: "127.0.0.1", exclusive: true }, () => {
   console.log(`MX Bikes Force Studio bridge`);
-  console.log(`UDP ${port} → ${url} (latest-wins)`);
+  console.log(`UDP 127.0.0.1:${port} → ${url} (this PC only)`);
   console.log(`Waiting for mxb_force_studio.dlo …`);
 });
 

@@ -1,10 +1,11 @@
 import {
-  getLivePacket,
   isLive,
   packetAgeMs,
   STALE_MS,
   subscribeLive,
 } from "@/lib/mxb/live-store";
+import { getHydratedLivePacket } from "@/lib/mxb/live-persist";
+import type { LivePacket } from "@/lib/mxb/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export async function GET() {
 
   const stream = new ReadableStream({
     start(controller) {
-      const send = (packet: ReturnType<typeof getLivePacket>) => {
+      const send = (packet: LivePacket | null) => {
         const payload = JSON.stringify({
           live: isLive(packet),
           packet,
@@ -31,7 +32,7 @@ export async function GET() {
       };
 
       const unsubscribe = subscribeLive(send);
-      send(getLivePacket());
+      send(getHydratedLivePacket());
 
       const ping = setInterval(() => {
         try {

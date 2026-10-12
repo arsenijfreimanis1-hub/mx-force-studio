@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --hostname 0.0.0.0 --port 43187",
+    "dev": "next dev --hostname 127.0.0.1 --port 43187",
     "build": "next build",
-    "start": "next start --hostname 0.0.0.0 --port 43187",
+    "start": "next start --hostname 127.0.0.1 --port 43187",
     "lint": "eslint",
     "bridge": "node bridge/udp-bridge.mjs",
     "bridge:proxy": "python3 bridge/mxb_proxy_bridge.py",

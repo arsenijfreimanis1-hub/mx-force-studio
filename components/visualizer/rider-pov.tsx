@@ -6,7 +6,9 @@ import { PerspectiveCamera } from "@react-three/drei";
 import type { MutableRefObject } from "react";
 import * as THREE from "three";
 import { isRiderPad, readBodyStick, readFirstGamepad } from "@/lib/mxb/gamepad";
+import type { FrameTravel, Pose6 } from "@/lib/mxb/motion";
 import { riderFromTelemetry } from "@/lib/mxb/rider";
+import { stageOffset } from "@/lib/mxb/stage";
 import type { Telemetry } from "@/lib/mxb/types";
 
 function follow(current: number, target: number, dt: number, tau: number) {
@@ -21,26 +23,31 @@ function follow(current: number, target: number, dt: number, tau: number) {
 export function RiderPov({
   enabled,
   telemetryRef,
+  garageCamRef,
+  poseRef,
+  travelRef,
 }: {
   enabled: boolean;
   telemetryRef: MutableRefObject<Telemetry>;
+  garageCamRef: MutableRefObject<THREE.PerspectiveCamera | null>;
+  poseRef: MutableRefObject<Pose6>;
+  travelRef: MutableRefObject<FrameTravel>;
 }) {
   const cam = useRef<THREE.PerspectiveCamera>(null);
   const set = useThree((s) => s.set);
-  const garageCam = useThree((s) => s.camera);
   const look = useRef({
     x: 0,
-    y: 0.7,
-    z: 0.12,
-    pitch: -0.1,
+    y: 1.7,
+    z: 0.02,
+    pitch: -0.2,
     yaw: Math.PI,
     roll: 0,
   });
 
   useLayoutEffect(() => {
     if (enabled && cam.current) set({ camera: cam.current });
-    else set({ camera: garageCam });
-  }, [enabled, set, garageCam]);
+    else if (garageCamRef.current) set({ camera: garageCamRef.current });
+  }, [enabled, set, garageCamRef]);
 
   useFrame((_, dt) => {
     const node = cam.current;
@@ -49,13 +56,14 @@ export function RiderPov({
     const gp = readFirstGamepad();
     const rider = riderFromTelemetry(tel, readBodyStick(isRiderPad(gp) ? gp : null));
     const steer = (tel.steer * Math.PI) / 180;
-    const wantX = rider.lean * 0.1;
-    const wantY = 0.66 + rider.stand * 0.18;
-    const wantZ = 0.08 + rider.foreAft;
+    const wantX = rider.lean * 0.08;
+    // Eyes sit just above the 250 SX seat (model seat ~0.92 m, rig lift 0.35 m).
+    const wantY = 1.7 + rider.stand * 0.12;
+    const wantZ = 0.02 + rider.foreAft;
     const wantPitch =
-      -0.08 -
+      -0.2 -
       rider.stand * 0.05 +
-      rider.foreAft * 0.55 +
+      rider.foreAft * 0.35 +
       ((tel.pitch * Math.PI) / 180) * 0.16;
     const wantYaw = Math.PI - steer * 0.28 + ((tel.yawRate * Math.PI) / 180) * 0.04 - rider.lean * 0.45;
     const wantRoll = rider.lean * 0.32 + ((tel.roll * Math.PI) / 180) * 0.08;
@@ -67,8 +75,11 @@ export function RiderPov({
     s.pitch = follow(s.pitch, wantPitch, step, 0.05);
     s.yaw = follow(s.yaw, wantYaw, step, 0.045);
     s.roll = follow(s.roll, wantRoll, step, 0.055);
-    node.position.set(s.x, s.y, s.z);
-    node.rotation.set(s.pitch, s.yaw, s.roll, "YXZ");
+    const stage = stageOffset(poseRef.current, travelRef.current);
+    const cy = Math.cos(stage.yaw);
+    const sy = Math.sin(stage.yaw);
+    node.position.set(stage.x + s.x * cy + s.z * sy, s.y, stage.z - s.x * sy + s.z * cy);
+    node.rotation.set(s.pitch, s.yaw + stage.yaw, s.roll, "YXZ");
     const fov = 70 + rider.stand * 4;
     if (Math.abs(node.fov - fov) > 0.2) {
       node.fov = fov;
@@ -76,6 +87,7 @@ export function RiderPov({
     }
   });
 
-  if (!enabled) return null;
-  return <PerspectiveCamera ref={cam} makeDefault fov={72} near={0.04} far={56} />;
+  return (
+    <PerspectiveCamera ref={cam} makeDefault={enabled} fov={72} near={0.04} far={280} />
+  );
 }

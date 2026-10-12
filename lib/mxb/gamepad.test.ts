@@ -73,8 +73,31 @@ test("a pulled trigger counts as rider input", () => {
 test("right stick is body weight for the dummy", () => {
   const pose = readBodyStick(fakePad({ axes: [0, 0, 0.8, -0.7] }));
   assert.ok(pose.lean < -0.2, `lean ${pose.lean}`);
-  assert.ok(pose.foreAft > 0.04, `foreAft ${pose.foreAft}`);
   assert.ok(pose.stand > 0.3, `stand ${pose.stand}`);
+});
+
+test("pushing the right stick down sits", () => {
+  const pose = readBodyStick(fakePad({ axes: [0, 0, 0, 0.85] }));
+  assert.equal(pose.stand, 0);
+});
+
+test("clicking the right stick sits even if the stick is up", () => {
+  const buttons = Array.from({ length: 16 }, () => ({}));
+  buttons[11] = { pressed: true };
+  const pose = readBodyStick(fakePad({ buttons, axes: [0, 0, 0, -0.9] }));
+  assert.equal(pose.stand, 0);
+});
+
+test("left stick only steers — no lean or pitch", () => {
+  const snap = sandboxFromGamepad(fakePad({ axes: [0.9, 1, 0, 0] }), { ...IDLE_SANDBOX }, 0.016);
+  assert.ok(snap.steer < -20, `steer ${snap.steer}`);
+  assert.ok(Math.abs(snap.lean) < 1, `lean ${snap.lean}`);
+  assert.ok(Math.abs(snap.pitch) < 1, `pitch ${snap.pitch}`);
+});
+
+test("right stick Y pitches the pad demo, not the left stick", () => {
+  const right = sandboxFromGamepad(fakePad({ axes: [0, 0, 0, 1] }), { ...IDLE_SANDBOX }, 0.016);
+  assert.ok(right.pitch > 20, `right-stick Y ${right.pitch}`);
 });
 
 test("full RT and LT read as 1 without using the right stick as brake", () => {
@@ -103,13 +126,6 @@ test("face buttons other than A do not count as rider input", () => {
     buttons: [{}, { pressed: true }, { pressed: true }, { pressed: true }],
   });
   assert.equal(gamepadActive(pad), false);
-});
-
-test("pulling the stick back is a nose-up wheelie, not a stoppie", () => {
-  const left = sandboxFromGamepad(fakePad({ axes: [0, 1, 0, 0] }), { ...IDLE_SANDBOX }, 0.016);
-  const right = sandboxFromGamepad(fakePad({ axes: [0, 0, 0, 1] }), { ...IDLE_SANDBOX }, 0.016);
-  assert.ok(left.pitch > 16, `left-stick pull-back ${left.pitch}`);
-  assert.ok(right.pitch > 20, `right-stick pull-back ${right.pitch}`);
 });
 
 test("an Xbox pad is preferred over a racing wheel", () => {

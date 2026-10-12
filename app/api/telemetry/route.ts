@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
-import {
-  getLivePacket,
-  ingestLivePacket,
-  isLive,
-  packetAgeMs,
-} from "@/lib/mxb/live-store";
+import { ingestLivePacket } from "@/lib/mxb/live-store";
+import { liveFromHydrated, persistLivePacket } from "@/lib/mxb/live-persist";
 import { parsePluginJson } from "@/lib/mxb/plugin-json";
 import type { LivePacket, Telemetry } from "@/lib/mxb/types";
 
@@ -18,12 +14,7 @@ function isTelemetry(value: unknown): value is Telemetry {
 }
 
 export async function GET() {
-  const packet = getLivePacket();
-  return NextResponse.json({
-    live: isLive(packet),
-    packet,
-    staleMs: packetAgeMs(packet),
-  });
+  return NextResponse.json(liveFromHydrated());
 }
 
 export async function POST(request: Request) {
@@ -49,5 +40,6 @@ export async function POST(request: Request) {
     telemetry: body.telemetry,
   });
 
+  persistLivePacket(packet);
   return NextResponse.json({ ok: true, receivedAt: packet.receivedAt });
 }

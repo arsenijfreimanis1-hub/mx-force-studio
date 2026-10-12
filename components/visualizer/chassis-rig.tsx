@@ -10,6 +10,7 @@ import { visualPoseTau } from "@/lib/mxb/dof";
 import { idleHarness, stepHarness, type HarnessState } from "@/lib/mxb/harness";
 import { createRidePhaseFilter, stepRidePhase, type RidePhaseFilter } from "@/lib/mxb/crash";
 import { riderFromTelemetry } from "@/lib/mxb/rider";
+import { isRiderPad, readBodyStick, readFirstGamepad } from "@/lib/mxb/gamepad";
 import {
   PLATFORM_HOME_Y,
   identityPose,
@@ -74,8 +75,9 @@ export function ChassisRig({
       : 1 / 60;
     lastMs.current = now;
 
-    padActiveRef.current = false;
+    padActiveRef.current = Boolean(readFirstGamepad()?.connected);
     const driving = liveRef.current === true;
+    const keepTel = connectRef?.current !== false;
     const wasPrimed = motionRef.current.primed;
     if (driving) {
       parked.current = false;
@@ -92,14 +94,15 @@ export function ChassisRig({
       );
       forcesRef.current = buildForceModel(telemetryRef.current, eventRef.current);
       if (harnessRef) {
-        const rider = riderFromTelemetry(telemetryRef.current);
+        const gp = readFirstGamepad();
+        const rider = riderFromTelemetry(telemetryRef.current, isRiderPad(gp) ? readBodyStick(gp) : undefined);
         harnessRef.current = stepHarness(telemetryRef.current, rider, undefined, harnessRef.current, dt);
       }
       if (ridePhaseRef) stepRidePhase(ridePhaseRef.current, telemetryRef.current, dt);
     } else if (!parked.current || wasPrimed) {
       resetMotionFilter(motionRef.current);
       poseRef.current = identityPose();
-      telemetryRef.current = restTelemetry({ rpm: 0 });
+      if (!keepTel) telemetryRef.current = restTelemetry({ rpm: 0 });
       sandboxRef.current = { ...DEFAULT_SANDBOX };
       clockRef.current = 0;
       parked.current = true;
@@ -111,8 +114,8 @@ export function ChassisRig({
 
     const pose = poseRef.current;
     const pitchSign = travelRef.current.visualPitch ?? -1;
-    targetPos.set(pose.x, PLATFORM_HOME_Y + pose.y, pose.z);
-    euler.set(visualPitch(pose.pitch, pitchSign), pose.yaw, pose.roll, "YXZ");
+    targetPos.set(0, PLATFORM_HOME_Y + pose.y, 0);
+    euler.set(visualPitch(pose.pitch, pitchSign), 0, pose.roll, "YXZ");
     targetQuat.setFromEuler(euler);
 
     if (!driving || !visualPrimed.current || !wasPrimed) {
