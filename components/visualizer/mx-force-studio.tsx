@@ -1,12 +1,11 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState, type MutableRefObject } from "react";
-import { ChevronDown, ChevronRight, Eye, EyeOff, Gamepad2, LineChart, Loader2, Radio, Unplug, User } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Circle, Gamepad2, Loader2, Maximize2, Minimize2, PanelLeft, PanelRight, Radio, Square, Unplug, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Slider } from "@/components/ui/slider";
 import {
   applyProfileToTelemetry,
   defaultProfile,
@@ -15,21 +14,31 @@ import {
   type BikeProfile,
 } from "@/lib/mxb/adapt";
 import { DEFAULT_EVENT, DEFAULT_SANDBOX, restTelemetry } from "@/lib/mxb/defaults";
-import { formatG, speedKph } from "@/lib/mxb/forces";
+import { speedKph } from "@/lib/mxb/forces";
 import {
   describePad,
-  gamepadActive,
   isRiderPad,
   padTraceActive,
-  readBodyStick,
   readFirstGamepad,
   readPadTrace,
+  setActivePadMap,
+  type PadTrace,
 } from "@/lib/mxb/gamepad";
-import { riderFromTelemetry } from "@/lib/mxb/rider";
+import { DEFAULT_PAD_MAP, type PadMap } from "@/lib/mxb/mxb-binds";
+import { newRecordingId, type RecordingFile, type RecordingMeta } from "@/lib/mxb/recording";
+import {
+  clockFromRecording,
+  createReplaySync,
+  stepReplaySync,
+  type RecordingClock,
+} from "@/lib/mxb/replay-sync";
+import { DEFAULT_HIDDEN_PARTS, loadHiddenParts, saveHiddenParts } from "@/lib/mxb/exc-parts";
+import { BikePartsPanel } from "@/components/visualizer/bike-parts-panel";
+import type { ExcPartInfo } from "@/components/visualizer/exc-bike";
 import { createRidePhaseFilter, describeRidePhase, detectCrash, type RidePhase } from "@/lib/mxb/crash";
 import { setupLabel } from "@/lib/mxb/inputs";
-import { dofStep, saveStoredDof } from "@/lib/mxb/dof";
-import { displayBikeName, holdLive, isPlaceholderBikeName, stabilizeBikeEvent } from "@/lib/mxb/live-store";
+import { saveStoredDof } from "@/lib/mxb/dof";
+import { displayBikeName, holdLive, isPlaceholderBikeName, LIVE_HOLD_MS, stabilizeBikeEvent } from "@/lib/mxb/live-store";
 import { sanitizeTelemetry } from "@/lib/mxb/sanitize";
 import { fmtLapMs, fmtOnTrackS, sessionKind, suspUsedPct, trackPct } from "@/lib/mxb/session";
 import {
@@ -41,7 +50,6 @@ import {
   identityPose,
   resetMotionFilter,
   type FrameTravel,
-  type Pose6,
 } from "@/lib/mxb/motion";
 import { buildForceModel } from "@/lib/mxb/forces";
 import {
@@ -52,8 +60,8 @@ import {
   saveTraceOpen,
 } from "@/lib/mxb/trace";
 import type { BikeEvent, ForceId, ForceModel, LivePacket, SandboxInputs, Telemetry } from "@/lib/mxb/types";
-import { applyLesson, describeLesson, emptyLesson, learnFromRows, type SheetLesson } from "@/lib/mxb/lesson";
-import { describeHarness, idleHarness, type HarnessState } from "@/lib/mxb/harness";
+import { applyLesson, emptyLesson, learnFromRows, type SheetLesson } from "@/lib/mxb/lesson";
+import { idleHarness, type HarnessState } from "@/lib/mxb/harness";
 import {
   createSheetBuffer,
   parseSheetCsv,
@@ -63,7 +71,6 @@ import {
   sheetFilename,
   sheetToCsv,
 } from "@/lib/mxb/sheet";
-import { TelemetryGraph } from "@/components/visualizer/telemetry-graph";
 
 const BikeCanvas = dynamic(
   () => import("@/components/visualizer/bike-canvas").then((mod) => mod.BikeCanvas),
@@ -90,49 +97,11 @@ function fmtAge(ms: number) {
   return `${Math.round(ms / 60000)} min`;
 }
 
-function NumberSlider({
-  label,
-  value,
-  min,
-  max,
-  step = 0.01,
-  display,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step?: number;
-  display: string;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <label className="grid gap-1">
-      <span className="flex items-center justify-between text-[11px] text-muted-foreground">
-        <span>{label}</span>
-        <span className="font-mono text-foreground">{display}</span>
-      </span>
-      <Slider
-        className="py-1.5"
-        value={[value]}
-        min={min}
-        max={max}
-        step={step}
-        onValueChange={(next) => {
-          const n = Array.isArray(next) ? next[0] : next;
-          onChange(Number(n));
-        }}
-      />
-    </label>
-  );
-}
-
 export function MxForceStudio() {
   const [hideForces, setHideForces] = useState(true);
   const [livePacket, setLivePacket] = useState<LivePacket | null>(null);
   const [liveOk, setLiveOk] = useState(false);
-  const [connectRequested, setConnectRequested] = useState(false);
+  const [connectRequested, setConnectRequested] = useState(true);
   const [staleMs, setStaleMs] = useState<number | null>(null);
   const [hudTel, setHudTel] = useState<Telemetry>(() => restTelemetry({ rpm: 0 }));
   const [inspect, setInspect] = useState(false);
@@ -152,7 +121,17 @@ export function MxForceStudio() {
   const [hudHarness, setHudHarness] = useState<HarnessState>(() => idleHarness());
   const [hudPhase, setHudPhase] = useState<RidePhase>("parked");
   const [pov, setPov] = useState(false);
-  const [devOpen, setDevOpen] = useState(false);
+  const [leftOpen, setLeftOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(false);
+  const [widget, setWidget] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordings, setRecordings] = useState<RecordingMeta[]>([]);
+  const [replayId, setReplayId] = useState("");
+  const [syncName, setSyncName] = useState("");
+  const [bikeParts, setBikeParts] = useState<ExcPartInfo[]>([]);
+  const [hiddenParts, setHiddenParts] = useState<string[]>([]);
+  const [padHud, setPadHud] = useState(() => readPadTrace(null));
+  const [bindSource, setBindSource] = useState(DEFAULT_PAD_MAP.source);
 
   const pollRef = useRef<() => Promise<void>>(async () => {});
   const motionRef = useRef(createMotionFilter());
@@ -163,6 +142,7 @@ export function MxForceStudio() {
   const lastHarnessHud = useRef(0);
   const bikeLatchRef = useRef({ id: "", name: "" });
   const liveRef = useRef(false);
+  const lastPublishedLiveRef = useRef(false);
   const telemetryRef = useRef<Telemetry>(hudTel);
   const eventRef = useRef<BikeEvent>(DEFAULT_EVENT);
   const padActiveRef = useRef(false);
@@ -174,7 +154,7 @@ export function MxForceStudio() {
   const drivingRef = useRef(false);
   const padOnRef = useRef(false);
   const padNameRef = useRef("");
-  const lastPublishedLiveRef = useRef(false);
+  const lastLiveAt = useRef(0);
   const traceRef = useRef(createTraceBuffer(900));
   const lastTraceMs = useRef(0);
   const graphOpenRef = useRef(false);
@@ -185,6 +165,22 @@ export function MxForceStudio() {
   const lastLearnMs = useRef(0);
   const lastSignFlipMs = useRef(0);
   const logModeRef = useRef<"off" | "auto" | "start">("off");
+  const recBuf = useRef<RecordingFile["samples"]>([]);
+  const recStarted = useRef(0);
+  const replayRef = useRef<RecordingFile | null>(null);
+  const replayIndex = useRef(0);
+  const syncRef = useRef(createReplaySync());
+  const replayIdRef = useRef("");
+  const syncNameRef = useRef("");
+  const recordingCache = useRef(new Map<string, RecordingFile>());
+  const clocksReady = useRef(false);
+  const clocksRef = useRef<RecordingClock[]>([]);
+  const loadingClocks = useRef(false);
+  const lastRecMs = useRef(0);
+  const recordingRef = useRef(false);
+  const replayClock = useRef(0);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const winGeom = useRef({ w: 0, h: 0, x: 0, y: 0 });
   const lessonRef = useRef<SheetLesson>(emptyLesson());
 
   useEffect(() => {
@@ -215,11 +211,44 @@ export function MxForceStudio() {
   }, []);
 
   useEffect(() => {
+    fetch("/api/binds")
+      .then((res) => res.json())
+      .then((data: { map?: PadMap }) => {
+        if (!data.map) return;
+        setActivePadMap(data.map);
+        setBindSource(data.map.source || DEFAULT_PAD_MAP.source);
+      })
+      .catch(() => {});
+    fetch("/api/recordings")
+      .then((res) => res.json())
+      .then((data: { recordings?: RecordingMeta[] }) => {
+        if (data.recordings) setRecordings(data.recordings);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const poke = () => {
+      const gp = readFirstGamepad();
+      setPadOn(Boolean(gp?.connected));
+      if (gp) setPadName(describePad(gp));
+    };
+    window.addEventListener("gamepadconnected", poke);
+    window.addEventListener("gamepaddisconnected", poke);
+    poke();
+    return () => {
+      window.removeEventListener("gamepadconnected", poke);
+      window.removeEventListener("gamepaddisconnected", poke);
+    };
+  }, []);
+
+  useEffect(() => {
     connectRef.current = connectRequested;
     userTravelRef.current = travel;
     travelRef.current = travel;
     graphOpenRef.current = graphOpen;
     logModeRef.current = logMode;
+    recordingRef.current = recording;
     if (!connectRequested) liveRef.current = false;
   });
 
@@ -256,20 +285,99 @@ export function MxForceStudio() {
   };
 
   useEffect(() => {
+    setHiddenParts(loadHiddenParts());
+  }, []);
+
+  const onBikeParts = useCallback((parts: ExcPartInfo[]) => {
+    setBikeParts(parts);
+  }, []);
+
+  const togglePart = (id: string) => {
+    setHiddenParts((current) => {
+      const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
+      saveHiddenParts(next);
+      return next;
+    });
+  };
+
+  const toggleAssembly = (assembly: string) => {
+    setHiddenParts((current) => {
+      const ids = bikeParts.filter((part) => part.assembly === assembly).map((part) => part.id);
+      const allHidden = ids.length > 0 && ids.every((id) => current.includes(id));
+      const next = allHidden
+        ? current.filter((id) => !ids.includes(id))
+        : Array.from(new Set([...current, ...ids]));
+      saveHiddenParts(next);
+      return next;
+    });
+  };
+
+  const showAllParts = () => {
+    saveHiddenParts([]);
+    setHiddenParts([]);
+  };
+
+  const stripParts = () => {
+    const next = [...DEFAULT_HIDDEN_PARTS];
+    saveHiddenParts(next);
+    setHiddenParts(next);
+  };
+
+  const rememberRecording = (rec: RecordingFile) => {
+    recordingCache.current.set(rec.id, rec);
+    const clock = clockFromRecording(rec);
+    clocksRef.current = clocksRef.current.filter((item) => item.id !== rec.id);
+    if (clock) clocksRef.current.push(clock);
+    clocksReady.current = true;
+  };
+
+  const ensureClocks = async () => {
+    if (loadingClocks.current) return;
+    loadingClocks.current = true;
+    try {
+      const res = await fetch("/api/recordings");
+      const data = (await res.json()) as { recordings?: RecordingMeta[] };
+      const metas = data.recordings ?? [];
+      const files = await Promise.all(
+        metas.map(async (meta) => {
+          const cached = recordingCache.current.get(meta.id);
+          if (cached) return cached;
+          const fileRes = await fetch(`/api/recordings?id=${encodeURIComponent(meta.id)}`);
+          const body = (await fileRes.json()) as { recording?: RecordingFile };
+          if (body.recording) recordingCache.current.set(meta.id, body.recording);
+          return body.recording;
+        }),
+      );
+      const clocks: RecordingClock[] = [];
+      for (const file of files) {
+        if (!file) continue;
+        const clock = clockFromRecording(file);
+        if (clock) clocks.push(clock);
+      }
+      clocksRef.current = clocks;
+      clocksReady.current = true;
+    } catch {
+      clocksReady.current = true;
+    } finally {
+      loadingClocks.current = false;
+    }
+  };
+
+  useEffect(() => {
+    void ensureClocks();
+  }, []);
+
+  useEffect(() => {
     const id = window.setInterval(() => {
       const gp = readFirstGamepad();
       const riderGp = isRiderPad(gp) ? gp : null;
       const padTrace = readPadTrace(riderGp);
-      let pad = padActiveRef.current;
-      if (!liveRef.current && !connectRef.current) {
-        pad = Boolean(riderGp && gamepadActive(riderGp)) || pad;
-      } else {
-        pad = false;
-        padActiveRef.current = false;
-      }
-      if (pad !== padOnRef.current) {
-        padOnRef.current = pad;
-        setPadOn(pad);
+      const padConnected = Boolean(riderGp?.connected);
+      padActiveRef.current = padConnected;
+      if (padConnected !== padOnRef.current) {
+        padOnRef.current = padConnected;
+        setPadOn(padConnected);
+        if (padConnected) setLeftOpen(true);
       }
       const nextPadName = riderGp ? describePad(riderGp) : "";
       if (nextPadName !== padNameRef.current) {
@@ -283,7 +391,34 @@ export function MxForceStudio() {
       }
 
       const now = performance.now();
-      const logPad = graphOpenRef.current || liveRef.current || padTraceActive(padTrace);
+      const rec = replayRef.current;
+      if (rec && rec.samples.length > 0) {
+        if (!replayClock.current) replayClock.current = now;
+        const elapsed = now - replayClock.current;
+        while (
+          replayIndex.current < rec.samples.length - 1 &&
+          rec.samples[replayIndex.current + 1].t <= elapsed
+        ) {
+          replayIndex.current += 1;
+        }
+        const sample = rec.samples[replayIndex.current];
+        telemetryRef.current = sample.telemetry;
+        liveRef.current = true;
+        if (elapsed > rec.durationMs + 80) {
+          replayClock.current = now;
+          replayIndex.current = 0;
+        }
+      }
+      if (recordingRef.current && now - lastRecMs.current >= 33) {
+        lastRecMs.current = now;
+        if (!recStarted.current) recStarted.current = now;
+        recBuf.current.push({
+          t: now - recStarted.current,
+          telemetry: telemetryRef.current,
+          pad: padTrace,
+        });
+      }
+      const logPad = graphOpenRef.current || liveRef.current || padTraceActive(padTrace) || padConnected;
       if (logPad && now - lastTraceMs.current >= 16) {
         lastTraceMs.current = now;
         pushTraceSample(
@@ -300,6 +435,7 @@ export function MxForceStudio() {
         lastHarnessHud.current = now;
         setHudHarness(harnessRef.current);
         setHudPhase(ridePhaseRef.current.phase);
+        setPadHud(padTrace);
       }
       const mode = logModeRef.current;
       const shouldLog = mode === "start" || (mode === "auto" && nextDriving);
@@ -370,10 +506,50 @@ export function MxForceStudio() {
       staleMs: number | null;
     }) => {
       if (cancelled) return;
+      const incoming = body.packet?.telemetry;
+      if (incoming && connectRef.current) {
+        const wasFollowing = syncRef.current.following;
+        const step = stepReplaySync(
+          syncRef.current,
+          incoming.time,
+          incoming.position,
+          clocksRef.current,
+          clocksReady.current,
+        );
+        syncRef.current = step.sync;
+        if (step.needsClocks) void ensureClocks();
+        if (step.follow && step.recordingId) {
+          const file = recordingCache.current.get(step.recordingId);
+          const sample = file?.samples[step.index];
+          if (sample) {
+            replayRef.current = null;
+            replayClock.current = 0;
+            telemetryRef.current = sample.telemetry;
+            liveRef.current = true;
+            lastLiveAt.current = performance.now();
+            if (replayIdRef.current !== step.recordingId) {
+              replayIdRef.current = step.recordingId;
+              setReplayId(step.recordingId);
+            }
+            if (syncNameRef.current !== (file?.name ?? "Replay")) {
+              syncNameRef.current = file?.name ?? "Replay";
+              setSyncName(file?.name ?? "Replay");
+            }
+            return;
+          }
+        } else if (wasFollowing) {
+          syncNameRef.current = "";
+          setSyncName("");
+          replayIdRef.current = "";
+          setReplayId("");
+        }
+      }
+      if (replayRef.current) return;
       const wantLive = connectRef.current;
       const streamLive = wantLive && holdLive(body.staleMs, body.live, Boolean(body.packet?.telemetry));
       if (streamLive && body.packet?.telemetry) {
         liveRef.current = true;
+        lastLiveAt.current = performance.now();
         if (body.packet.event) {
           const locked = stabilizeBikeEvent(body.packet.event, bikeLatchRef.current, true);
           bikeLatchRef.current = locked.latch;
@@ -390,8 +566,11 @@ export function MxForceStudio() {
           telemetryRef.current,
         );
       } else {
-        liveRef.current = false;
-        const reallyGone = !wantLive || (body.staleMs != null && body.staleMs > 1500);
+        if (!wantLive) liveRef.current = false;
+        else if (lastLiveAt.current && performance.now() - lastLiveAt.current > LIVE_HOLD_MS) {
+          liveRef.current = false;
+        }
+        const reallyGone = !wantLive || (body.staleMs != null && body.staleMs > LIVE_HOLD_MS);
         if (reallyGone) {
           telemetryRef.current = restTelemetry({ rpm: 0 });
           resetMotionFilter(motionRef.current);
@@ -496,16 +675,125 @@ export function MxForceStudio() {
   const frontSuspPct = Math.round(suspUsedPct(telemetry.suspLength[0], hudEvent.suspMaxTravel[0]) * 100);
   const rearSuspPct = Math.round(suspUsedPct(telemetry.suspLength[1], hudEvent.suspMaxTravel[1]) * 100);
   const onTrackPct = Math.round(trackPct(telemetry) * 100);
-  const step = dofStep();
+  const replaying = Boolean(replayId);
+
+  const refreshRecordings = async () => {
+    try {
+      const res = await fetch("/api/recordings");
+      const data = (await res.json()) as { recordings?: RecordingMeta[] };
+      if (data.recordings) setRecordings(data.recordings);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const toggleRecord = async () => {
+    if (recording) {
+      recordingRef.current = false;
+      setRecording(false);
+      const samples = recBuf.current;
+      recBuf.current = [];
+      recStarted.current = 0;
+      if (samples.length < 2) return;
+      const rec: RecordingFile = {
+        id: newRecordingId(),
+        name: displayBikeName(eventRef.current) || "Ride",
+        startedAt: Date.now(),
+        durationMs: samples[samples.length - 1]?.t ?? 0,
+        samples,
+      };
+      try {
+        await fetch("/api/recordings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(rec),
+        });
+        rememberRecording(rec);
+        await refreshRecordings();
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    recBuf.current = [];
+    recStarted.current = 0;
+    lastRecMs.current = 0;
+    recordingRef.current = true;
+    setReplayId("");
+    replayRef.current = null;
+    replayClock.current = 0;
+    setRecording(true);
+  };
+
+  const playRecording = async (id: string) => {
+    if (replayId === id && !syncName) {
+      setReplayId("");
+      replayIdRef.current = "";
+      replayRef.current = null;
+      replayClock.current = 0;
+      replayIndex.current = 0;
+      return;
+    }
+    try {
+      const res = await fetch(`/api/recordings?id=${encodeURIComponent(id)}`);
+      const data = (await res.json()) as { recording?: RecordingFile };
+      if (!data.recording) return;
+      replayRef.current = data.recording;
+      rememberRecording(data.recording);
+      replayIndex.current = 0;
+      replayClock.current = 0;
+      syncRef.current = { ...syncRef.current, following: false, recordingId: null };
+      syncNameRef.current = "";
+      setSyncName("");
+      replayIdRef.current = id;
+      setReplayId(id);
+      setRecording(false);
+      recordingRef.current = false;
+    } catch {
+      /* ignore */
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (widget) {
+      winGeom.current = { w: window.outerWidth, h: window.outerHeight, x: window.screenX, y: window.screenY };
+      try {
+        window.resizeTo(460, 300);
+        window.moveTo(
+          Math.max(16, window.screen.availWidth - 480),
+          Math.max(16, window.screen.availHeight - 340),
+        );
+      } catch {
+        /* some app windows ignore resizeTo */
+      }
+    } else if (winGeom.current.w > 0) {
+      try {
+        window.resizeTo(winGeom.current.w, winGeom.current.h);
+        window.moveTo(winGeom.current.x, winGeom.current.y);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [widget]);
+
+  const toggleFullscreen = async () => {
+    const node = stageRef.current;
+    if (!node) return;
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await node.requestFullscreen();
+    } catch {
+      /* ignore */
+    }
+  };
 
   return (
     <div className="flex h-dvh min-h-0 flex-col bg-background text-foreground">
-      <header className="flex items-center gap-3 border-b border-border px-3 py-2">
+      {widget ? null : (
+      <header className="flex items-center gap-2 border-b border-border px-2 py-1.5">
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-sm font-semibold tracking-tight">MX Force Studio</h1>
-          <p className="truncate text-[11px] text-muted-foreground">
-            {step.title} · {step.adds}
-          </p>
         </div>
         <Button
           size="xs"
@@ -526,7 +814,6 @@ export function MxForceStudio() {
               setConnectRequested(true);
               telemetryRef.current = restTelemetry({ rpm: 0 });
               sandboxRef.current = { ...DEFAULT_SANDBOX };
-              padActiveRef.current = false;
               motionRef.current = createMotionFilter();
               poseRef.current = identityPose();
               setHudTel(restTelemetry({ rpm: 0 }));
@@ -566,10 +853,13 @@ export function MxForceStudio() {
           </span>
         </Badge>
       </header>
+      )}
 
-      <div className="grid min-h-0 flex-1 lg:grid-cols-[8.75rem_minmax(0,1fr)_16.5rem]">
-        <InputsColumn telemetry={telemetry} padName={padName} />
-        <section className="relative min-h-[52vh] border-b border-border lg:border-r lg:border-b-0">
+      <div
+        ref={stageRef}
+        className="relative min-h-0 flex-1"
+      >
+      <section className="relative h-full min-h-0">
           <BikeCanvas
             telemetryRef={telemetryRef}
             hideForces={hideForces}
@@ -585,44 +875,44 @@ export function MxForceStudio() {
             forcesRef={forcesRef}
             hiddenRef={hiddenRef}
             driving={driving}
-            showPadLabels={!graphOpen && !pov}
+            showPadLabels={false}
             harnessRef={harnessRef}
             ridePhaseRef={ridePhaseRef}
             pov={pov}
+            hiddenParts={hiddenParts}
+            onParts={onBikeParts}
           />
 
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 p-2">
-            <div className="flex max-w-full items-center gap-x-3 overflow-x-auto rounded-md border border-white/10 bg-black/55 px-2.5 py-1.5 font-mono text-[11px] text-white backdrop-blur-sm">
-              <span className="max-w-[10rem] truncate text-amber-200">{bikeLabel}</span>
-              <span className="text-sky-200">{step.title}</span>
-              <span>{speedKph(telemetry.speedMs).toFixed(0)} km/h</span>
-              <span>{Math.round(telemetry.rpm)}</span>
-              <span>{gearLabel(telemetry.gear)}</span>
-              <span className="text-white/35">·</span>
-              <span>
-                lean {telemetry.roll.toFixed(0)}° · pitch {telemetry.pitch.toFixed(0)}°
-              </span>
-              {usingLive ? (
-                <>
-                  <span className="text-white/35">·</span>
-                  <span>Gx {formatG(telemetry.accelG.x)}</span>
-                  <span>Gy {formatG(telemetry.accelG.y)}</span>
-                  <span>Gz {formatG(telemetry.accelG.z)}</span>
-                  <span className="text-white/35">·</span>
-                  <span className="max-w-[9rem] truncate">{hudEvent.trackName || "Track"}</span>
-                  <span>{onTrackPct}%</span>
-                  <span>{fmtOnTrackS(telemetry.time)}</span>
-                  <span>F{frontSuspPct} R{rearSuspPct}</span>
-                </>
-              ) : null}
-              <span className="text-white/35">·</span>
-              <span>
-                <PoseReadout poseRef={poseRef} />
-              </span>
-            </div>
+          <div className="absolute top-2 left-2 z-30 flex items-center gap-1">
+            <Button
+              size="xs"
+              variant={recording ? "destructive" : "secondary"}
+              onClick={() => void toggleRecord()}
+            >
+              {recording ? <Square className="size-3 fill-current" /> : <Circle className="size-3 fill-red-500 text-red-500" />}
+              {recording ? "Stop" : "Rec"}
+            </Button>
+            <Button size="xs" variant="secondary" onClick={() => void toggleFullscreen()} aria-label="Fullscreen">
+              <Maximize2 />
+            </Button>
+            <Button size="xs" variant={widget ? "default" : "secondary"} onClick={() => setWidget((v) => !v)} aria-label="Widget">
+              <Minimize2 />
+            </Button>
           </div>
 
-          <div className="absolute top-11 right-2 z-20 flex gap-1">
+          {widget ? null : (
+          <div className="pointer-events-none absolute inset-x-28 top-2 z-10">
+            <div className="mx-auto flex max-w-fit items-center gap-x-2 overflow-x-auto rounded-md border border-white/10 bg-black/45 px-2 py-1 font-mono text-[10px] text-white/90 backdrop-blur-sm">
+              <span className="max-w-[8rem] truncate text-amber-200">{bikeLabel}</span>
+              <span>{speedKph(telemetry.speedMs).toFixed(0)}</span>
+              <span>{gearLabel(telemetry.gear)}</span>
+              {syncName ? <span className="text-amber-300">Sync {syncName}</span> : replaying ? <span className="text-sky-300">Replay</span> : null}
+            </div>
+          </div>
+          )}
+
+          {widget ? null : (
+          <div className="absolute top-2 right-2 z-20 flex gap-1">
             <Button size="xs" variant={pov ? "default" : "secondary"} onClick={() => setPov((v) => !v)}>
               <User />
               {pov ? "Garage" : "POV"}
@@ -633,51 +923,50 @@ export function MxForceStudio() {
               </Button>
             )}
           </div>
+          )}
 
-          <div className="pointer-events-none absolute top-11 left-2 z-10 hidden font-mono text-[10px] text-white/70 sm:grid gap-1">
-            <span className="text-amber-300">▲ FRONT</span>
-            <span className="text-sky-300">▶ RIGHT</span>
-            <span className="text-rose-300">◀ LEFT</span>
+          {widget ? null : (
+          <>
+          <button
+            type="button"
+            className={`absolute top-1/2 z-40 -translate-y-1/2 rounded-r-md border border-white/15 bg-black/70 p-1.5 text-white ${leftOpen ? "left-40" : "left-0"}`}
+            onClick={() => setLeftOpen((v) => !v)}
+            aria-label="Inputs panel"
+          >
+            <PanelLeft className="size-4" />
+          </button>
+          <button
+            type="button"
+            className={`absolute top-1/2 z-40 -translate-y-1/2 rounded-l-md border border-white/15 bg-black/70 p-1.5 text-white ${rightOpen ? "right-64" : "right-0"}`}
+            onClick={() => setRightOpen((v) => !v)}
+            aria-label="Session panel"
+          >
+            <PanelRight className="size-4" />
+          </button>
+
+          <div
+            className={`absolute inset-y-0 left-0 z-30 w-40 border-r border-white/10 bg-card/95 shadow-xl backdrop-blur-sm transition-transform ${
+              leftOpen ? "translate-x-0" : "-translate-x-full"
+            }`}
+          >
+            <InputsColumn telemetry={telemetry} padName={padName} pad={padHud} />
           </div>
-
-          {!driving && liveState === "idle" ? (
-            <div className="pointer-events-none absolute inset-x-0 bottom-12 z-10 flex justify-center">
-              <div className="max-w-sm rounded-md border border-white/10 bg-black/65 px-3 py-2 text-xs text-amber-50">
-                <p className="font-medium text-amber-100">New here?</p>
-                <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-white/80">
-                  <li>Start MX Bikes on this PC and go on track.</li>
-                  <li>Press Connect. The bike stays parked until the game is live.</li>
-                  <li>POV is first-person dynamic, same idea as MX Bikes.</li>
-                </ol>
-              </div>
-            </div>
-          ) : null}
-
-          {graphOpen ? (
-            <div className="absolute inset-x-0 bottom-0 z-20 h-[50%] min-h-[18rem] p-2 pt-0">
-              <TelemetryGraph
-                bufferRef={traceRef}
-                live={usingLive}
-                sheetHint={
-                  logMode === "off"
-                    ? sheetCount
-                      ? `Stopped · ${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)}s`
-                      : "Logging is off — Auto log or Start log"
-                    : `${logMode === "auto" ? "Auto" : "Recording"} · ${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)}s`
-                }
-              />
-            </div>
-          ) : null}
+          </>
+          )}
         </section>
 
-        <aside className="flex min-h-0 flex-col bg-card">
+        {widget ? null : (
+        <aside
+          className={`absolute inset-y-0 right-0 z-30 flex w-64 min-h-0 flex-col border-l border-white/10 bg-card/95 shadow-xl backdrop-blur-sm transition-transform ${
+            rightOpen ? "translate-x-0" : "translate-x-full"
+          }`}
+        >
           <ScrollArea className="min-h-0 flex-1">
             <div className="flex flex-col gap-4 p-3">
               {liveState === "idle" ? (
                 <>
                   <p className="text-xs leading-4 text-muted-foreground">
-                    {step.hint} Amber edge is the front of the deck. Start MX Bikes, go on track,
-                    then Connect. The deck stays parked until MX Bikes is live.
+                    Start MX Bikes on this PC and go on track. Live is already on.
                   </p>
                   <Button
                     size="sm"
@@ -686,7 +975,6 @@ export function MxForceStudio() {
                       setConnectRequested(true);
                       telemetryRef.current = restTelemetry({ rpm: 0 });
                       sandboxRef.current = { ...DEFAULT_SANDBOX };
-                      padActiveRef.current = false;
                       motionRef.current = createMotionFilter();
                       poseRef.current = identityPose();
                       setHudTel(restTelemetry({ rpm: 0 }));
@@ -704,7 +992,7 @@ export function MxForceStudio() {
                 <>
                   <p className="text-xs leading-4 text-amber-300">
                     Waiting for MX Bikes
-                    {staleMs != null && staleMs <= 5000 ? ` · ${fmtAge(staleMs)} ago` : " · UDP 47387"}
+                    {staleMs != null && staleMs <= 5000 ? ` · ${fmtAge(staleMs)} ago` : ""}
                   </p>
                   <Button size="xs" variant="outline" onClick={() => setConnectRequested(false)}>
                     Cancel
@@ -756,293 +1044,98 @@ export function MxForceStudio() {
                 </>
               ) : null}
 
-              <p className="font-mono text-[11px] leading-4 text-muted-foreground">{describeHarness(hudHarness)}</p>
-              <NumberSlider
-                label="Rod stroke"
-                value={travel.rodStroke}
-                min={0.08}
-                max={0.55}
-                step={0.01}
-                display={`±${travel.rodStroke.toFixed(2)} m`}
-                onChange={(rodStroke) => patchTravel({ rodStroke })}
+              {bindSource ? (
+                <p className="text-[10px] leading-4 text-muted-foreground">Binds: {bindSource}</p>
+              ) : null}
+
+              <BikePartsPanel
+                parts={bikeParts}
+                hidden={new Set(hiddenParts)}
+                onToggle={togglePart}
+                onToggleAssembly={toggleAssembly}
+                onShowAll={showAllParts}
+                onStrip={stripParts}
               />
 
-              <Button size="sm" variant={devOpen ? "default" : "outline"} onClick={() => setDevOpen((v) => !v)}>
-                {devOpen ? <ChevronDown /> : <ChevronRight />}
-                Dev
-              </Button>
-
-              {devOpen ? (
-              <>
-              <div className="grid gap-2">
-                <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                  Spreadsheet
+              {syncName ? (
+                <p className="text-[11px] leading-4 text-amber-200">
+                  MX Bikes replay is driving “{syncName}”. Session time keeps the take on the same moment.
                 </p>
-                <p className="text-xs leading-4 text-muted-foreground">
-                  {logMode === "off"
-                    ? sheetCount
-                      ? `Stopped · ${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)} s`
-                      : "Off until you press Auto log or Start log."
-                    : logMode === "auto"
-                      ? `Auto · ${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)} s`
-                      : `Recording · ${sheetCount.toLocaleString()} rows · ${sheetSeconds.toFixed(1)} s`}
-                </p>
-                <p className="text-[11px] leading-4 text-muted-foreground">
-                  Saves into the game plugins folder, next to the MX Bikes plugin.
-                  {logDir ? ` ${logDir}` : ""}
-                </p>
-                {saveMsg ? <p className="text-[11px] leading-4 text-emerald-300">{saveMsg}</p> : null}
-                <p className="text-[11px] leading-4 text-foreground/80">{describeLesson(lesson)}</p>
-                <div className="grid grid-cols-2 gap-1">
-                  <Button
-                    size="xs"
-                    variant={graphOpen ? "default" : "outline"}
-                    onClick={() => {
-                      const next = !graphOpen;
-                      setGraphOpen(next);
-                      saveTraceOpen(next);
-                    }}
-                  >
-                    <LineChart />
-                    {graphOpen ? "Hide graph" : "Graph"}
-                  </Button>
-                  <Button size="xs" variant={hideForces ? "outline" : "default"} onClick={() => setHideForces((v) => !v)}>
-                    {hideForces ? <Eye /> : <EyeOff />}
-                    {hideForces ? "Show arrows" : "Hide arrows"}
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant={logMode === "auto" ? "default" : "outline"}
-                    onClick={() => setLogMode("auto")}
-                  >
-                    Auto log
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    disabled={logMode === "off"}
-                    onClick={() => setLogMode("off")}
-                  >
-                    Stop log
-                  </Button>
-                  <Button size="xs" variant="secondary" onClick={() => void saveSheet()} disabled={sheetCount < 2 || saving}>
-                    {saving ? "Saving…" : "Save"}
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant={logMode === "start" ? "default" : "outline"}
-                    onClick={() => setLogMode("start")}
-                  >
-                    Start log
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid gap-2">
-                <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                  6DOF travel · {step.title}
-                </p>
-                <NumberSlider
-                  label="Response"
-                  value={travel.response}
-                  min={0.1}
-                  max={3}
-                  step={0.05}
-                  display={`${Math.round(travel.response * 100)}%`}
-                  onChange={(response) => patchTravel({ response })}
-                />
-                <NumberSlider
-                  label="Axis speed · slide"
-                  value={travel.rateLin}
-                  min={0.2}
-                  max={6}
-                  step={0.1}
-                  display={`${travel.rateLin.toFixed(1)} m/s`}
-                  onChange={(rateLin) => patchTravel({ rateLin })}
-                />
-                <NumberSlider
-                  label="Axis speed · tilt"
-                  value={travel.rateAng}
-                  min={0.2}
-                  max={6}
-                  step={0.1}
-                  display={`${((travel.rateAng * 180) / Math.PI).toFixed(0)} °/s`}
-                  onChange={(rateAng) => patchTravel({ rateAng })}
-                />
-                <NumberSlider
-                  label="Smooth"
-                  value={travel.smoothTau}
-                  min={0.01}
-                  max={0.25}
-                  step={0.005}
-                  display={`${Math.round(travel.smoothTau * 1000)} ms`}
-                  onChange={(smoothTau) => patchTravel({ smoothTau })}
-                />
-                <NumberSlider
-                  label="Visual follow"
-                  value={travel.visualTau}
-                  min={0.01}
-                  max={0.18}
-                  step={0.005}
-                  display={`${Math.round(travel.visualTau * 1000)} ms`}
-                  onChange={(visualTau) => patchTravel({ visualTau })}
-                />
-                <NumberSlider
-                  label="Roll · lean"
-                  value={(travel.limitRoll * 180) / Math.PI}
-                  min={0}
-                  max={70}
-                  step={1}
-                  display={`${((travel.limitRoll * 180) / Math.PI).toFixed(0)}°`}
-                  onChange={(deg) => patchTravel({ limitRoll: (deg * Math.PI) / 180 })}
-                />
-                <NumberSlider
-                  label="Pitch · wheelie"
-                  value={(travel.limitPitch * 180) / Math.PI}
-                  min={0}
-                  max={70}
-                  step={1}
-                  display={`${((travel.limitPitch * 180) / Math.PI).toFixed(0)}°`}
-                  onChange={(deg) => patchTravel({ limitPitch: (deg * Math.PI) / 180 })}
-                />
-                <NumberSlider
-                  label="Yaw · heading"
-                  value={(travel.limitYaw * 180) / Math.PI}
-                  min={0}
-                  max={60}
-                  step={1}
-                  display={`${((travel.limitYaw * 180) / Math.PI).toFixed(0)}°`}
-                  onChange={(deg) => patchTravel({ limitYaw: (deg * Math.PI) / 180 })}
-                />
-                <NumberSlider
-                  label="Heave · up / down"
-                  value={travel.limitY}
-                  min={0}
-                  max={2}
-                  step={0.05}
-                  display={`${travel.limitY.toFixed(2)} m`}
-                  onChange={(limitY) => patchTravel({ limitY })}
-                />
-                <NumberSlider
-                  label="Surge · fore / aft"
-                  value={travel.limitZ}
-                  min={0}
-                  max={2}
-                  step={0.05}
-                  display={`${travel.limitZ.toFixed(2)} m`}
-                  onChange={(limitZ) => patchTravel({ limitZ })}
-                />
-                <NumberSlider
-                  label="Sway · left / right"
-                  value={travel.limitX}
-                  min={0}
-                  max={2}
-                  step={0.05}
-                  display={`${travel.limitX.toFixed(2)} m`}
-                  onChange={(limitX) => patchTravel({ limitX })}
-                />
-                <div className="grid grid-cols-2 gap-1">
-                  <Button
-                    size="xs"
-                    variant={travel.visualPitch < 0 ? "default" : "outline"}
-                    onClick={() => patchTravel({ visualPitch: travel.visualPitch < 0 ? 1 : -1 })}
-                  >
-                    {travel.visualPitch < 0 ? "Wheelie nose-up" : "Wheelie flipped"}
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant={travel.leanSign < 0 ? "default" : "outline"}
-                    onClick={() => patchTravel({ leanSign: travel.leanSign < 0 ? 1 : -1 })}
-                  >
-                    {travel.leanSign < 0 ? "Lean camera-left" : "Lean flipped"}
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant={travel.parkLock ? "default" : "outline"}
-                    onClick={() => patchTravel({ parkLock: !travel.parkLock })}
-                  >
-                    {travel.parkLock ? "Parked stays level" : "Parked still tilts"}
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    onClick={() => {
-                      const next = sanitizeTravel(STUDIO_TRAVEL);
-                      setTravel(next);
-                      saveStoredTravel(next);
-                      saveStoredDof(next.dof);
-                    }}
-                  >
-                    Reset travel
-                  </Button>
-                </div>
-              </div>
-              </>
               ) : null}
+
+              <div className="grid gap-1.5">
+                <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                  Recordings
+                </p>
+                {recordings.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground">Hit Rec (top left) while you ride.</p>
+                ) : (
+                  recordings.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={`flex w-full items-center justify-between rounded-md border px-2 py-1 text-left text-[11px] ${
+                        replayId === item.id ? "border-sky-400 bg-sky-500/15" : "border-border"
+                      }`}
+                      onClick={() => void playRecording(item.id)}
+                    >
+                      <span className="truncate">{item.name}</span>
+                      <span className="font-mono text-muted-foreground">
+                        {(item.durationMs / 1000).toFixed(1)}s
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
           </ScrollArea>
         </aside>
+        )}
       </div>
     </div>
   );
 }
 
-function fmtM(m: number) {
-  return `${m >= 0 ? "+" : ""}${m.toFixed(2)}`;
-}
-
-function fmtDeg(rad: number) {
-  const d = (rad * 180) / Math.PI;
-  return `${d >= 0 ? "+" : ""}${d.toFixed(0)}°`;
-}
-
-function PoseReadout({ poseRef }: { poseRef: MutableRefObject<Pose6> }) {
-  const el = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    let frame = 0;
-    const tick = () => {
-      const pose = poseRef.current;
-      if (el.current) {
-        el.current.textContent = [
-          `R ${fmtDeg(pose.roll)}`,
-          `P ${fmtDeg(pose.pitch)}`,
-          `Y ${fmtM(pose.y)}`,
-          `Z ${fmtM(pose.z)}`,
-          `X ${fmtM(pose.x)}`,
-          `Yw ${fmtDeg(pose.yaw)}`,
-        ].join("  ");
-      }
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [poseRef]);
-  return <span ref={el}>R +0°  P +0°</span>;
-}
-
-function InputsColumn({ telemetry, padName }: { telemetry: Telemetry; padName: string }) {
-  const gp = readFirstGamepad();
-  const rider = riderFromTelemetry(telemetry, readBodyStick(isRiderPad(gp) ? gp : null));
-  const steerMax = 40;
-  const steerT = Math.min(1, Math.max(-1, telemetry.steer / steerMax));
-  const leanT = Math.min(1, Math.max(-1, rider.lean / 0.7));
-  const leanDeg = (rider.lean * 180) / Math.PI;
+function InputsColumn({
+  telemetry,
+  padName,
+  pad,
+}: {
+  telemetry: Telemetry;
+  padName: string;
+  pad: PadTrace;
+}) {
+  const usePad = pad.connected;
+  const throttle = usePad ? pad.throttle : telemetry.throttle;
+  const frontBrake = usePad ? pad.frontBrake : telemetry.frontBrake;
+  const rearBrake = usePad ? pad.rearBrake : telemetry.rearBrake;
+  const clutch = usePad ? pad.clutch : telemetry.clutch;
+  const steerT = usePad ? pad.lx : Math.min(1, Math.max(-1, telemetry.steer / 40));
+  const steerDisplay = usePad ? pad.lx.toFixed(2) : `${telemetry.steer.toFixed(0)}°`;
+  const leanT = usePad ? pad.rx : Math.min(1, Math.max(-1, telemetry.roll / 45));
+  const sitT = usePad ? pad.sit : 0;
   return (
-    <aside className="flex min-h-0 flex-col gap-1.5 border-b border-border bg-card px-2.5 py-2 lg:border-b-0 lg:border-r">
+    <aside className="flex h-full min-h-0 flex-col gap-1.5 px-2.5 py-2">
       <div className="flex items-baseline justify-between gap-1">
         <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">Inputs</p>
-        {padName ? <p className="truncate text-[9px] text-muted-foreground">{padName}</p> : null}
+        <p className="truncate text-[9px] text-muted-foreground">{pad.connected ? padName || "Pad" : "Off"}</p>
       </div>
-      <InputBar label="Thr" value={telemetry.throttle} fillClass="bg-emerald-400" />
-      <InputBar label="F brk" value={telemetry.frontBrake} fillClass="bg-rose-500" />
-      <InputBar label="R brk" value={telemetry.rearBrake} fillClass="bg-pink-400" />
-      <InputBar label="Clh" value={telemetry.clutch} fillClass="bg-slate-300" />
-      <SignedBar label="Str" value={steerT} display={`${telemetry.steer.toFixed(0)}°`} fillClass="bg-violet-400" />
-      <SitStandBar stand={rider.stand} />
+      <InputBar label="Thr" value={throttle} fillClass="bg-emerald-400" />
+      <InputBar label="F brk" value={frontBrake} fillClass="bg-rose-500" />
+      <InputBar label="R brk" value={rearBrake} fillClass="bg-pink-400" />
+      <InputBar label="Clh" value={clutch} fillClass="bg-slate-300" />
+      <SignedBar label="Str" value={steerT} display={steerDisplay} fillClass="bg-violet-400" />
+      <SignedBar
+        label="Sit"
+        value={sitT}
+        display={sitT >= 0 ? `Aft ${sitT.toFixed(2)}` : `Fwd ${(-sitT).toFixed(2)}`}
+        fillClass="bg-amber-300"
+      />
+      <SitStandBar stand={usePad ? pad.stand : 0} />
       <SignedBar
         label="Lean"
         value={leanT}
-        display={`${leanDeg >= 0 ? "+" : ""}${leanDeg.toFixed(0)}°`}
+        display={usePad ? pad.rx.toFixed(2) : `${telemetry.roll.toFixed(0)}°`}
         fillClass="bg-sky-400"
       />
     </aside>
