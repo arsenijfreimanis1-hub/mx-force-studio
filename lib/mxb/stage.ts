@@ -1,12 +1,8 @@
+import { STAGE_TRAVEL_X, STAGE_TRAVEL_Z } from "./dims.ts";
+
 type StagePose = { x: number; y: number; z: number; yaw: number; pitch: number; roll: number };
 
-/**
- * Carriage travel on the plate. These match STUDIO_TRAVEL limitX / limitZ, so
- * what the cue asks for is what the rails actually do — a spec a manufacturer
- * can quote, not a cosmetic nudge.
- */
-export const STAGE_TRAVEL_X = 0.14;
-export const STAGE_TRAVEL_Z = 0.16;
+export { STAGE_TRAVEL_X, STAGE_TRAVEL_Z };
 
 /**
  * Surge, sway, and yaw live on the small machine. The four pistons only

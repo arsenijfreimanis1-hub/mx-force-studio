@@ -18,10 +18,11 @@ import {
   DEFAULT_ROD_STROKE,
   FRAME_ORIGIN_Y,
   PLATFORM_HOME_Y,
+  STAGE_TRAVEL_X,
+  STAGE_TRAVEL_Z,
 } from "./dims.ts";
 import { clampDof, dofAxes, maskPose, type DofLevel } from "./dof.ts";
 import { clampPoseToRodStroke } from "./rods.ts";
-import { STAGE_TRAVEL_X, STAGE_TRAVEL_Z } from "./stage.ts";
 import type { Telemetry, Vec3 } from "./types";
 
 export { worldToChassis } from "./cartesian.ts";

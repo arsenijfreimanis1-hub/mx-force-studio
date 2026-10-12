@@ -29,8 +29,9 @@ import type { HarnessState } from "@/lib/mxb/harness";
 import type { RidePhaseFilter } from "@/lib/mxb/crash";
 import type { BikeEvent, ForceId, ForceModel, SandboxInputs, Telemetry } from "@/lib/mxb/types";
 
-const ORBIT_HOME = new THREE.Vector3(5.2, 3.15, -6.8);
-const ORBIT_TARGET = new THREE.Vector3(0, PLATFORM_HOME_Y + 0.45, 0);
+/** Pulled in and raised for the compact cradle — the old frame was set for a rig half again as tall. */
+const ORBIT_HOME = new THREE.Vector3(2.6, 1.85, -3.4);
+const ORBIT_TARGET = new THREE.Vector3(0, PLATFORM_HOME_Y + 0.85, 0);
 
 function GarageOrbit({
   pov,

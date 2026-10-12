@@ -216,6 +216,24 @@ export function MotionPedestal({
         </group>
       ))}
 
+      {/* Mounting step, bolted to the base frame so it does not move with the bike. */}
+      <group position={[-(baseX + 0.13), 0, 0]}>
+        <mesh position={[0, 0.17, 0]} material={steel} castShadow receiveShadow>
+          <boxGeometry args={[0.24, 0.018, 0.4]} />
+        </mesh>
+        <mesh position={[0, 0.182, 0]} material={accent}>
+          <boxGeometry args={[0.21, 0.006, 0.36]} />
+        </mesh>
+        {([-1, 1] as const).map((side) => (
+          <mesh key={side} position={[0.0, 0.085, side * 0.16]} material={steel} castShadow>
+            <boxGeometry args={[0.2, 0.17, 0.03]} />
+          </mesh>
+        ))}
+        <mesh position={[0.1, 0.17, 0]} material={steel} castShadow>
+          <boxGeometry args={[0.13, 0.016, 0.07]} />
+        </mesh>
+      </group>
+
       {/* Drive cabinet, behind the frame where it can be opened. */}
       <group position={[0, 0, -(baseZ + 0.16)]}>
         <mesh position={[0, 0.21, 0]} material={steel} castShadow receiveShadow>

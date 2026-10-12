@@ -1,22 +1,28 @@
 MX Force Studio - features
 ==========================
 
-- Live 6DOF garage that follows MX Bikes (same PC only)
-- Frame lean / wheelie / stoppie / jumps / whoops / crash down
-- Dummy body weight from the pad right stick
-- Auto Xbox / Standard pad pick (ignores racing wheels)
-- Chest-belt + rod-stroke sliders
-- Optional CSV logging next to the MX Bikes plugin
-- One-click Installer / Updater / Uninstaller (no Node/Git/admin)
+- Own desktop window on this PC only (offline after first install)
+- Live 6DOF garage that follows MX Bikes on the same PC
+- Rec (top left): record, replay, fullscreen, widget (small view)
+- MX Bikes replay scrubs the matching Force Studio take by session time
+- Right panel toggles 49 individual bike parts (default: frame, seat, plastics, bars)
+- Compact MX cradle rig: 1.17 x 1.21 m footprint, 44 deg lean, 41 deg pitch
+- Frame bolts into cradle clamps on the load plate; MX rider leans with telemetry
+- Pull-out left (inputs) and right (session / recordings) panels
+- Reads your MX Bikes controller binds on connect (sit / lean / triggers)
+- Shortcut: MX Bikes plugins.lnk -> game plugins folder
+- Installer starts the app. Updater only downloads; it does not start it
+- UPDATES.txt is the revision log. Its id line is how you tell if this install is current
 
 How it works
 ------------
-1. Double-click Installer.bat (or Updater.bat after a new download).
-2. It installs portable Node if needed, builds the app, copies the
-   telemetry plugin next to mxbikes.exe, and opens the browser UI.
-3. Start MX Bikes on this PC, go on track, click Connect.
-4. The plugin sends local UDP telemetry; the garage deck follows it.
-5. Close the black window to stop. Uninstaller.bat removes icons,
-   cache, and the plugin. Spreadsheets in force_studio_logs stay.
+1. Double-click Installer.bat. First run needs internet.
+   If startup fails, that window stays open and prints the reason.
+2. After that the app runs on this PC with no URL to join.
+3. Start MX Bikes, go on track. Live is already on.
+4. Updater.bat rebuilds and shows UPDATE READY with the id from UPDATES.txt.
+   It does not open the garage. Use Installer.bat to start.
+5. Close the Force Studio window to stop. Uninstaller.bat removes
+   icons, cache, and the plugin.
 
 Riders only need: Installer.bat, Updater.bat, Uninstaller.bat.

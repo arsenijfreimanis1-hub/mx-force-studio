@@ -36,3 +36,11 @@ export const DEFAULT_ROD_LENGTH = 0.69;
  * rather than one that has to be shorter than its own barrel.
  */
 export const DEFAULT_ROD_STROKE = 0.19;
+/**
+ * Carriage travel on the plate for sway and surge. STUDIO_TRAVEL quotes these
+ * directly, so what a cue asks for is what the rails actually do — a spec a
+ * manufacturer can hold you to, not a cosmetic nudge. They live here rather
+ * than in stage.ts so motion.ts can read them without an import cycle.
+ */
+export const STAGE_TRAVEL_X = 0.14;
+export const STAGE_TRAVEL_Z = 0.16;

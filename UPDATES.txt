@@ -1,0 +1,53 @@
+id: 2026-10-12-mx-cradle
+date: 2026-10-12
+
+MX Force Studio update log
+The id line is the installed revision. Installer and Updater compare it
+when deciding whether a rebuild is current. The website should compare
+this same id (or GET /api/updates on a running install) to see if the
+app is up to date.
+
+## 2026-10-12-mx-cradle
+- Rig is a compact MX cradle: 1.17 x 1.21 m footprint, load plate 0.56 m off the floor
+- Lean goes to 44 deg and pitch to 41 deg, past what the old tall deck could reach
+- Surge, sway, and yaw run on real rails sized to their travel, so the deck moves as far as the cue asks
+- Each actuator is a fixed barrel and sliding rod on a trunnion foot, with the drive cabinet behind the frame
+- 49 individual bike parts in the right panel instead of 18 material groups
+- Rider is rebuilt from rounded body forms, no more blocky torso
+
+## 2026-10-12-exc-cradle
+- Default bike shows frame, seat, plastics, tank, and bars only; Strip / Show all in the parts panel
+- KTM logos scrubbed from plastics and tank; kickstand / steel stays off by default
+- Frame rails lock into cradle clamps that move with the chassis; hydraulic pedestal under the plate
+- Full MX rider (helmet, jersey, pants, boots) leans with telemetry
+
+## 2026-10-12-exc-sketchfab
+- Garage bike is the Sketchfab KTM 450 EXC (Motocross 3D, CC BY)
+- Right panel toggles the 18 material groups; choice is remembered on this PC
+- Warm shop lighting matches that model; credit is in public/models/ATTRIBUTION.md
+- An MX Bikes replay rewinds session time. Force Studio then plays the saved take that matches that time and track position. The game does not send a replay flag
+
+## 2026-10-12-sx-replay
+- Garage bike is the mx-hub 250 SX (78 named parts) instead of the tube frame
+- Right panel shows or hides each part; the choice is remembered on this PC
+- Scene lighting is the warm dark shop that matches that model
+- An MX Bikes replay rewinds session time. Force Studio then plays the saved take that matches that time and track position. The game does not send a replay flag
+
+## 2026-09-30-torso-stage
+- Rider is a torso with helmet, chest, and arms on the bars
+- A small slide-and-yaw stage under the frame does surge, sway, and yaw
+- The four pistons only heave, pitch, and roll
+- Session panel keeps connect, recordings, and ride status; dev sliders are gone
+
+## 2026-09-30-island
+- Garage is a small floating island with grass, dirt, and rock textures
+- Sky is a sunlit gradient with clouds instead of a flat color
+- Bike frame and motion platform are life-size
+- Platform, frame, and actuators use metal textures
+- If the app fails to start, the installer window stays open and prints why
+- This file is the revision the website can sync against
+
+## 2026-09-29-live-sit-widget
+- Live 6DOF garage that follows MX Bikes on this PC
+- Sit / stand, recordings, replay, and the small widget view
+- Reads MX Bikes controller binds on connect
