@@ -497,6 +497,23 @@ test("an airborne yaw rate scrubs the bike", () => {
   assert.ok(Math.abs(pose.yaw) > 0.1, `scrub yaw ${pose.yaw}`);
 });
 
+test("a leaned bike holds yaw with the scrub instead of washing out", () => {
+  const pose = run(
+    sample({
+      speedMs: 14,
+      roll: -28,
+      yawRate: 90,
+      steer: 8,
+      accelG: { x: 0.35, y: 1, z: 0.1 },
+      wheelMaterial: [1, 1],
+    }),
+    0.7,
+    STUDIO_TRAVEL,
+  );
+  assert.ok(Math.abs(pose.roll) > 0.25, `lean ${pose.roll}`);
+  assert.ok(Math.abs(pose.yaw) > 0.08, `scrub yaw ${pose.yaw}`);
+});
+
 test("one-step pose change is capped like a rider is on the frame", () => {
   const filter = createMotionFilter();
   const dt = 1 / 60;

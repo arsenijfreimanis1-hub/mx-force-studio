@@ -10,6 +10,7 @@ type GarageTextures = {
   diamond: THREE.CanvasTexture;
   brushed: THREE.CanvasTexture;
   paint: THREE.CanvasTexture;
+  carbon: THREE.CanvasTexture;
   leather: THREE.CanvasTexture;
   cloud: THREE.CanvasTexture;
 };
@@ -170,6 +171,24 @@ function paintNoise(ctx: CanvasRenderingContext2D, size: number, rand: () => num
   speck(ctx, rand, size, 800, "#f4f0ea");
 }
 
+function paintCarbon(ctx: CanvasRenderingContext2D, size: number) {
+  ctx.fillStyle = "#141414";
+  ctx.fillRect(0, 0, size, size);
+  const tow = 6;
+  for (let y = 0; y < size; y += tow) {
+    for (let x = 0; x < size; x += tow) {
+      const alt = ((x / tow) ^ (y / tow)) & 1;
+      ctx.fillStyle = alt ? "#1c1c1c" : "#101010";
+      ctx.fillRect(x, y, tow, tow);
+      ctx.strokeStyle = alt ? "rgba(70,70,70,0.35)" : "rgba(40,40,40,0.45)";
+      ctx.beginPath();
+      ctx.moveTo(x, y + tow);
+      ctx.lineTo(x + tow, y);
+      ctx.stroke();
+    }
+  }
+}
+
 function paintLeather(ctx: CanvasRenderingContext2D, size: number, rand: () => number) {
   ctx.fillStyle = "#1c2430";
   ctx.fillRect(0, 0, size, size);
@@ -214,6 +233,7 @@ export function garageTextures(): GarageTextures {
     diamond: canvasTexture(512, paintDiamond, 5),
     brushed: canvasTexture(256, paintBrushed, 9),
     paint: canvasTexture(256, paintNoise, 13),
+    carbon: canvasTexture(256, (ctx, size) => paintCarbon(ctx, size), 23),
     leather: canvasTexture(256, paintLeather, 17),
     cloud: canvasTexture(256, paintCloud, 19),
   };

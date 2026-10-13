@@ -51,6 +51,11 @@ const SHELLS: { material: string; part: string; min: [number, number, number]; m
   { material: "Radiator", part: "radiator_r", min: [0.02, 0.4, 0.22], max: [0.14, 0.44, 0.27] },
   { material: "Exhaust", part: "header", min: [-0.15, 0.27, -0.81], max: [0.02, 0.74, 0.29] },
   { material: "Exhaust", part: "silencer", min: [-0.1, 0.65, -0.84], max: [-0.06, 0.71, -0.71] },
+  // Lines, flap, and the lower fork tubes — these used to hide inside a bigger part.
+  { material: "Dark_Plastics", part: "front_brake_line", min: [-0.04, -0.03, 0.55], max: [0.04, 0.49, 0.69] },
+  { material: "Dark_Plastics", part: "rear_brake_line", min: [-0.1, 0.09, -0.53], max: [0.04, 0.19, 0.05] },
+  { material: "Dark_Plastics", part: "mud_flap", min: [-0.115, 0.4, -0.5], max: [-0.085, 0.58, -0.34] },
+  { material: "Shock_Metal", part: "fork_lower_r", min: [0.005, -0.02, 0.5], max: [0.055, 0.44, 0.77] },
 ];
 
 test("measured shells land on the part the panel shows", () => {

@@ -139,7 +139,6 @@ const SAG_TAU_QUIET = 3.5;
 const SAG_TAU_BUSY = 8;
 /** Residual lateral tilt only — lean-follow owns the berm. */
 const TILT_ROLL_BLEND = 0.04;
-const GAME_PITCH_DEG = 1.5;
 const HEAD_ACCEL_CLAMP = 14;
 
 export const DEFAULT_FRAME_TRAVEL: FrameTravel = {
@@ -298,6 +297,8 @@ export type MotionFilter = {
   cart: CartesianState;
   /** Hysteresis so cart does not flicker on/off around walking speed. */
   cartOn: boolean;
+  /** Slow pedal average, so a throttle stab shoves and held gas washes home. */
+  pedalHp: number;
   /** null until parked / high-mag sample locks G vs m/s² for the session. */
   unitsMs2: boolean | null;
   primed: boolean;
@@ -344,6 +345,7 @@ export function createMotionFilter(): MotionFilter {
     prevWorldY: 0,
     cart: createCartesianState(),
     cartOn: false,
+    pedalHp: 0,
     unitsMs2: null,
     primed: false,
     shown: identityPose(),
@@ -549,7 +551,7 @@ export function stepMotion(
   filter.sAz = follow(filter.sAz, rawG.z, step, smoothTau);
   filter.sRoll = follow(filter.sRoll, attitude.roll, step, smoothTau);
   filter.sPitch = follow(filter.sPitch, attitude.pitch, step, smoothTau);
-  filter.sYawRate = follow(filter.sYawRate, telemetry.yawRate, step, smoothTau);
+  filter.sYawRate = follow(filter.sYawRate, telemetry.yawRate, step, airborne ? 0.03 : smoothTau);
   filter.sPitchRate = follow(filter.sPitchRate, telemetry.pitchRate, step, smoothTau);
   filter.sRollRate = follow(filter.sRollRate, telemetry.rollRate, step, smoothTau);
 
@@ -580,7 +582,7 @@ export function stepMotion(
   const pedalSurge =
     restDeck || crashed
       ? 0
-      : (cues.throttle * 1.1 - cues.frontBrake * 2.2 - cues.rearBrake * 0.85) * GRAVITY * response * 0.14;
+      : (cues.throttle * 1.6 - cues.frontBrake * 3.2 - cues.rearBrake * 1.2) * GRAVITY * response * 0.32;
   const aSurge = crashed ? 0 : gForce.z * scale + pedalSurge;
   let heaveTarget: number;
   let heaveTau = HEAVE_TAU_GROUND;
@@ -656,11 +658,18 @@ export function stepMotion(
   } else if (useCart && !stopped && !crashed) {
     const cartGain = 0.5;
     const tx = clamp(cart.x / CART_XZ_M, -1, 1) * limX * response * cartGain;
-    const tz = clamp(cart.z / CART_XZ_M, -1, 1) * limZ * response * cartGain;
-    filter.x = follow(filter.x, tx, step, 0.07);
-    filter.z = follow(filter.z, tz, step, 0.07);
-    // Held gas / coast must not park the frame at the surge stop.
-    if (Math.abs(gForce.z) < 0.16) {
+    const cartZ = clamp(cart.z / CART_XZ_M, -1, 1) * limZ * response * cartGain;
+    const pedalCmd = cues.throttle * 0.7 - cues.frontBrake * 1.15 - cues.rearBrake * 0.5;
+    filter.pedalHp = follow(filter.pedalHp, pedalCmd, step, 0.28);
+    const braking = cues.frontBrake > 0.2 || cues.rearBrake > 0.25;
+    // Throttle is a jab: the high-pass dies once gas is held, so the frame
+    // does not park on the stop. A held brake is allowed to stay back.
+    const pedalZ = (braking ? pedalCmd : pedalCmd - filter.pedalHp) * limZ * response;
+    const quiet = Math.abs(cartZ) < limZ * 0.2;
+    const tz = clamp(cartZ + (quiet ? pedalZ : 0), -limZ, limZ);
+    filter.x = follow(filter.x, tx, step, 0.055);
+    filter.z = follow(filter.z, tz, step, 0.035);
+    if (!braking && Math.abs(gForce.z) < 0.16) {
       filter.z = follow(filter.z, 0, step, 0.1);
     }
     filter.vx = follow(filter.vx, 0, step, 0.08);
@@ -694,29 +703,49 @@ export function stepMotion(
   }
   filter.y = clamp(follow(filter.y, heaveTarget, step, heaveTau), -limY, limY);
 
-  const yawAccel = stopped || crashed
-    ? 0
+  // Whip (air): hold yaw from yaw rate + bar. Scrub (ground + lean): hold a
+  // smaller yaw with the lean so the bike can spin while it is on its side.
+  // Straight riding still washes yaw home so a long turn does not park the ring.
+  const leanAbs = Math.abs(attitude.roll);
+  const scrubbing = !airborne && !stopped && !crashed && leanAbs > 12;
+  const yawLim = crashed
+    ? limYaw
     : airborne
-      ? (deg(filter.sYawRate) * 2.6 + deg(cues.steerDeg) * 0.65 + deg(filter.sRollRate) * 0.12) * response
-      : (deg(filter.sYawRate) * 1.4 + deg(cues.steerDeg) * 0.12) * response;
-  const yawLim = crashed ? limYaw : airborne ? Math.max(limYaw, (34 * Math.PI) / 180) : limYaw;
-  const yawOmega = airborne ? WASH_OMEGA_ANG * 0.42 : WASH_OMEGA_ANG;
-  const yaw = stepAxis(filter.yaw, filter.vyaw, yawAccel, step, yawLim, yawOmega);
-  filter.yaw = yaw.pos;
-  filter.vyaw = yaw.vel;
+      ? Math.max(limYaw, (34 * Math.PI) / 180)
+      : scrubbing
+        ? Math.max(limYaw, (20 * Math.PI) / 180)
+        : limYaw;
+  if (airborne && !stopped && !crashed) {
+    const whip = deg(filter.sYawRate) * 0.62 + deg(cues.steerDeg) * 1.35 + deg(filter.sRollRate) * 0.15;
+    filter.yaw = follow(filter.yaw, clamp(whip * response, -yawLim, yawLim), step, 0.045);
+    filter.vyaw = 0;
+  } else if (scrubbing) {
+    const scrub = deg(filter.sYawRate) * 0.55 + deg(cues.steerDeg) * 0.35;
+    filter.yaw = follow(filter.yaw, clamp(scrub * response, -yawLim, yawLim), step, 0.07);
+    filter.vyaw = 0;
+  } else {
+    const yawAccel = stopped || crashed
+      ? 0
+      : (deg(filter.sYawRate) * 2.8 + deg(cues.steerDeg) * 0.45) * response;
+    const yaw = stepAxis(filter.yaw, filter.vyaw, yawAccel, step, yawLim, WASH_OMEGA_ANG * 0.72);
+    filter.yaw = yaw.pos;
+    filter.vyaw = yaw.vel;
+  }
 
   filter.rollHp = follow(filter.rollHp, 0, step, 0.12);
   filter.vroll = 0;
   filter.pitchHp = follow(filter.pitchHp, 0, step, 0.12);
   filter.vpitch = 0;
 
-  const gameOwnsPitch = Math.abs(attitude.pitch) >= GAME_PITCH_DEG;
+  // Gas is a rearward slide on the stage, not an instant wheelie. A small
+  // nose-up (about 4° at full throttle) is all the pedals add; game Euler
+  // still owns a real wheelie when the rider actually lifts the front.
   const pedalPitch =
-    restDeck || gameOwnsPitch
+    restDeck || crashed
       ? 0
-      : (cues.throttle * 0.24 - cues.frontBrake * 0.4 - cues.rearBrake * 0.1) * response;
-  // Game Euler owns a real wheelie/stoppie. Pedals only fill in when Euler is late.
-  const tiltPitchTarget = restDeck || crashed ? 0 : pedalPitch;
+      : (cues.throttle * 0.07 - cues.frontBrake * 0.35 - cues.rearBrake * 0.12) * response;
+  const pedalScale = Math.abs(attitude.pitch) > 5 ? 0 : 1;
+  const tiltPitchTarget = restDeck || crashed ? 0 : pedalPitch * pedalScale;
   const tiltRollTarget = restDeck || crashed ? 0 : Math.atan(-gForce.x) * TILT_ROLL_BLEND * response;
   const tiltRate = (70 * Math.PI) / 180;
   const tiltTau = 0.1;

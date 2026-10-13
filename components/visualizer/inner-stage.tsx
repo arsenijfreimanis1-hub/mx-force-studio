@@ -7,6 +7,7 @@ import type { Group } from "three";
 import * as THREE from "three";
 import { garageTextures } from "@/components/visualizer/garage-textures";
 import { DECK_PLATE_Y } from "@/lib/mxb/dims";
+import { NARDO } from "@/lib/mxb/finish";
 import { STAGE_TRAVEL_X, STAGE_TRAVEL_Z, stageOffset } from "@/lib/mxb/stage";
 import type { FrameTravel, Pose6 } from "@/lib/mxb/motion";
 
@@ -49,6 +50,9 @@ export function InnerStage({
   const sway = useRef<Group>(null);
   const surge = useRef<Group>(null);
   const yaw = useRef<Group>(null);
+  const swayScrew = useRef<Group>(null);
+  const surgeScrew = useRef<Group>(null);
+  const pinion = useRef<Group>(null);
   const tex = garageTextures();
   const steel = useMemo(
     () =>
@@ -73,12 +77,11 @@ export function InnerStage({
   const accent = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: "#ff6a00",
-        map: tex.paint,
-        metalness: 0.35,
-        roughness: 0.4,
+        color: NARDO,
+        roughness: 0.86,
+        metalness: 0.05,
       }),
-    [tex],
+    [],
   );
   const chrome = useMemo(
     () =>
@@ -106,6 +109,11 @@ export function InnerStage({
     if (sway.current) sway.current.position.x = offset.x;
     if (surge.current) surge.current.position.z = offset.z;
     if (yaw.current) yaw.current.rotation.y = offset.yaw;
+    // 8 mm lead: the screw is what actually drives the carriage.
+    const lead = 0.008;
+    if (swayScrew.current) swayScrew.current.rotation.x = offset.x / lead;
+    if (surgeScrew.current) surgeScrew.current.rotation.z = offset.z / lead;
+    if (pinion.current) pinion.current.rotation.y = -offset.yaw * (0.062 / 0.018);
   });
 
   return (
@@ -130,10 +138,17 @@ export function InnerStage({
         </group>
       ))}
 
-      {/* Sway drive screw down the middle */}
-      <mesh material={alloy} position={[0, 0.045, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.009, 0.009, SWAY_RAIL_X - 0.06, 10]} />
-      </mesh>
+      {/* Sway drive screw. The group spins about the rail axis as the carriage moves. */}
+      <group ref={swayScrew} position={[0, 0.045, 0]}>
+        <mesh material={alloy} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.009, 0.009, SWAY_RAIL_X - 0.06, 16]} />
+        </mesh>
+        {[-0.09, -0.045, 0, 0.045, 0.09].map((x) => (
+          <mesh key={`sway-thread-${x}`} material={alloy} position={[x, 0, 0]} rotation={[0, Math.PI / 2, 0]}>
+            <torusGeometry args={[0.013, 0.0022, 6, 16]} />
+          </mesh>
+        ))}
+      </group>
       <mesh material={accent} position={[-SWAY_RAIL_X / 2 + 0.01, 0.045, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
         <cylinderGeometry args={[0.028, 0.028, 0.07, 12]} />
       </mesh>
@@ -174,11 +189,25 @@ export function InnerStage({
             ))}
           </group>
         ))}
+        <group ref={surgeScrew} position={[0, 0.028, 0]}>
+          <mesh material={alloy} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.008, 0.008, SURGE_RAIL_Z - 0.08, 16]} />
+          </mesh>
+          {[-0.08, -0.04, 0, 0.04, 0.08].map((z) => (
+            <mesh key={`surge-thread-${z}`} material={alloy} position={[0, 0, z]} rotation={[Math.PI / 2, 0, 0]}>
+              <torusGeometry args={[0.012, 0.002, 6, 16]} />
+            </mesh>
+          ))}
+        </group>
         <mesh material={accent} position={[0, 0.028, SURGE_RAIL_Z / 2 - 0.01]} rotation={[Math.PI / 2, 0, 0]} castShadow>
           <cylinderGeometry args={[0.026, 0.026, 0.065, 12]} />
         </mesh>
 
         <group ref={surge}>
+          {/* Nut on the surge screw, so the carriage is what the screw drives. */}
+          <mesh material={alloy} position={[0, 0.028, 0]} castShadow>
+            <boxGeometry args={[0.042, 0.034, 0.042]} />
+          </mesh>
           {/* Surge carriage plate */}
           <mesh material={steel} position={[0, 0.055, 0]} castShadow receiveShadow>
             <boxGeometry args={[SWAY_CAR_X - 0.02, 0.018, SURGE_CAR_Z]} />
@@ -207,10 +236,13 @@ export function InnerStage({
             <mesh material={accent} position={[0, 0.016, 0]}>
               <cylinderGeometry args={[0.045, 0.045, 0.008, 18]} />
             </mesh>
-            <mesh material={alloy} position={[0.075, 0.004, 0]} castShadow>
-              <cylinderGeometry args={[0.018, 0.018, 0.045, 12]} />
-            </mesh>
             <group position={[0, FRAME_ON_STAGE_Y - STACK_Y, 0]}>{children}</group>
+          </group>
+          {/* Pinion stays on the carriage and walks the ring as it yaws. */}
+          <group ref={pinion} position={[0.075, YAW_Y + 0.004, 0]}>
+            <mesh material={alloy} castShadow>
+              <cylinderGeometry args={[0.018, 0.018, 0.045, 16]} />
+            </mesh>
           </group>
         </group>
       </group>

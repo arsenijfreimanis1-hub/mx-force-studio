@@ -22,8 +22,8 @@ export const DECK_PLATE_Y = 0.06;
  * big lean angle. The plate only has to carry the stage and the frame clamps —
  * the bike itself overhangs it at both ends, the same as on a shop stand.
  */
-export const DECK_HALF_W_DRAW = 0.24;
-export const DECK_HALF_L_DRAW = 0.26;
+export const DECK_HALF_W_DRAW = 0.252;
+export const DECK_HALF_L_DRAW = 0.272;
 /**
  * Rest actuator length (m) at 45° with the current plate height:
  * restRise (0.43) × √2 — see rods.ts.

@@ -124,6 +124,7 @@ function StudioScene(props: {
   harnessRef?: MutableRefObject<HarnessState>;
   ridePhaseRef?: MutableRefObject<RidePhaseFilter>;
   hiddenParts: string[];
+  showRider: boolean;
   onParts: (parts: ExcPartInfo[]) => void;
 }) {
   const orbitCam = useRef<THREE.PerspectiveCamera>(null);
@@ -147,6 +148,7 @@ function StudioScene(props: {
     harnessRef,
     ridePhaseRef,
     hiddenParts,
+    showRider,
     onParts,
   } = props;
   return (
@@ -238,6 +240,8 @@ function StudioScene(props: {
             poseRef={poseRef}
             travelRef={travelRef}
             hiddenIds={hiddenParts}
+            showRider={showRider}
+            pov={pov}
             onParts={onParts}
           />
           {hideForces ? null : <ForceArrows forcesRef={forcesRef} hiddenRef={hiddenRef} />}
@@ -267,6 +271,7 @@ export function BikeCanvas({
   ridePhaseRef,
   pov = false,
   hiddenParts,
+  showRider,
   onParts,
 }: {
   telemetryRef: MutableRefObject<Telemetry>;
@@ -288,6 +293,7 @@ export function BikeCanvas({
   ridePhaseRef?: MutableRefObject<RidePhaseFilter>;
   pov?: boolean;
   hiddenParts: string[];
+  showRider: boolean;
   onParts: (parts: ExcPartInfo[]) => void;
 }) {
   return (
@@ -318,6 +324,7 @@ export function BikeCanvas({
         harnessRef={harnessRef}
         ridePhaseRef={ridePhaseRef}
         hiddenParts={hiddenParts}
+        showRider={showRider}
         onParts={onParts}
       />
     </Canvas>

@@ -55,6 +55,37 @@ export const SPLIT_RULES: Record<string, SplitRule[]> = {
   ],
   Dark_Plastics: [
     {
+      id: "front_brake_line",
+      label: "Front brake line",
+      assembly: "Brakes",
+      when: (b) => {
+        const height = b.max.y - b.min.y;
+        const thin = Math.min(b.max.x - b.min.x, height, b.max.z - b.min.z);
+        return b.center.z > 0.45 && b.center.y < 0.4 && height > 0.4 && thin < 0.1;
+      },
+    },
+    {
+      id: "rear_brake_line",
+      label: "Rear brake line",
+      assembly: "Brakes",
+      when: (b) => {
+        const depth = b.max.z - b.min.z;
+        const height = b.max.y - b.min.y;
+        const thin = Math.min(b.max.x - b.min.x, height, depth);
+        return depth > 0.4 && height < 0.2 && thin < 0.12 && b.center.y < 0.25;
+      },
+    },
+    {
+      id: "mud_flap",
+      label: "Mud flap",
+      assembly: "Bodywork",
+      when: (b) => {
+        const width = b.max.x - b.min.x;
+        const height = b.max.y - b.min.y;
+        return b.center.z < -0.3 && b.center.y > 0.4 && width < 0.05 && height > 0.12 && height < 0.28;
+      },
+    },
+    {
       id: "grip_l",
       label: "Left grip",
       assembly: "Controls",
@@ -105,6 +136,13 @@ export const SPLIT_RULES: Record<string, SplitRule[]> = {
   ],
   Shock_Metal: [
     { id: "rear_shock", label: "Rear shock", assembly: "Suspension", when: (b) => b.center.z < -0.1 },
+    {
+      id: "fork_lower_l",
+      label: "Left fork lower",
+      assembly: "Suspension",
+      when: (b) => b.center.y < 0.4 && b.center.x < 0,
+    },
+    { id: "fork_lower_r", label: "Right fork lower", assembly: "Suspension", when: (b) => b.center.y < 0.4 },
     { id: "fork_l", label: "Left fork leg", assembly: "Suspension", when: (b) => b.center.x < 0 },
     { id: "fork_r", label: "Right fork leg", assembly: "Suspension" },
   ],
@@ -151,11 +189,18 @@ export const SPLIT_RULES: Record<string, SplitRule[]> = {
 };
 
 /** Label / assembly for every id the splitter can produce. */
-export const SPLIT_META: Record<string, { label: string; assembly: string }> = Object.fromEntries(
-  Object.values(SPLIT_RULES)
-    .flat()
-    .map((rule) => [rule.id, { label: rule.label, assembly: rule.assembly }]),
-);
+export const SPLIT_META: Record<string, { label: string; assembly: string }> = {
+  ...Object.fromEntries(
+    Object.values(SPLIT_RULES)
+      .flat()
+      .map((rule) => [rule.id, { label: rule.label, assembly: rule.assembly }]),
+  ),
+  // Named meshes cut out in Blender for live control animation.
+  clutch_lever: { label: "Clutch lever", assembly: "Controls" },
+  brake_lever: { label: "Front brake lever", assembly: "Controls" },
+  shift_lever: { label: "Gear shifter", assembly: "Controls" },
+  rear_brake_pedal: { label: "Rear brake pedal", assembly: "Controls" },
+};
 
 export function isSplitMaterial(material: string) {
   return Object.hasOwn(SPLIT_RULES, material);

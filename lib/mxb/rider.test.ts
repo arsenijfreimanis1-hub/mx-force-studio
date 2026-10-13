@@ -66,11 +66,11 @@ test("throttle sits the dummy back", () => {
   assert.ok(r.foreAft < -0.03, `foreAft ${r.foreAft}`);
 });
 
-test("whoops and gas raise the stand meter", () => {
+test("whoops raise the stand meter; throttle alone does not", () => {
   const whoops = standFromTelemetry(sample({ speedMs: 14, suspVelocity: [0.8, -0.7] }));
   const gas = standFromTelemetry(sample({ speedMs: 10, throttle: 0.85 }));
   assert.ok(whoops > 0.45, `whoops ${whoops}`);
-  assert.ok(gas > 0.5, `gas ${gas}`);
+  assert.ok(gas < 0.15, `gas stand ${gas}`);
 });
 
 test("body-weight stick moves the dummy even when the chassis is still", () => {

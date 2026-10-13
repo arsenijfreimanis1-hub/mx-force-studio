@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import * as THREE from "three";
 import { DECK_HALF_L_DRAW, DECK_HALF_W_DRAW, DECK_PLATE_Y } from "@/lib/mxb/dims";
 import { CRADLE_PAD_Y, FRAME_CLAMPS } from "@/lib/mxb/exc-mount";
+import { NARDO } from "@/lib/mxb/finish";
 import { ROD_CORNERS } from "@/lib/mxb/rods";
 import { garageTextures } from "@/components/visualizer/garage-textures";
 
@@ -29,10 +30,9 @@ function useDeckMaterials() {
       roughness: 0.38,
     });
     const accent = new THREE.MeshStandardMaterial({
-      color: "#ea580c",
-      map: tex.paint,
-      metalness: 0.32,
-      roughness: 0.42,
+      color: NARDO,
+      roughness: 0.88,
+      metalness: 0.04,
     });
     const steel = new THREE.MeshStandardMaterial({
       color: "#6b6560",
@@ -83,11 +83,11 @@ export function FrameCradles() {
                 <mesh material={steel} position={[0, jaw - 0.022, 0]} castShadow>
                   <boxGeometry args={[0.05, 0.03, 0.075]} />
                 </mesh>
-                <mesh material={rubber} position={[0, jaw - 0.006, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                  <cylinderGeometry args={[0.014, 0.014, 0.07, 12]} />
+                <mesh material={rubber} position={[0, jaw - 0.002, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                  <cylinderGeometry args={[0.018, 0.018, 0.075, 12]} />
                 </mesh>
                 {/* Hinged cap pinched over the rail */}
-                <mesh material={accent} position={[0, jaw + 0.016, 0]} castShadow>
+                <mesh material={accent} position={[0, jaw + 0.01, 0]} castShadow>
                   <boxGeometry args={[0.052, 0.014, 0.062]} />
                 </mesh>
                 {([-1, 1] as const).map((bz) => (
@@ -132,20 +132,20 @@ export function MotionDeck() {
         <mesh
           key={`rib-z-${side}`}
           material={dark}
-          position={[side * DECK_HALF_W_DRAW, -PLATE_T - 0.03, 0]}
+          position={[side * DECK_HALF_W_DRAW * 0.42, -PLATE_T - 0.03, 0]}
           castShadow
         >
-          <boxGeometry args={[0.06, 0.06, PLATE_L - 0.06]} />
+          <boxGeometry args={[0.05, 0.05, PLATE_L - 0.28]} />
         </mesh>
       ))}
       {([-1, 1] as const).map((side) => (
         <mesh
           key={`rib-x-${side}`}
           material={dark}
-          position={[0, -PLATE_T - 0.03, side * DECK_HALF_L_DRAW]}
+          position={[0, -PLATE_T - 0.03, side * DECK_HALF_L_DRAW * 0.42]}
           castShadow
         >
-          <boxGeometry args={[PLATE_W - 0.06, 0.06, 0.06]} />
+          <boxGeometry args={[PLATE_W - 0.28, 0.05, 0.05]} />
         </mesh>
       ))}
 
@@ -173,8 +173,8 @@ export function MotionDeck() {
         rail pads and the builder's plate, both under the carriage.
       */}
       {([-1, 1] as const).map((side) => (
-        <mesh key={`bolt-pad-${side}`} material={steel} position={[0, 0.014, side * 0.11]} receiveShadow>
-          <boxGeometry args={[0.46, 0.008, 0.07]} />
+        <mesh key={`bolt-pad-${side}`} material={steel} position={[0, 0.003, side * 0.11]} receiveShadow>
+          <boxGeometry args={[0.46, 0.004, 0.07]} />
         </mesh>
       ))}
 

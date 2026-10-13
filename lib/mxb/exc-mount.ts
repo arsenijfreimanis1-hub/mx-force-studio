@@ -3,11 +3,12 @@
  *
  * The numbers below are measured off the GLB's Orange_Metal frame in the same
  * space prepareExcBike leaves the bike in: leaned upright, yawed to face +Z,
- * and dropped until the lowest frame point is y = 0. Each entry is the lowest
- * vertex of the paired outer rails (|x| >= 0.08) in a 0.05 m slice of z.
+ * and dropped until the lowest Orange_Metal **vertex** is y = 0 (not the
+ * inflated AABB). Each entry is the lowest vertex of the paired outer rails
+ * (|x| >= 0.07) in a 0.05 m slice of z.
  *
  * Read it as the underside of the bike. The rails only exist in two stretches —
- * roughly z -0.20..-0.10 at the rear and z 0.05..0.10 ahead of the engine, with
+ * roughly z -0.20..-0.10 at the rear and z 0.04..0.10 ahead of the engine, with
  * a gap between where the skid area hangs down. A clamp has to land in one of
  * those stretches, and because the rails taper and climb toward the front, no
  * two clamps are the same width or the same height.
@@ -16,20 +17,28 @@
  * which is the point.
  */
 export const FRAME_RAIL_PROFILE = [
-  { z: -0.2, x: 0.157, y: 0.049 },
-  { z: -0.15, x: 0.146, y: 0.024 },
-  { z: -0.1, x: 0.13, y: 0.01 },
-  { z: 0.05, x: 0.101, y: 0.009 },
-  { z: 0.1, x: 0.1, y: 0.016 },
+  { z: -0.2, x: 0.128, y: 0.031 },
+  { z: -0.15, x: 0.112, y: 0.016 },
+  { z: -0.1, x: 0.11, y: 0.01 },
+  { z: 0.04, x: 0.08, y: 0.011 },
+  { z: 0.05, x: 0.08, y: 0.011 },
+  { z: 0.08, x: 0.076, y: 0.014 },
+  { z: 0.1, x: 0.075, y: 0.02 },
 ] as const;
 
 /** Height of the bike's lowest frame point above the cradle group origin. */
 export const CRADLE_PAD_Y = 0.128;
 
+/**
+ * How far the rail underside sits into the jaw rubber (metres).
+ * Bike group Y is CRADLE_PAD_Y - RUBBER_CRUSH so contact is in the pad, not on the cap.
+ */
+export const RUBBER_CRUSH = 0.002;
+
 /** The two clamps, each sitting on a measured stretch of rail. */
 export const FRAME_CLAMPS = [
-  { id: "rear", z: -0.15, x: 0.146, lift: 0.024 },
-  { id: "front", z: 0.08, x: 0.1, lift: 0.012 },
+  { id: "rear", z: -0.15, x: 0.112, lift: 0.016 },
+  { id: "front", z: 0.08, x: 0.076, lift: 0.014 },
 ] as const;
 
 /** Rail width and height at a z, interpolated between measured slices. */

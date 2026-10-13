@@ -1,5 +1,5 @@
 import type { RecordingFile } from "./recording.ts";
-import type { Vec3 } from "./types.ts";
+import type { Telemetry, Vec3 } from "./types.ts";
 
 /**
  * MX Bikes does not send a replay flag. A replay (or a scrub) rewinds RunTelemetry
@@ -7,7 +7,7 @@ import type { Vec3 } from "./types.ts";
  * the saved take whose clock and track position match that rewind, then scrubs the
  * take to each new session time.
  */
-export const REPLAY_REWIND_S = 0.4;
+export const REPLAY_REWIND_S = 0.2;
 export const REPLAY_MATCH_RADIUS_M = 15;
 export const REPLAY_END_SLACK_S = 1.25;
 
@@ -121,7 +121,7 @@ export function stepReplaySync(
     } else {
       const index = indexAtGameTime(clock.times, gameTime);
       const err = distance(position, clock.positions[index]);
-      if (err > REPLAY_MATCH_RADIUS_M * 1.6) {
+      if (err > REPLAY_MATCH_RADIUS_M * 2.2) {
         sync.following = false;
         sync.recordingId = null;
       } else {
@@ -133,6 +133,57 @@ export function stepReplaySync(
 
   sync.lastTime = gameTime;
   return { sync, follow: false, recordingId: null, index: -1, needsClocks: false };
+}
+
+function mix(a: number, b: number, u: number) {
+  return a + (b - a) * u;
+}
+
+function mixVec(a: Vec3, b: Vec3, u: number): Vec3 {
+  return { x: mix(a.x, b.x, u), y: mix(a.y, b.y, u), z: mix(a.z, b.z, u) };
+}
+
+/**
+ * Sample the take at a game-clock time, blending the two surrounding frames
+ * so a scrub moves the bike instead of stepping one recorded frame at a time.
+ * Gear and the crash flag stay on the nearer frame — they are not ramps.
+ */
+export function telemetryAtGameTime(samples: { telemetry: Telemetry }[], gameTime: number): Telemetry | null {
+  const times = samples.map((sample) => sample.telemetry.time);
+  if (times.length === 0) return null;
+  const index = indexAtGameTime(times, gameTime);
+  const here = samples[index]?.telemetry;
+  if (!here) return null;
+  const nextIndex = times[index] >= gameTime ? index - 1 : index + 1;
+  const other = samples[nextIndex]?.telemetry;
+  if (!other || !Number.isFinite(other.time) || other.time === here.time) return here;
+  const span = here.time - other.time;
+  const u = span === 0 ? 0 : Math.max(0, Math.min(1, (gameTime - other.time) / span));
+  const nearer = u < 0.5 ? other : here;
+  return {
+    ...nearer,
+    position: mixVec(other.position, here.position, u),
+    velocity: mixVec(other.velocity, here.velocity, u),
+    accelG: mixVec(other.accelG, here.accelG, u),
+    yaw: mix(other.yaw, here.yaw, u),
+    pitch: mix(other.pitch, here.pitch, u),
+    roll: mix(other.roll, here.roll, u),
+    yawRate: mix(other.yawRate, here.yawRate, u),
+    pitchRate: mix(other.pitchRate, here.pitchRate, u),
+    rollRate: mix(other.rollRate, here.rollRate, u),
+    suspLength: [mix(other.suspLength[0], here.suspLength[0], u), mix(other.suspLength[1], here.suspLength[1], u)],
+    suspVelocity: [
+      mix(other.suspVelocity[0], here.suspVelocity[0], u),
+      mix(other.suspVelocity[1], here.suspVelocity[1], u),
+    ],
+    steer: mix(other.steer, here.steer, u),
+    throttle: mix(other.throttle, here.throttle, u),
+    frontBrake: mix(other.frontBrake, here.frontBrake, u),
+    rearBrake: mix(other.rearBrake, here.rearBrake, u),
+    clutch: mix(other.clutch, here.clutch, u),
+    speedMs: mix(other.speedMs, here.speedMs, u),
+    time: gameTime,
+  };
 }
 
 function isMostlySorted(times: number[]) {

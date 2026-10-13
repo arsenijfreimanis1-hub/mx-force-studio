@@ -1,4 +1,4 @@
-id: 2026-10-12-mx-cradle
+id: 2026-10-12-visual-pass
 date: 2026-10-12
 
 MX Force Studio update log
@@ -6,6 +6,18 @@ The id line is the installed revision. Installer and Updater compare it
 when deciding whether a rebuild is current. The website should compare
 this same id (or GET /api/updates on a running install) to see if the
 app is up to date.
+
+## 2026-10-12-visual-pass
+- Restored EXC from source: clean Nardo number board, no scoop gouge; mud flap and kickstand cut as shells
+- Triple clamp steers with the bars; named levers hinge on the bar / peg axis
+- Frame grounded on real rail verts and remeasured into the cradle jaws
+- Garage shows an outdated banner when UPDATES.txt is ahead of the built revision — run Updater.bat, then Installer.bat
+
+## 2026-10-12-showcase-seat
+- Bars rest centered; clutch, brake, shifter, and rear brake follow the game
+- Front light and number plate removed; mud flap and kickstand holder cut from the model
+- Frame rails sit in the cradle jaws; rider toggle is on the top bar
+- Garage shows an outdated banner when UPDATES.txt is ahead of the built revision — run Updater.bat, then Installer.bat
 
 ## 2026-10-12-mx-cradle
 - Rig is a compact MX cradle: 1.17 x 1.21 m footprint, load plate 0.56 m off the floor

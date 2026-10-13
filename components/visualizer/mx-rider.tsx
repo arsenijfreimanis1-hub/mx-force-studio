@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { MutableRefObject, RefObject } from "react";
 import { isRiderPad, readBodyStick, readFirstGamepad } from "@/lib/mxb/gamepad";
 import { idleRider, riderFromTelemetry } from "@/lib/mxb/rider";
+import { riderEye } from "@/lib/mxb/rider-eye";
 import type { Telemetry } from "@/lib/mxb/types";
+import { NARDO } from "@/lib/mxb/finish";
 import { garageTextures } from "@/components/visualizer/garage-textures";
 
 /**
@@ -61,10 +63,13 @@ export function MxRider({
   telemetryRef,
   liveRef,
   padActiveRef,
+  hideHelmet = false,
 }: {
   telemetryRef: MutableRefObject<Telemetry>;
   liveRef: MutableRefObject<boolean>;
   padActiveRef: MutableRefObject<boolean>;
+  /** POV looks out through the goggles — hide the shell so the camera is not inside plastic. */
+  hideHelmet?: boolean;
 }) {
   const root = useRef<THREE.Group>(null);
   const hips = useRef<THREE.Group>(null);
@@ -80,6 +85,12 @@ export function MxRider({
   const shinR = useRef<THREE.Group>(null);
   const last = useRef(idleRider());
   const tex = garageTextures();
+
+  useEffect(() => {
+    return () => {
+      riderEye.ready = false;
+    };
+  }, []);
 
   const geo = useMemo(
     () => ({
@@ -98,16 +109,15 @@ export function MxRider({
       metalness: 0.04,
     });
     const accent = new THREE.MeshStandardMaterial({
-      color: "#ea580c",
-      map: tex.paint,
-      roughness: 0.5,
-      metalness: 0.12,
+      color: NARDO,
+      roughness: 0.9,
+      metalness: 0.04,
     });
     const pants = new THREE.MeshStandardMaterial({
-      color: "#16181c",
-      map: tex.leather,
-      roughness: 0.82,
-      metalness: 0.05,
+      color: "#121212",
+      map: tex.carbon,
+      roughness: 0.7,
+      metalness: 0.16,
     });
     const boot = new THREE.MeshStandardMaterial({
       color: "#0b0b0c",
@@ -186,6 +196,17 @@ export function MxRider({
     if (legR.current) legR.current.rotation.set(-0.94 + pose.stand * 0.42, -0.1, -0.16);
     if (shinL.current) shinL.current.rotation.x = knee;
     if (shinR.current) shinR.current.rotation.x = knee;
+
+    // Eye sits on the goggle lens, just outside the shell.
+    head.current.updateWorldMatrix(true, false);
+    const eye = new THREE.Vector3(0, 0.012, 0.1);
+    eye.applyMatrix4(head.current.matrixWorld);
+    const forward = new THREE.Vector3(0, 0, 1).transformDirection(head.current.matrixWorld);
+    const up = new THREE.Vector3(0, 1, 0).transformDirection(head.current.matrixWorld);
+    const look = eye.clone().add(forward);
+    riderEye.matrix.lookAt(eye, look, up);
+    riderEye.matrix.setPosition(eye);
+    riderEye.ready = true;
   });
 
   const leg = (
@@ -314,44 +335,43 @@ export function MxRider({
           </mesh>
 
           <group ref={head} position={[0, 0.44, 0.012]} rotation={[-0.05, 0, 0]}>
-            {/* Shell */}
-            <mesh material={mat.helmet} scale={[1, 1.02, 1.06]} castShadow>
-              <sphereGeometry args={[0.112, 22, 18]} />
-            </mesh>
-            {/* Chin bar sweeping under the eye port */}
-            <mesh
-              material={mat.helmet}
-              position={[0, -0.062, 0.062]}
-              rotation={[0.22, 0, 0]}
-              scale={[1, 0.62, 0.78]}
-              castShadow
-            >
-              <sphereGeometry args={[0.098, 20, 14]} />
-            </mesh>
-            {/* Mouth vent */}
-            <mesh material={mat.visor} position={[0, -0.072, 0.108]} rotation={[0.3, 0, 0]} scale={[1, 0.5, 0.35]}>
-              <sphereGeometry args={[0.052, 16, 12]} />
-            </mesh>
-            {/* Goggle lens + strap */}
-            <mesh material={mat.visor} position={[0, 0.012, 0.086]} scale={[1.12, 0.62, 0.42]} castShadow>
-              <sphereGeometry args={[0.078, 18, 14]} />
-            </mesh>
-            <mesh material={mat.goggle} position={[0, 0.012, 0.07]} rotation={[0.08, 0, 0]} scale={[1.1, 0.8, 1]}>
-              <torusGeometry args={[0.072, 0.014, 10, 22]} />
-            </mesh>
-            <mesh material={mat.accent} position={[0, 0.03, -0.03]} rotation={[Math.PI / 2, 0, 0]} scale={[1.04, 1.04, 1]}>
-              <torusGeometry args={[0.108, 0.016, 8, 24]} />
-            </mesh>
-            {/* Peak */}
-            <mesh
-              material={mat.helmet}
-              position={[0, 0.072, 0.082]}
-              rotation={[-0.42, 0, 0]}
-              scale={[1.25, 0.16, 1]}
-              castShadow
-            >
-              <sphereGeometry args={[0.078, 18, 12]} />
-            </mesh>
+            {hideHelmet ? null : (
+              <>
+                <mesh material={mat.helmet} scale={[1, 1.02, 1.06]} castShadow>
+                  <sphereGeometry args={[0.112, 22, 18]} />
+                </mesh>
+                <mesh
+                  material={mat.helmet}
+                  position={[0, -0.062, 0.062]}
+                  rotation={[0.22, 0, 0]}
+                  scale={[1, 0.62, 0.78]}
+                  castShadow
+                >
+                  <sphereGeometry args={[0.098, 20, 14]} />
+                </mesh>
+                <mesh material={mat.visor} position={[0, -0.072, 0.108]} rotation={[0.3, 0, 0]} scale={[1, 0.5, 0.35]}>
+                  <sphereGeometry args={[0.052, 16, 12]} />
+                </mesh>
+                <mesh material={mat.visor} position={[0, 0.012, 0.086]} scale={[1.12, 0.62, 0.42]} castShadow>
+                  <sphereGeometry args={[0.078, 18, 14]} />
+                </mesh>
+                <mesh material={mat.goggle} position={[0, 0.012, 0.07]} rotation={[0.08, 0, 0]} scale={[1.1, 0.8, 1]}>
+                  <torusGeometry args={[0.072, 0.014, 10, 22]} />
+                </mesh>
+                <mesh material={mat.accent} position={[0, 0.03, -0.03]} rotation={[Math.PI / 2, 0, 0]} scale={[1.04, 1.04, 1]}>
+                  <torusGeometry args={[0.108, 0.016, 8, 24]} />
+                </mesh>
+                <mesh
+                  material={mat.helmet}
+                  position={[0, 0.072, 0.082]}
+                  rotation={[-0.42, 0, 0]}
+                  scale={[1.25, 0.16, 1]}
+                  castShadow
+                >
+                  <sphereGeometry args={[0.078, 18, 12]} />
+                </mesh>
+              </>
+            )}
           </group>
         </group>
       </group>

@@ -6,6 +6,7 @@ import {
   indexAtGameTime,
   matchRecording,
   stepReplaySync,
+  telemetryAtGameTime,
   type RecordingClock,
 } from "./replay-sync.ts";
 import type { RecordingFile } from "./recording.ts";
@@ -50,6 +51,37 @@ test("a rewind locks the take that is on the same piece of track", () => {
 
   const drifted = stepReplaySync(locked.sync, 2.4, { x: 80, y: 0, z: 0 }, [home, other], true);
   assert.equal(drifted.follow, false);
+});
+
+test("a short scrub still locks the take, and the frame is blended between samples", () => {
+  const ride = clock("ride", 1, [
+    [1, 0, 0, 0],
+    [2, 10, 0, 0],
+    [3, 20, 0, 0],
+  ]);
+  let sync = createReplaySync();
+  sync = stepReplaySync(sync, 5, { x: 40, y: 0, z: 0 }, [ride], true).sync;
+  const locked = stepReplaySync(sync, 4.7, { x: 40, y: 0, z: 0 }, [ride], true);
+  assert.equal(locked.follow, false);
+
+  sync = stepReplaySync(createReplaySync(), 8, { x: 0, y: 0, z: 0 }, [ride], true).sync;
+  const scrub = stepReplaySync(sync, 1.4, { x: 4, y: 0, z: 0 }, [ride], true);
+  assert.equal(scrub.follow, true);
+
+  const rec: RecordingFile = {
+    id: "ride",
+    name: "Ride",
+    startedAt: 1,
+    durationMs: 2000,
+    samples: [1, 2].map((time) => ({
+      t: time * 1000,
+      telemetry: { ...restTelemetry(), time, steer: time === 1 ? 0 : 20, position: { x: time, y: 0, z: 0 } },
+      pad: idlePadTrace(),
+    })),
+  };
+  const mid = telemetryAtGameTime(rec.samples, 1.5);
+  assert.ok(mid);
+  assert.ok(Math.abs(mid.steer - 10) < 0.01, `steer ${mid.steer}`);
 });
 
 test("live time that keeps climbing does not start a synced replay", () => {

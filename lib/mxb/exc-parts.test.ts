@@ -57,7 +57,9 @@ test("default stripped bike keeps frame, seat, plastics, and bars", () => {
     assert.ok(ALL_PART_IDS.includes(id), `unknown default ${id}`);
     assert.ok(!DEFAULT_HIDDEN_PARTS.includes(id), id);
   }
-  for (const id of ["tyre_front", "tyre_rear", "wheel_front", "steel", "rear_shock", "swingarm"]) {
+  assert.ok(DEFAULT_VISIBLE_PARTS.includes("front_plate"), "MX number board on by default");
+  assert.ok(DEFAULT_HIDDEN_PARTS.includes("dark_trim"), "dark_trim scraps stay off");
+  for (const id of ["tyre_front", "tyre_rear", "wheel_front", "steel", "rear_shock", "swingarm", "front_brake_line", "rear_brake_line", "mud_flap", "fork_lower_l", "fork_lower_r", "glass"]) {
     assert.ok(DEFAULT_HIDDEN_PARTS.includes(id), id);
   }
 });

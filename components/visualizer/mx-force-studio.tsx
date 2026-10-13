@@ -30,11 +30,13 @@ import {
   clockFromRecording,
   createReplaySync,
   stepReplaySync,
+  telemetryAtGameTime,
   type RecordingClock,
 } from "@/lib/mxb/replay-sync";
 import { DEFAULT_HIDDEN_PARTS, loadHiddenParts, saveHiddenParts } from "@/lib/mxb/exc-parts";
 import { BikePartsPanel } from "@/components/visualizer/bike-parts-panel";
 import type { ExcPartInfo } from "@/components/visualizer/exc-bike";
+import { TrackMap } from "@/components/visualizer/track-map";
 import { createRidePhaseFilter, describeRidePhase, detectCrash, type RidePhase } from "@/lib/mxb/crash";
 import { setupLabel } from "@/lib/mxb/inputs";
 import { saveStoredDof } from "@/lib/mxb/dof";
@@ -130,8 +132,10 @@ export function MxForceStudio() {
   const [syncName, setSyncName] = useState("");
   const [bikeParts, setBikeParts] = useState<ExcPartInfo[]>([]);
   const [hiddenParts, setHiddenParts] = useState<string[]>([]);
+  const [showRider, setShowRider] = useState(true);
   const [padHud, setPadHud] = useState(() => readPadTrace(null));
   const [bindSource, setBindSource] = useState(DEFAULT_PAD_MAP.source);
+  const [updateBanner, setUpdateBanner] = useState<{ id: string; builtId: string } | null>(null);
 
   const pollRef = useRef<() => Promise<void>>(async () => {});
   const motionRef = useRef(createMotionFilter());
@@ -286,6 +290,25 @@ export function MxForceStudio() {
 
   useEffect(() => {
     setHiddenParts(loadHiddenParts());
+    if (typeof localStorage !== "undefined" && localStorage.getItem("mxb-rider-visible") === "0") {
+      setShowRider(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/updates")
+      .then((r) => r.json())
+      .then((body: { outdated?: boolean; id?: string; builtId?: string }) => {
+        if (cancelled || !body.outdated || !body.id) return;
+        setUpdateBanner({ id: body.id, builtId: body.builtId ?? "" });
+      })
+      .catch(() => {
+        /* ignore */
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const onBikeParts = useCallback((parts: ExcPartInfo[]) => {
@@ -520,11 +543,11 @@ export function MxForceStudio() {
         if (step.needsClocks) void ensureClocks();
         if (step.follow && step.recordingId) {
           const file = recordingCache.current.get(step.recordingId);
-          const sample = file?.samples[step.index];
-          if (sample) {
+          const blended = file ? telemetryAtGameTime(file.samples, incoming.time) : null;
+          if (blended) {
             replayRef.current = null;
             replayClock.current = 0;
-            telemetryRef.current = sample.telemetry;
+            telemetryRef.current = blended;
             liveRef.current = true;
             lastLiveAt.current = performance.now();
             if (replayIdRef.current !== step.recordingId) {
@@ -855,6 +878,24 @@ export function MxForceStudio() {
       </header>
       )}
 
+      {widget || !updateBanner ? null : (
+        <div className="flex items-start gap-2 border-b border-amber-500/40 bg-amber-500/15 px-3 py-2 text-[11px] leading-4 text-amber-50">
+          <p className="min-w-0 flex-1">
+            This Force Studio build is outdated ({updateBanner.builtId || "no build id"}). Current revision is{" "}
+            <span className="font-mono">{updateBanner.id}</span>. Close the app, run{" "}
+            <span className="font-semibold">Updater.bat</span>, then start again with{" "}
+            <span className="font-semibold">Installer.bat</span>.
+          </p>
+          <button
+            type="button"
+            className="shrink-0 text-amber-200/90 underline"
+            onClick={() => setUpdateBanner(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <div
         ref={stageRef}
         className="relative min-h-0 flex-1"
@@ -880,6 +921,7 @@ export function MxForceStudio() {
             ridePhaseRef={ridePhaseRef}
             pov={pov}
             hiddenParts={hiddenParts}
+            showRider={showRider}
             onParts={onBikeParts}
           />
 
@@ -913,8 +955,21 @@ export function MxForceStudio() {
 
           {widget ? null : (
           <div className="absolute top-2 right-2 z-20 flex gap-1">
-            <Button size="xs" variant={pov ? "default" : "secondary"} onClick={() => setPov((v) => !v)}>
+            <Button
+              size="xs"
+              variant={showRider ? "default" : "secondary"}
+              onClick={() => {
+                setShowRider((on) => {
+                  const next = !on;
+                  localStorage.setItem("mxb-rider-visible", next ? "1" : "0");
+                  return next;
+                });
+              }}
+            >
               <User />
+              Rider {showRider ? "on" : "off"}
+            </Button>
+            <Button size="xs" variant={pov ? "default" : "secondary"} onClick={() => setPov((v) => !v)}>
               {pov ? "Garage" : "POV"}
             </Button>
             {pov ? null : (
@@ -923,6 +978,16 @@ export function MxForceStudio() {
               </Button>
             )}
           </div>
+          )}
+
+          {widget ? null : (
+            <TrackMap
+              className={leftOpen ? "left-44" : "left-3"}
+              trackId={hudEvent.trackId}
+              trackName={hudEvent.trackName}
+              telemetry={telemetry}
+              live={liveOk && connectRequested}
+            />
           )}
 
           {widget ? null : (
@@ -1055,6 +1120,14 @@ export function MxForceStudio() {
                 onToggleAssembly={toggleAssembly}
                 onShowAll={showAllParts}
                 onStrip={stripParts}
+                riderOn={showRider}
+                onToggleRider={() => {
+                  setShowRider((on) => {
+                    const next = !on;
+                    localStorage.setItem("mxb-rider-visible", next ? "1" : "0");
+                    return next;
+                  });
+                }}
               />
 
               {syncName ? (

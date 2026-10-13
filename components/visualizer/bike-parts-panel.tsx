@@ -10,6 +10,8 @@ export function BikePartsPanel({
   onToggleAssembly,
   onShowAll,
   onStrip,
+  riderOn,
+  onToggleRider,
 }: {
   parts: ExcPartInfo[];
   hidden: Set<string>;
@@ -17,6 +19,8 @@ export function BikePartsPanel({
   onToggleAssembly: (assembly: string) => void;
   onShowAll: () => void;
   onStrip: () => void;
+  riderOn: boolean;
+  onToggleRider: () => void;
 }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -44,6 +48,13 @@ export function BikePartsPanel({
           Bike parts
         </p>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="text-[10px] text-amber-200/90"
+            onClick={onToggleRider}
+          >
+            Rider {riderOn ? "on" : "off"}
+          </button>
           <button type="button" className="text-[10px] text-amber-200/90" onClick={onStrip}>
             Strip
           </button>

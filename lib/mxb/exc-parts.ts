@@ -5,7 +5,7 @@
 
 import { SPLIT_META, isSplitMaterial, splitIdsFor } from "./exc-split.ts";
 
-export const MODEL_URL = "/models/ktm-450-exc.glb";
+export const MODEL_URL = "/models/ktm-450-exc.glb?v=visual-pass-v10";
 
 export const MODEL_CREDIT = {
   title: "KTM 450 EXC",
@@ -167,9 +167,18 @@ export function metaFor(name: string): PartMeta {
  * Every id the panel can list: split materials contribute one id per shell
  * group, whole materials contribute their own slug.
  */
-export const ALL_PART_IDS = Object.keys(MATERIAL_META).flatMap((name) =>
-  isSplitMaterial(name) ? splitIdsFor(name) : [slug(name)],
-);
+export const ALL_PART_IDS = [
+  ...Object.keys(MATERIAL_META).flatMap((name) =>
+    isSplitMaterial(name) ? splitIdsFor(name) : [slug(name)],
+  ),
+  // Blender-named controls that are not produced by the material shell split.
+  ...Object.keys(SPLIT_META).filter(
+    (id) =>
+      !Object.keys(MATERIAL_META).some((name) =>
+        (isSplitMaterial(name) ? splitIdsFor(name) : [slug(name)]).includes(id),
+      ),
+  ),
+];
 
 /** Which material a part id came from, so debranding and specs still resolve. */
 const PART_SOURCE: Record<string, string> = Object.fromEntries(
@@ -218,13 +227,21 @@ export const DEFAULT_VISIBLE_PARTS = [
   "side_panel_r",
   "rear_cover",
   "front_plate",
-  "dark_trim",
   "handlebar",
   "grip_l",
   "grip_r",
   "bar_controls",
   "handguard_l",
   "handguard_r",
+  "fork_l",
+  "fork_r",
+  "triple_clamp",
+  "lower_clamp",
+  "footpegs",
+  "clutch_lever",
+  "brake_lever",
+  "shift_lever",
+  "rear_brake_pedal",
 ] as const;
 
 export const DEFAULT_HIDDEN_PARTS = ALL_PART_IDS.filter(
@@ -261,7 +278,7 @@ export function parseHiddenParts(raw: string | null): string[] {
 }
 
 /** Bump the key when the default stripped set changes so old full-bike prefs do not stick. */
-export const HIDDEN_PARTS_KEY = "mxb-exc-parts-hidden-v5";
+export const HIDDEN_PARTS_KEY = "mxb-exc-parts-hidden-v10";
 
 export function loadHiddenParts(): string[] {
   if (typeof localStorage === "undefined") return [...DEFAULT_HIDDEN_PARTS];

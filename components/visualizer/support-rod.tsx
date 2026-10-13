@@ -6,6 +6,7 @@ import * as THREE from "three";
 import type { MutableRefObject } from "react";
 import { garageTextures } from "@/components/visualizer/garage-textures";
 import { DEFAULT_ROD_STROKE } from "@/lib/mxb/dims";
+import { NARDO } from "@/lib/mxb/finish";
 import { PLATFORM_HOME_Y, visualPitch, type FrameTravel, type Pose6 } from "@/lib/mxb/motion";
 import { ROD_CORNERS, defaultRestRodLength, rodBaseCorner, rodDeckLocal } from "@/lib/mxb/rods";
 
@@ -56,13 +57,14 @@ export function MotionPedestal({
   const barrelMid = useMemo(() => new THREE.Vector3(), []);
   const rodMid = useMemo(() => new THREE.Vector3(), []);
   const quat = useMemo(() => new THREE.Quaternion(), []);
+  const prevQuat = useMemo(() => ROD_CORNERS.map(() => new THREE.Quaternion()), []);
   const dir = useMemo(() => new THREE.Vector3(), []);
   const euler = useMemo(() => new THREE.Euler(0, 0, 0, "YXZ"), []);
   const local = useMemo(() => new THREE.Vector3(), []);
   const fl = useMemo(() => rodBaseCorner(-1, 1), []);
   const baseX = Math.abs(fl.x);
   const baseZ = Math.abs(fl.z);
-  const beam = 0.07;
+  const beam = 0.09;
   const tex = garageTextures();
 
   const steel = useMemo(
@@ -98,12 +100,11 @@ export function MotionPedestal({
   const accent = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: "#ea580c",
-        map: tex.paint,
-        metalness: 0.4,
-        roughness: 0.4,
+        color: NARDO,
+        roughness: 0.86,
+        metalness: 0.05,
       }),
-    [tex],
+    [],
   );
   const joint = useMemo(
     () =>
@@ -132,10 +133,14 @@ export function MotionPedestal({
       const deck = rodDeckLocal(c.x, c.z);
       start.set(base.x, base.y, base.z);
       local.set(deck.x, deck.y, deck.z).applyEuler(euler);
-      end.set(local.x, local.y + PLATFORM_HOME_Y + pose.y, local.z);
+      // Stop under the plate, in the clevis, so the rod never comes up through the stage.
+      end.set(local.x, local.y + PLATFORM_HOME_Y + pose.y - 0.09, local.z);
       dir.copy(end).sub(start);
       const length = Math.max(BARREL_LEN + 0.03, dir.length());
-      quat.setFromUnitVectors(up, dir.normalize());
+      dir.normalize();
+      quat.setFromUnitVectors(up, dir);
+      if (quat.dot(prevQuat[i]) < 0) quat.set(-quat.x, -quat.y, -quat.z, -quat.w);
+      prevQuat[i].copy(quat);
 
       // Barrel is bolted to the trunnion and never changes length.
       barrelMid.copy(start).addScaledVector(dir, BARREL_LEN * 0.5);
@@ -256,7 +261,7 @@ export function MotionPedestal({
       {barrels.map((ref, i) => (
         <group key={`barrel-${ROD_CORNERS[i].id}`} ref={ref}>
           <mesh material={barrel} castShadow>
-            <cylinderGeometry args={[0.044, 0.044, BARREL_LEN, 16]} />
+            <cylinderGeometry args={[0.044, 0.044, BARREL_LEN, 32]} />
           </mesh>
           {([-1, 1] as const).map((cap) => (
             <mesh key={cap} position={[0, (cap * BARREL_LEN) / 2, 0]} material={joint} castShadow>
@@ -279,7 +284,7 @@ export function MotionPedestal({
 
       {rods.map((ref, i) => (
         <mesh key={`rod-${ROD_CORNERS[i].id}`} ref={ref} material={chrome} castShadow>
-          <cylinderGeometry args={[0.022, 0.022, 1, 12]} />
+          <cylinderGeometry args={[0.022, 0.022, 1, 32]} />
         </mesh>
       ))}
 

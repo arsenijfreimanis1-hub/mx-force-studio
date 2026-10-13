@@ -27,11 +27,10 @@ export function standFromTelemetry(tel: Telemetry, stick: BodyStick = idleBodySt
   let stand = 0;
   if (airborne) stand = 0.95;
   else {
+    // Whoops and high speed still raise the rider. Throttle alone does not —
+    // gas sits the hips back while staying on the seat.
     if (tel.speedMs > 6 && Math.abs(suspV) > 0.22) {
       stand = clamp(0.32 + Math.abs(suspV) * 0.6, 0, 0.95);
-    }
-    if (tel.speedMs > 4.5 && tel.throttle > 0.42 && tel.frontBrake < 0.28) {
-      stand = Math.max(stand, 0.28 + tel.throttle * 0.5);
     }
     if (tel.speedMs > 13 && Math.abs(tel.roll) < 16) {
       stand = Math.max(stand, 0.42);
@@ -57,16 +56,17 @@ export function riderFromTelemetry(tel: Telemetry, stick: BodyStick = idleBodySt
     -0.7,
     0.7,
   );
-  // +Z is the bars. Gas / +surge sits the rider BACK. Brake sits them FORWARD.
+  // +Z is the bars. Gas / +surge slides the hips BACK a few centimetres.
+  // Brake slides them FORWARD. No stand-up from throttle alone.
   const foreAft = clamp(
-    -tel.throttle * 0.08 -
-      Math.max(0, g.z) * 0.07 +
-      tel.frontBrake * 0.14 +
-      tel.rearBrake * 0.05 +
-      Math.max(0, tel.pitch) * 0.004 +
+    -tel.throttle * 0.05 -
+      Math.max(0, g.z) * 0.04 +
+      tel.frontBrake * 0.1 +
+      tel.rearBrake * 0.04 +
+      Math.max(0, tel.pitch) * 0.003 +
       stick.foreAft,
-    -0.14,
-    0.12,
+    -0.1,
+    0.1,
   );
   return { stand, lean, foreAft };
 }
