@@ -3,11 +3,16 @@
  * UDP 47387 → POST /api/telemetry
  * Pair with plugin/mxb_force_studio.dlo on the MX Bikes PC.
  * Latest-wins: if a POST is in flight, older UDP datagrams are dropped.
+ * GAUGE_PORT (for example COM3) also drives six Uno servo needles.
+ * Leave it unset and this process only forwards UDP.
  */
 import dgram from "node:dgram";
+import { createGaugeSink } from "./gauge-serial.mjs";
 
 const url = process.env.MXB_URL ?? "http://127.0.0.1:43187/api/telemetry";
 const port = Number(process.env.MXB_UDP_PORT ?? 47387);
+const gaugePort = (process.env.GAUGE_PORT ?? "").trim();
+const gauges = gaugePort ? createGaugeSink(gaugePort) : null;
 
 const socket = dgram.createSocket("udp4");
 let lastError = 0;
@@ -53,12 +58,17 @@ socket.on("message", (msg) => {
   packets += 1;
   if (latest) dropped += 1;
   latest = msg;
+  gauges?.offer(msg);
   void flush();
 });
 
 socket.bind(port, "0.0.0.0", () => {
   console.log(`MX Bikes Force Studio bridge`);
   console.log(`UDP ${port} → ${url} (latest-wins)`);
+  if (gauges) {
+    console.log(`Gauge needles → ${gaugePort} @ 115200`);
+    void gauges.start();
+  }
   console.log(`Waiting for mxb_force_studio.dlo …`);
 });
 
